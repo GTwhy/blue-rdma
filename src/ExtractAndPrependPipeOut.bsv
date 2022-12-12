@@ -5,6 +5,7 @@ import Vector :: *;
 import Assertions :: *;
 import DataTypes :: *;
 import Headers :: *;
+import PrimUtils :: *;
 import Settings :: *;
 import Utils :: *;
 

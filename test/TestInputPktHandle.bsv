@@ -8,24 +8,39 @@ import Assertions :: *;
 import DataTypes :: *;
 import InputPktHandle :: *;
 import Headers :: *;
+import ReqGenSQ :: *;
+import PrimUtils :: *;
 import Settings :: *;
 import SimDma :: *;
-import Utils4Test :: *;
 import Utils :: *;
+import Utils4Test :: *;
 
-import ReqGenSQ :: *; // TOOD: remove this
-// TODO: move this module to Utils4Test
-module mkGenRdmaReqGivenWorkReq#(
+module mkSimGenRdmaReqByWorkReq#(
     PipeOut#(PendingWorkReq) pendingWorkReqPipeIn,
     QpType qpType,
     PMTU pmtu
-)(PendingWorkReqAndDataStreamPipeOut);
-    let cntlr <- mkSimController(qpType, pmtu);
+)(ReqGenSQ);
+    let cntrl <- mkSimController(qpType, pmtu);
     let simDmaReadSrv <- mkSimDmaReadSrv;
-
-    let resultPipeOut <- mkWorkReq2RdmaReq(
-        cntlr, simDmaReadSrv, pendingWorkReqPipeIn
+    // Assume no pending WR
+    let pendingWorkReqBufNotEmpty = False;
+    let resultPipeOut <- mkReqGenSQ(
+        cntrl, simDmaReadSrv, pendingWorkReqPipeIn,
+        pendingWorkReqBufNotEmpty
     );
+
+    rule noErrWC;
+        dynAssert(
+            !resultPipeOut.workCompGenReqPipeOut.notEmpty,
+            "No error WC assertion @ mkSimGenRdmaReqByWorkReq",
+            $format(
+                "resultPipeOut.workCompGenReqPipeOut.notEmpty=",
+                fshow(resultPipeOut.workCompGenReqPipeOut.notEmpty),
+                " should be false, since it should have no error WC"
+            )
+        );
+    endrule
+
     return resultPipeOut;
 endmodule
 
@@ -55,11 +70,11 @@ module mkTestCalculatePktLen#(
         mkNewPendingWorkReqPipeOut(workReqPipeOutVec[0]);
 
     // Generate RDMA requests
-    let workReq2RdmaReq <- mkGenRdmaReqGivenWorkReq(
+    let reqGenSQ <- mkSimGenRdmaReqByWorkReq(
         newPendingWorkReqPipeOut, qpType, pmtu
     );
-    let pendingWorkReqPipeOut4Ref <- mkBufferN(4, workReq2RdmaReq.pendingWorkReq);
-    let rdmaReqPipeOut = workReq2RdmaReq.rdmaReq;
+    let pendingWorkReqPipeOut4Ref <- mkBufferN(4, reqGenSQ.pendingWorkReqPipeOut);
+    let rdmaReqPipeOut = reqGenSQ.rdmaReqDataStreamPipeOut;
 
     // Extract header DataStream, HeaderMetaData and payload DataStream
     let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
@@ -67,7 +82,7 @@ module mkTestCalculatePktLen#(
     );
 
     // DUT
-    let dut <- mkInputRdmaPktBufAndCalcPktLen(
+    let dut <- mkInputRdmaPktBufAndHeaderValidation(
         headerAndMetaDataAndPayloadPipeOut, pmtu
     );
     let pktMetaDataPipeOut = dut.pktMetaData;
@@ -138,9 +153,9 @@ endmodule
 (* synthesize *)
 module mkTestCalculateRandomPktLen(Empty);
     let qpType = IBV_QPT_RC;
-    let pmtu = IBV_MTU_256;
-    Length minPayloadLen = 128;
-    Length maxPayloadLen = 1024;
+    let pmtu = IBV_MTU_4096;
+    Length minPayloadLen = 4096;
+    Length maxPayloadLen = 40960;
 
     let ret <- mkTestCalculatePktLen(
         qpType, pmtu, minPayloadLen, maxPayloadLen
@@ -150,7 +165,7 @@ endmodule
 (* synthesize *)
 module mkTestCalculatePktLenEqPMTU(Empty);
     let qpType = IBV_QPT_XRC_SEND;
-    let pmtu = IBV_MTU_512;
+    let pmtu = IBV_MTU_4096;
     Length minPayloadLen = fromInteger(getPmtuLogValue(pmtu));
     Length maxPayloadLen = fromInteger(getPmtuLogValue(pmtu));
 

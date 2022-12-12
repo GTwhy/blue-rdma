@@ -7,10 +7,11 @@ import Vector :: *;
 import Assertions :: *;
 import Headers :: *;
 import DataTypes :: *;
+import PrimUtils :: *;
 import Settings :: *;
 import SimDma :: *;
-import Utils4Test :: *;
 import Utils :: *;
+import Utils4Test :: *;
 
 (* synthesize *)
 module mkTestSegmentDataStream(Empty);
@@ -87,7 +88,8 @@ module mkTestPsnFunc(Empty);
             PktNum halfPktNum = pktNum >> 1;
             PSN midPSN = truncate(zeroExtend(startPSN) + halfPktNum);
             let psnInRangeExcl = psnInRangeExclusive(midPSN, startPSN, endPSN);
-            $info(
+
+            $display(
                 "time=%0d: startPSN=%h, len=%h, pktNum=%h, endPSN=%h, nextPSN=%h, midPSN=%h",
                 $time, startPSN, len, pktNum, endPSN, nextPSN, midPSN
             );
@@ -150,6 +152,7 @@ module mkTestPsnFunc(Empty);
         Length len = 0;
 
         testPSN(startPSN, len, pmtu);
+        noAction;
     endrule
 
     rule testMaxLen if (initializedReg);
@@ -159,6 +162,7 @@ module mkTestPsnFunc(Empty);
         Length len = fromInteger(valueOf(RDMA_MAX_LEN));
 
         testPSN(startPSN, len, pmtu);
+        noAction;
     endrule
 
     rule testMaxPSN if (initializedReg);
@@ -168,5 +172,6 @@ module mkTestPsnFunc(Empty);
         Length len <- randomLength.next;
 
         testPSN(startPSN, len, pmtu);
+        noAction;
     endrule
 endmodule

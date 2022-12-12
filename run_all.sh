@@ -12,7 +12,7 @@ fi
 TEST_LOG=run.log
 TEST_DIR=test
 cd $TEST_DIR
-echo "" > $TEST_LOG
+truncate -s 0 $TEST_LOG
 FILES=`ls ./*.bsv`
 for FILE in $FILES; do
     # echo $FILE

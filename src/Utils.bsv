@@ -5,30 +5,119 @@ import PAClib :: *;
 import Assertions :: *;
 import DataTypes :: *;
 import Headers :: *;
+import PrimUtils :: *;
+import SpecialFIFOF :: *;
 import Settings :: *;
 
-function Bool isZero(Bit#(nSz) bits) provisos(Add#(1, kSz, nSz));
-    Bool ret = unpack(|bits);
-    return !ret;
+// RNR timeout settings:
+// 0 - 655.36 milliseconds delay
+// 1 - 0.01 milliseconds delay
+// 2 - 0.02 milliseconds delay
+// 3 - 0.03 milliseconds delay
+// 4 - 0.04 milliseconds delay
+// 5 - 0.06 milliseconds delay
+// 6 - 0.08 milliseconds delay
+// 7 - 0.12 milliseconds delay
+// 8 - 0.16 milliseconds delay
+// 9 - 0.24 milliseconds delay
+// 10 - 0.32 milliseconds delay
+// 11 - 0.48 milliseconds delay
+// 12 - 0.64 milliseconds delay
+// 13 - 0.96 milliseconds delay
+// 14 - 1.28 milliseconds delay
+// 15 - 1.92 milliseconds delay
+// 16 - 2.56 milliseconds delay
+// 17 - 3.84 milliseconds delay
+// 18 - 5.12 milliseconds delay
+// 19 - 7.68 milliseconds delay
+// 20 - 10.24 milliseconds delay
+// 21 - 15.36 milliseconds delay
+// 22 - 20.48 milliseconds delay
+// 23 - 30.72 milliseconds delay
+// 24 - 40.96 milliseconds delay
+// 25 - 61.44 milliseconds delay
+// 26 - 81.92 milliseconds delay
+// 27 - 122.88 milliseconds delay
+// 28 - 163.84 milliseconds delay
+// 29 - 245.76 milliseconds delay
+// 30 - 327.68 milliseconds delay
+// 31 - 491.52 milliseconds delay
+function Integer getRnrTimeOutValue(RnrTimer rnrTimer);
+    // RNR timeout value in microseconds
+    Integer rnrTimeOutValues[32] = {
+        655360,
+        10,
+        20,
+        30,
+        40,
+        60,
+        80,
+        120,
+        160,
+        240,
+        320,
+        480,
+        640,
+        960,
+        1280,
+        1920,
+        2560,
+        3840,
+        5120,
+        7680,
+        10240,
+        15360,
+        20480,
+        30720,
+        40960,
+        61440,
+        81920,
+        122880,
+        163840,
+        245760,
+        327680,
+        491520
+    };
+    return rnrTimeOutValues[rnrTimer];
 endfunction
 
-function Bool isLessOrEqOne(Bit#(nSz) bits) provisos(Add#(1, kSz, nSz));
-    Bool ret = isZero(bits >> 1);
-    // Bool ret = isZero(bits >> 1) && unpack(bits[0]);
-    return ret;
-endfunction
-
-function Bool isAllOnes(Bit#(nSz) bits);
-    Bool ret = unpack(&bits);
-    return ret;
-endfunction
-
-function Bool isLargerThanOne(Bit#(tSz) bits) provisos(Add#(1, kSz, tSz));
-    return !isZero(bits >> 1);
-endfunction
-
-function Bit#(nSz) zeroExtendLSB(Bit#(mSz) bits) provisos(Add#(mSz, kSz, nSz));
-    return { bits, 0 };
+// Response timeout settings:
+//  0 - infinite
+//  1 - 8.192 usec (0.000008 sec)
+//  2 - 16.384 usec (0.000016 sec)
+//  3 - 32.768 usec (0.000032 sec)
+//  4 - 65.536 usec (0.000065 sec)
+//  5 - 131.072 usec (0.000131 sec)
+//  6 - 262.144 usec (0.000262 sec)
+//  7 - 524.288 usec (0.000524 sec)
+//  8 - 1048.576 usec (0.00104 sec)
+//  9 - 2097.152 usec (0.00209 sec)
+//  10 - 4194.304 usec (0.00419 sec)
+//  11 - 8388.608 usec (0.00838 sec)
+//  12 - 16777.22 usec (0.01677 sec)
+//  13 - 33554.43 usec (0.0335 sec)
+//  14 - 67108.86 usec (0.0671 sec)
+//  15 - 134217.7 usec (0.134 sec)
+//  16 - 268435.5 usec (0.268 sec)
+//  17 - 536870.9 usec (0.536 sec)
+//  18 - 1073742 usec (1.07 sec)
+//  19 - 2147484 usec (2.14 sec)
+//  20 - 4294967 usec (4.29 sec)
+//  21 - 8589935 usec (8.58 sec)
+//  22 - 17179869 usec (17.1 sec)
+//  23 - 34359738 usec (34.3 sec)
+//  24 - 68719477 usec (68.7 sec)
+//  25 - 137000000 usec (137 sec)
+//  26 - 275000000 usec (275 sec)
+//  27 - 550000000 usec (550 sec)
+//  28 - 1100000000 usec (1100 sec)
+//  29 - 2200000000 usec (2200 sec)
+//  30 - 4400000000 usec (4400 sec)
+//  31 - 8800000000 usec (8800 sec)
+function Integer getTimeOutValue(TimeOutTimer timeOutTimer);
+    // Timeout value in nanoseconds
+    return 31; // TODO: change to proper timeout value
+    // return isZero(timeOutTimer) ? 0 : (8192 << (timeOutTimer - 1));
 endfunction
 
 // ByteEn related
@@ -106,15 +195,10 @@ function PktLen calcPmtuLen(PMTU pmtu);
     endcase);
 endfunction
 
-// function Bool lenEqPMTU(Bit#(nSz) len, PMTU pmtu) provisos(Add#(TLog#(MAX_PMTU), kSz, nSz));
-//     let tmpPktLen = len;
-//     tmpPktLen[getPmtuLogValue(pmtu)-1] = 0;
-//     return isZero(tmpPktLen);
-// endfunction
-
 function Bool pktLenEqPMTU(PktLen pktLen, PMTU pmtu);
     let tmpPktLen = pktLen;
-    tmpPktLen[getPmtuLogValue(pmtu)-1] = 0;
+    let idx = getPmtuLogValue(pmtu);
+    tmpPktLen[idx] = 0;
     return isZero(tmpPktLen);
 endfunction
 
@@ -215,7 +299,7 @@ function Bool psnInRangeExclusive(PSN psn, PSN psnStart, PSN psnEnd);
     return ret;
 endfunction
 
-function PSN psnDiff(PSN psnA, PSN psnB);
+function PSN calcPsnDiff(PSN psnA, PSN psnB);
     return truncate({ 1'b1, psnA } - { 1'b0, psnB });
 endfunction
 
@@ -265,6 +349,169 @@ function Length lenSubtractPsnMultiplyPMTU(Length len, PSN psn, PMTU pmtu);
         IBV_MTU_4096: begin
             // 12 = log2(4096)
             { (len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 12] - truncate(psn)), len[11 : 0] };
+        end
+    endcase;
+endfunction
+
+function Length lenAddPsnMultiplyPMTU(Length len, PSN psn, PMTU pmtu);
+    return case (pmtu)
+        IBV_MTU_256 : begin
+            // 8 = log2(256)
+            { (len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 8] + psn), len[7 : 0] };
+        end
+        IBV_MTU_512 : begin
+            // 9 = log2(512)
+            { (len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 9] + truncate(psn)), len[8 : 0] };
+        end
+        IBV_MTU_1024: begin
+            // 10 = log2(1024)
+            { (len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 10] + truncate(psn)), len[9 : 0] };
+        end
+        IBV_MTU_2048: begin
+            // 11 = log2(2048)
+            { (len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 11] + truncate(psn)), len[10 : 0] };
+        end
+        IBV_MTU_4096: begin
+            // 12 = log2(4096)
+            { (len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 12] + truncate(psn)), len[11 : 0] };
+        end
+    endcase;
+endfunction
+
+function Length lenSubtractPktLen(Length len, PktLen pktLen, PMTU pmtu);
+    return case (pmtu)
+        IBV_MTU_256 : begin
+            // 8 = log2(256)
+            { len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 9], (len[8 : 0] - truncate(pktLen)) };
+        end
+        IBV_MTU_512 : begin
+            // 9 = log2(512)
+            { len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 10], (len[9 : 0] - truncate(pktLen)) };
+        end
+        IBV_MTU_1024: begin
+            // 10 = log2(1024)
+            { len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 11], (len[10 : 0] - truncate(pktLen)) };
+        end
+        IBV_MTU_2048: begin
+            // 11 = log2(2048)
+            { len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 12], (len[11 : 0] - truncate(pktLen)) };
+        end
+        IBV_MTU_4096: begin
+            // 12 = log2(4096)
+            { len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 13], (len[12 : 0] - truncate(pktLen)) };
+        end
+    endcase;
+endfunction
+
+function Length lenAddPktLen(Length len, PktLen pktLen, PMTU pmtu);
+    let oneAsPSN = 1;
+    return pktLenEqPMTU(pktLen, pmtu) ?
+        lenAddPsnMultiplyPMTU(len, oneAsPSN, pmtu) :
+        case (pmtu)
+            IBV_MTU_256 : begin
+                // 8 = log2(256)
+                { len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 9], pktLen[7 : 0] };
+            end
+            IBV_MTU_512 : begin
+                // 9 = log2(512)
+                { len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 9], pktLen[8 : 0] };
+            end
+            IBV_MTU_1024: begin
+                // 10 = log2(1024)
+                { len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 10], pktLen[9 : 0] };
+            end
+            IBV_MTU_2048: begin
+                // 11 = log2(2048)
+                { len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 11], pktLen[10 : 0] };
+            end
+            IBV_MTU_4096: begin
+                // 12 = log2(4096)
+                { len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 12], pktLen[11 : 0] };
+            end
+        endcase;
+endfunction
+
+function Bool lenGtEqPktLen(Length len, PktLen pktLen, PMTU pmtu);
+    return case (pmtu)
+        IBV_MTU_256 : begin
+            // 8 = log2(256)
+            Bit#(TSub#(RDMA_MAX_LEN_WIDTH, 9)) lenBits = len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 9];
+            (!isZero(lenBits) || (len[8 : 0] >= pktLen[8 : 0]));
+        end
+        IBV_MTU_512 : begin
+            // 9 = log2(512)
+            Bit#(TSub#(RDMA_MAX_LEN_WIDTH, 10)) lenBits = len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 10];
+            (!isZero(lenBits) || (len[9 : 0] >= pktLen[9 : 0]));
+        end
+        IBV_MTU_1024: begin
+            // 10 = log2(1024)
+            Bit#(TSub#(RDMA_MAX_LEN_WIDTH, 11)) lenBits = len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 11];
+            (!isZero(lenBits) || (len[10 : 0] >= pktLen[10 : 0]));
+        end
+        IBV_MTU_2048: begin
+            // 11 = log2(2048)
+            Bit#(TSub#(RDMA_MAX_LEN_WIDTH, 12)) lenBits = len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 12];
+            (!isZero(lenBits) || (len[11 : 0] >= pktLen[11 : 0]));
+        end
+        IBV_MTU_4096: begin
+            // 12 = log2(4096)
+            Bit#(TSub#(RDMA_MAX_LEN_WIDTH, 13)) lenBits = len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 13];
+            (!isZero(lenBits) || (len[12 : 0] >= pktLen[12 : 0]));
+        end
+    endcase;
+endfunction
+
+function Bool lenGtEqPMTU(Length len, PMTU pmtu);
+    return case (pmtu)
+        IBV_MTU_256 : begin
+            // 8 = log2(256)
+            Bit#(TSub#(RDMA_MAX_LEN_WIDTH, 8)) lenBits = len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 8];
+            (!isZero(lenBits)); // truncate len[7 : 0]
+        end
+        IBV_MTU_512 : begin
+            // 9 = log2(512)
+            Bit#(TSub#(RDMA_MAX_LEN_WIDTH, 9)) lenBits = len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 9];
+            (!isZero(lenBits)); // truncate len[8 : 0]
+        end
+        IBV_MTU_1024: begin
+            // 10 = log2(1024)
+            Bit#(TSub#(RDMA_MAX_LEN_WIDTH, 10)) lenBits = len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 10];
+            (!isZero(lenBits)); // truncate len[9 : 0]
+        end
+        IBV_MTU_2048: begin
+            // 11 = log2(2048)
+            Bit#(TSub#(RDMA_MAX_LEN_WIDTH, 11)) lenBits = len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 11];
+            (!isZero(lenBits)); // truncate len[10 : 0]
+        end
+        IBV_MTU_4096: begin
+            // 12 = log2(4096)
+            Bit#(TSub#(RDMA_MAX_LEN_WIDTH, 12)) lenBits = len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 12];
+            (!isZero(lenBits)); // truncate len[11 : 0]
+        end
+    endcase;
+endfunction
+
+function Bool lenGtEqPsnMultiplyPMTU(Length len, PSN psn, PMTU pmtu);
+    return case (pmtu)
+        IBV_MTU_256 : begin
+            // 8 = log2(256)
+            (len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 8] >= psn);
+        end
+        IBV_MTU_512 : begin
+            // 9 = log2(512)
+            (len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 9] >= psn);
+        end
+        IBV_MTU_1024: begin
+            // 10 = log2(1024)
+            (len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 10] >= psn);
+        end
+        IBV_MTU_2048: begin
+            // 11 = log2(2048)
+            (len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 11] >= psn);
+        end
+        IBV_MTU_4096: begin
+            // 12 = log2(4096)
+            (len[valueOf(RDMA_MAX_LEN_WIDTH)-1 : 12] >= psn);
         end
     endcase;
 endfunction
@@ -470,6 +717,62 @@ function Bool isMiddleOrLastRdmaOpCode(RdmaOpCode opcode);
     return isLastRdmaOpCode(opcode) || isOnlyRdmaOpCode(opcode);
 endfunction
 
+function Bool isSendReqRdmaOpCode(RdmaOpCode opcode);
+    return case (opcode)
+        SEND_FIRST               ,
+        SEND_MIDDLE              ,
+        SEND_LAST                ,
+        SEND_LAST_WITH_IMMEDIATE ,
+        SEND_ONLY                ,
+        SEND_ONLY_WITH_IMMEDIATE ,
+        SEND_LAST_WITH_INVALIDATE,
+        SEND_ONLY_WITH_INVALIDATE: True;
+        default                  : False;
+    endcase;
+endfunction
+
+function Bool isWriteReqRdmaOpCode(RdmaOpCode opcode);
+    return case (opcode)
+        RDMA_WRITE_FIRST              ,
+        RDMA_WRITE_MIDDLE             ,
+        RDMA_WRITE_LAST               ,
+        RDMA_WRITE_LAST_WITH_IMMEDIATE,
+        RDMA_WRITE_ONLY               ,
+        RDMA_WRITE_ONLY_WITH_IMMEDIATE: True;
+        default                       : False;
+    endcase;
+endfunction
+
+function Bool isWriteImmReqRdmaOpCode(RdmaOpCode opcode);
+    return case (opcode)
+        RDMA_WRITE_LAST_WITH_IMMEDIATE,
+        RDMA_WRITE_ONLY_WITH_IMMEDIATE: True;
+        default                       : False;
+    endcase;
+endfunction
+
+function Bool isReadReqRdmaOpCode(RdmaOpCode opcode);
+    return opcode == RDMA_READ_REQUEST;
+endfunction
+
+function Bool isAtomicReqRdmaOpCode(RdmaOpCode opcode);
+    return case (opcode)
+        COMPARE_SWAP,
+        FETCH_ADD   : True;
+        default     : False;
+    endcase;
+endfunction
+
+function Bool isReadRespRdmaOpCode(RdmaOpCode opcode);
+    return case (opcode)
+        RDMA_READ_RESPONSE_FIRST ,
+        RDMA_READ_RESPONSE_MIDDLE,
+        RDMA_READ_RESPONSE_LAST  ,
+        RDMA_READ_RESPONSE_ONLY  : True;
+        default                  : False;
+    endcase;
+endfunction
+
 function Bool isRdmaRespOpCode(RdmaOpCode opcode);
     return case (opcode)
         RDMA_READ_RESPONSE_FIRST ,
@@ -543,8 +846,7 @@ function RdmaRespType getRdmaRespType(RdmaOpCode opcode, AETH aeth);
         RDMA_READ_RESPONSE_LAST  ,
         RDMA_READ_RESPONSE_ONLY  ,
         ATOMIC_ACKNOWLEDGE       : return RDMA_RESP_NORMAL;
-
-        ACKNOWLEDGE: case (aeth.code)
+        ACKNOWLEDGE              : case (aeth.code)
             AETH_CODE_ACK: return RDMA_RESP_NORMAL;
             AETH_CODE_RNR: return RDMA_RESP_RETRY;
             AETH_CODE_NAK: return case (aeth.value)
@@ -553,7 +855,7 @@ function RdmaRespType getRdmaRespType(RdmaOpCode opcode, AETH aeth);
                 zeroExtend(pack(AETH_NAK_RMT_ACC)),
                 zeroExtend(pack(AETH_NAK_RMT_OP)) ,
                 zeroExtend(pack(AETH_NAK_INV_RD)) : RDMA_RESP_ERROR;
-                default: RDMA_RESP_UNKNOWN;
+                default                           : RDMA_RESP_UNKNOWN;
             endcase;
             // AETH_CODE_RSVD
             default: return RDMA_RESP_UNKNOWN;
@@ -585,7 +887,7 @@ function Bool rdmaNormalRespOpCodeSeqCheck(
     RdmaOpCode preOpCode, RdmaOpCode curOpCode
 );
     return case (preOpCode)
-        RDMA_READ_RESPONSE_FIRST : (curOpCode == RDMA_READ_RESPONSE_MIDDLE);
+        RDMA_READ_RESPONSE_FIRST ,
         RDMA_READ_RESPONSE_MIDDLE: (
             curOpCode == RDMA_READ_RESPONSE_MIDDLE ||
             curOpCode == RDMA_READ_RESPONSE_LAST
@@ -596,34 +898,14 @@ function Bool rdmaNormalRespOpCodeSeqCheck(
     endcase;
 endfunction
 
-function Bool rdmaRespMatchWorkReq(RdmaOpCode opcode, WorkReqOpCode wrOpCode);
-    return case (opcode)
-        RDMA_READ_RESPONSE_FIRST ,
-        RDMA_READ_RESPONSE_MIDDLE,
-        RDMA_READ_RESPONSE_LAST  ,
-        RDMA_READ_RESPONSE_ONLY  : (wrOpCode == IBV_WR_RDMA_READ);
-        ATOMIC_ACKNOWLEDGE       : (wrOpCode == IBV_WR_ATOMIC_CMP_AND_SWP || wrOpCode == IBV_WR_ATOMIC_FETCH_AND_ADD);
-        ACKNOWLEDGE              : True;
-        default                  : False;
-    endcase;
-endfunction
-
-// function Bool isNormalRdmaResp(RdmaOpCode opcode, AETH aeth);
-//     // TODO: check if normal response or not
-//     return True;
-// endfunction
-
-// function Bool isRetryRdmaResp(RdmaOpCode opcode, AETH aeth);
-//     // TODO: check if retry response or not
-//     return False;
-// endfunction
-
-// function Bool isErrorRdmaResp(RdmaOpCode opcode, AETH aeth);
-//     // TODO: check if fatal error response or not
-//     return False;
-// endfunction
-
 // WorkReq related
+
+// TODO: support multiple WR flags
+function Bool compareWorkReqFlags(
+    WorkReqSendFlags flag1, WorkReqSendFlags flag2
+);
+    return flag1 == flag2;
+endfunction
 
 function Tuple2#(Bool, PktNum) calcPktNumByLength(Length len, PMTU pmtu);
     let zeroLength = isZero(len);
@@ -676,22 +958,14 @@ function Bool workReqNeedDmaRead(WorkReq wr);
     endcase;
 endfunction
 
-// function Bool workReqNeedDmaWrite(WorkReq wr);
-//     return case (wr.opcode)
-//         IBV_WR_RDMA_READ           : !isZero(wr.len);
-//         IBV_WR_ATOMIC_CMP_AND_SWP  ,
-//         IBV_WR_ATOMIC_FETCH_AND_ADD: True;
-//         default                    : False;
-//     endcase;
-// endfunction
-
 function Bool workReqHasPayload(WorkReq wr);
     return !(isZero(wr.len) || isReadOrAtomicWorkReq(wr.opcode));
 endfunction
 
-// TODO: support multiple WR flags
 function Bool workReqNeedWorkComp(WorkReq wr);
-    return wr.flags == IBV_SEND_SIGNALED || isReadOrAtomicWorkReq(wr.opcode);
+    return
+        compareWorkReqFlags(wr.flags, IBV_SEND_SIGNALED) ||
+        isReadOrAtomicWorkReq(wr.opcode);
 endfunction
 
 function Bool workReqHasComp(WorkReqOpCode opcode);
@@ -735,7 +1009,54 @@ function Bool workReqHasInv(WorkReqOpCode opcode);
     return opcode == IBV_WR_SEND_WITH_INV;
 endfunction
 
+module mkNewPendingWorkReqPipeOut#(
+    PipeOut#(WorkReq) workReqPipeIn
+)(PipeOut#(PendingWorkReq));
+    function PendingWorkReq genPendingWorkReq(WorkReq wr) = PendingWorkReq {
+        wr: wr,
+        startPSN: tagged Invalid,
+        endPSN: tagged Invalid,
+        pktNum: tagged Invalid,
+        isOnlyReqPkt: tagged Invalid
+    };
+
+    PipeOut#(PendingWorkReq) resultPipeOut <- mkFunc2Pipe(genPendingWorkReq, workReqPipeIn);
+    return resultPipeOut;
+endmodule
+
+module mkConnectPendingWorkReqPipeOut2PendingWorkReqQ#(
+    PipeOut#(PendingWorkReq) pipeIn, PendingWorkReqBuf pendingWorkReqBuf
+)(Empty);
+    rule connect;
+        let pendingWR = pipeIn.first;
+        pendingWorkReqBuf.fifoIfc.enq(pendingWR);
+        pipeIn.deq;
+
+        // $display(
+        //     "time=%0d: fill pendingWR=", $time, fshow(pendingWR)
+        // );
+    endrule
+endmodule
+
 // WorkComp related
+
+// TODO: support multiple WC flags
+function Bool compareWorkCompFlags(
+    WorkCompFlags flag1, WorkCompFlags flag2
+);
+    return flag1 == flag2;
+endfunction
+
+function Maybe#(WorkCompStatus) pktStatus2WorkCompStatusSQ(
+    PktVeriStatus pktStatus
+);
+    return case (pktStatus)
+        PKT_ST_VALID  : tagged Valid IBV_WC_SUCCESS;
+        PKT_ST_LEN_ERR: tagged Valid IBV_WC_LOC_LEN_ERR;
+        // PKT_ST_ACC_ERR: tagged Valid IBV_WC_LOC_ACCESS_ERR;
+        default       : tagged Invalid;
+    endcase;
+endfunction
 
 function Maybe#(WorkCompOpCode) workReqOpCode2WorkCompOpCode4SQ(WorkReqOpCode wrOpCode);
     return case (wrOpCode)
@@ -749,27 +1070,28 @@ function Maybe#(WorkCompOpCode) workReqOpCode2WorkCompOpCode4SQ(WorkReqOpCode wr
         IBV_WR_LOCAL_INV           : tagged Valid IBV_WC_LOCAL_INV;
         IBV_WR_BIND_MW             : tagged Valid IBV_WC_BIND_MW;
         IBV_WR_SEND_WITH_INV       : tagged Valid IBV_WC_SEND;
-
+        IBV_WR_TSO                 : tagged Valid IBV_WC_TSO;
+        // IBV_WR_DRIVER1             : tagged Valid IBV_WC_DRIVER1;
         default                    : tagged Invalid;
     endcase;
 endfunction
 
-function WorkCompFlags workReqOpCode2WorkCompFlags(WorkReqOpCode wrOpCode);
-    return case (wrOpCode)
-        IBV_WR_RDMA_WRITE          ,
-        IBV_WR_SEND                ,
-        IBV_WR_RDMA_READ           ,
-        IBV_WR_ATOMIC_CMP_AND_SWP  ,
-        IBV_WR_ATOMIC_FETCH_AND_ADD,
-        IBV_WR_BIND_MW             : IBV_WC_NO_FLAGS;
-        IBV_WR_RDMA_WRITE_WITH_IMM ,
-        IBV_WR_SEND_WITH_IMM       : IBV_WC_WITH_IMM;
-        IBV_WR_LOCAL_INV           ,
-        IBV_WR_SEND_WITH_INV       : IBV_WC_WITH_INV;
+// function WorkCompFlags workReqOpCode2WorkCompFlags(WorkReqOpCode wrOpCode);
+//     return case (wrOpCode)
+//         IBV_WR_RDMA_WRITE          ,
+//         IBV_WR_SEND                ,
+//         IBV_WR_RDMA_READ           ,
+//         IBV_WR_ATOMIC_CMP_AND_SWP  ,
+//         IBV_WR_ATOMIC_FETCH_AND_ADD,
+//         IBV_WR_BIND_MW             : IBV_WC_NO_FLAGS;
+//         IBV_WR_RDMA_WRITE_WITH_IMM ,
+//         IBV_WR_SEND_WITH_IMM       : IBV_WC_WITH_IMM;
+//         IBV_WR_LOCAL_INV           ,
+//         IBV_WR_SEND_WITH_INV       : IBV_WC_WITH_INV;
 
-        default                    : IBV_WC_NO_FLAGS;
-    endcase;
-endfunction
+//         default                    : IBV_WC_NO_FLAGS;
+//     endcase;
+// endfunction
 
 function Maybe#(WorkCompOpCode) rdmaOpCode2WorkCompOpCode4RQ(RdmaOpCode opcode);
     return case (opcode)
@@ -903,20 +1225,15 @@ endmodule
 //     return ret;
 // endmodule
 */
+
 // PipeOut related
 
 function PipeOut#(anytype) convertFifo2PipeOut(FIFOF#(anytype) outputQ);
     return f_FIFOF_to_PipeOut(outputQ);
 endfunction
 
-// function PipeOut #(ta) applyActionFunc2PipeOut(
-//     function Action afn (ta inputVal),
-//     PipeOut #(ta) pipeIn
-// );
-//     return fn_tee_to_Action(afn, pipeIn)
-// endfunction
 module mkPipeFilter#(
-    function Bool filterF(anytype in),
+    function Bool filterF(anytype inputVal),
     PipeOut#(anytype) pipeIn
 )(PipeOut#(anytype)) provisos (Bits #(anytype, aSz));
     FIFOF#(anytype) outQ <- mkFIFOF;
@@ -979,17 +1296,17 @@ module mkMuxPipeOut#(
     endmethod
 endmodule
 
-function Tuple2#(PipeOut#(anytype), PipeOut#(anytype)) deMuxPipeOut(
+function Tuple2#(PipeOut#(anytype), PipeOut#(anytype)) mkDeMuxPipeOut(
     Bool sel, PipeOut#(anytype) pipeIn
 );
     PipeOut#(anytype) p1 = interface PipeOut;
         method anytype first() if (sel);
             return pipeIn.first;
         endmethod
-        method Action deq if (sel);
+        method Action deq() if (sel);
             pipeIn.deq;
         endmethod
-        method Bool notEmpty if (sel);
+        method Bool notEmpty() if (sel);
             return pipeIn.notEmpty;
         endmethod
     endinterface;
@@ -998,10 +1315,10 @@ function Tuple2#(PipeOut#(anytype), PipeOut#(anytype)) deMuxPipeOut(
         method anytype first() if (!sel);
             return pipeIn.first;
         endmethod
-        method Action deq if (!sel);
+        method Action deq() if (!sel);
             pipeIn.deq;
         endmethod
-        method Bool notEmpty if (!sel);
+        method Bool notEmpty() if (!sel);
             return pipeIn.notEmpty;
         endmethod
     endinterface;

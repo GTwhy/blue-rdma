@@ -15,6 +15,7 @@ RUN_LOG=run.log
 echo "" > $RUN_LOG
 
 make -j8 TESTFILE=SimDma.bsv TOP=mkTestFixedLenSimDataStreamPipeOut 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=SimGenRdmaResp.bsv TOP=mkTestSimGenRdmaResp 2>&1 | tee -a $RUN_LOG
 
 make -j8 TESTFILE=TestExtractAndPrependPipeOut.bsv TOP=mkTestHeaderAndDataStreamConversion 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=TestExtractAndPrependPipeOut.bsv TOP=mkTestPrependHeaderBeforeEmptyDataStream 2>&1 | tee -a $RUN_LOG
@@ -22,16 +23,29 @@ make -j8 TESTFILE=TestExtractAndPrependPipeOut.bsv TOP=mkTestExtractHeaderWithLe
 make -j8 TESTFILE=TestExtractAndPrependPipeOut.bsv TOP=mkTestExtractHeaderLongerThanDataStream 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=TestExtractAndPrependPipeOut.bsv TOP=mkTestExtractAndPrependHeader 2>&1 | tee -a $RUN_LOG
 
-make -j8 TESTFILE=TestUtils.bsv TOP=mkTestSegmentDataStream 2>&1 | tee -a $RUN_LOG
-make -j8 TESTFILE=TestUtils.bsv TOP=mkTestPsnFunc 2>&1 | tee -a $RUN_LOG
-
-make -j8 TESTFILE=TestReqGenSQ.bsv TOP=mkTestReqGenSQ 2>&1 | tee -a $RUN_LOG
-
-make -j8 TESTFILE=SimGenRdmaResp.bsv TOP=mkTestSimGenRdmaResp 2>&1 | tee -a $RUN_LOG
-
 make -j8 TESTFILE=TestInputPktHandle.bsv TOP=mkTestCalculateRandomPktLen 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=TestInputPktHandle.bsv TOP=mkTestCalculatePktLenEqPMTU 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=TestInputPktHandle.bsv TOP=mkTestCalculateZeroPktLen 2>&1 | tee -a $RUN_LOG
+
+make -j8 TESTFILE=TestPayloadConAndGen.bsv TOP=mkTestPayloadConAndGenNormalCase 2>&1 | tee -a $RUN_LOG
+
+make -j8 TESTFILE=TestMetaData.bsv TOP=mkTestMRs 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestMetaData.bsv TOP=mkTestPDs 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestMetaData.bsv TOP=mkTestQPs 2>&1 | tee -a $RUN_LOG
+
+make -j8 TESTFILE=TestReqGenSQ.bsv TOP=mkTestReqGenNormalCase 2>&1 | tee -a $RUN_LOG
+
+make -j8 TESTFILE=TestRespHandleSQ.bsv TOP=mkTestRespHandleNormalCase 2>&1 | tee -a $RUN_LOG
+
+make -j8 TESTFILE=TestSpecialFIFOF.bsv TOP=mkTestScanFIFOF 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestSpecialFIFOF.bsv TOP=mkTestSearchFIFOF 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestSpecialFIFOF.bsv TOP=mkTestVectorSearch 2>&1 | tee -a $RUN_LOG
+
+make -j8 TESTFILE=TestWorkCompGenSQ.bsv TOP=mkTestWorkCompGenErrorCaseSQ 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestWorkCompGenSQ.bsv TOP=mkTestWorkCompGenNormalCaseSQ 2>&1 | tee -a $RUN_LOG
+
+make -j8 TESTFILE=TestUtils.bsv TOP=mkTestSegmentDataStream 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestUtils.bsv TOP=mkTestPsnFunc 2>&1 | tee -a $RUN_LOG
 
 FAIL_KEYWORKS='Error\|DynAssert'
 grep -w $FAIL_KEYWORKS $RUN_LOG | cat

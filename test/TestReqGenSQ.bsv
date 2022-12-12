@@ -6,20 +6,22 @@ import DataTypes :: *;
 import ExtractAndPrependPipeOut :: *;
 import InputPktHandle :: *;
 import Headers :: *;
+import PrimUtils :: *;
 import ReqGenSQ :: *;
 import Settings :: *;
 import SimDma :: *;
-import Utils4Test :: *;
 import Utils :: *;
+import Utils4Test :: *;
 
+// TODO: test zero length WR case
 (* synthesize *)
-module mkTestReqGenSQ(Empty);
+module mkTestReqGenNormalCase(Empty);
     let minDmaLength = 128;
     let maxDmaLength = 1024;
     let qpType = IBV_QPT_XRC_SEND;
     let pmtu = IBV_MTU_256;
 
-    let cntlr <- mkSimController(qpType, pmtu);
+    let cntrl <- mkSimController(qpType, pmtu);
 
     // WorkReq generation
     Vector#(2, PipeOut#(WorkReq)) workReqPipeOutVec <-
@@ -31,19 +33,23 @@ module mkTestReqGenSQ(Empty);
     // Payload DataStream generation
     let simDmaReadSrv <- mkSimDmaReadSrvAndDataStreamPipeOut;
     let segDataStreamPipeOut <- mkSegmentDataStreamByPmtu(
-        simDmaReadSrv.dataStreamPipeOut, pmtu
+        simDmaReadSrv.dataStream, pmtu
     );
-    let segDataStreamPipeOut4Ref <- mkBufferN(8, segDataStreamPipeOut);
+    let segDataStreamPipeOut4Ref <- mkBufferN(4, segDataStreamPipeOut);
 
+    let pendingWorkReqBufNotEmpty = True;
     // DUT
-    let workReq2RdmaReq <- mkWorkReq2RdmaReq(
-        cntlr, simDmaReadSrv.dmaReadSrv, newPendingWorkReqPipeOut
+    let reqGenSQ <- mkReqGenSQ(
+        cntrl, simDmaReadSrv.dmaReadSrv, newPendingWorkReqPipeOut,
+        pendingWorkReqBufNotEmpty
     );
     Vector#(2, PipeOut#(PendingWorkReq)) pendingWorkReqPipeOutVec <-
-        mkForkVector(workReq2RdmaReq.pendingWorkReq);
+        mkForkVector(reqGenSQ.pendingWorkReqPipeOut);
     let pendingWorkReqPipeOut4Comp = pendingWorkReqPipeOutVec[0];
-    let pendingWorkReqPipeOut4Ref <- mkBufferN(4, pendingWorkReqPipeOutVec[1]);
-    let rdmaReqPipeOut = workReq2RdmaReq.rdmaReq;
+    let pendingWorkReqPipeOut4Ref <- mkBufferN(2, pendingWorkReqPipeOutVec[1]);
+    let rdmaReqPipeOut = reqGenSQ.rdmaReqDataStreamPipeOut;
+    // No error WC when normal case
+    let errWorkCompGenReqPipeOut = reqGenSQ.workCompGenReqPipeOut;
 
     // Extract header DataStream, HeaderMetaData and payload DataStream
     let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
@@ -73,7 +79,7 @@ module mkTestReqGenSQ(Empty);
         dynAssert(
             pendingWR.wr.id == refWorkReq.id &&
             pendingWR.wr.opcode == refWorkReq.opcode,
-            "pendingWR.wr assertion @ mkTestReqGenSQ",
+            "pendingWR.wr assertion @ mkTestReqGenNormalCase",
             $format(
                 "pendingWR.wr=", fshow(pendingWR.wr),
                 " should == refWorkReq=", fshow(refWorkReq)
@@ -96,7 +102,7 @@ module mkTestReqGenSQ(Empty);
 
             dynAssert(
                 bth.psn == curPsnReg,
-                "bth.psn correctness assertion @ mkTestReqGenSQ",
+                "bth.psn correctness assertion @ mkTestReqGenNormalCase",
                 $format("bth.psn=%h shoud == curPsnReg=%h", bth.psn, curPsnReg)
             );
         end
@@ -105,8 +111,8 @@ module mkTestReqGenSQ(Empty);
         end
 
         let refPendingWR = pendingWorkReqPipeOut4Ref.first;
-        let wrStartPSN = fromMaybe(?, refPendingWR.startPSN);
-        let wrEndPSN = fromMaybe(?, refPendingWR.endPSN);
+        let wrStartPSN = unwrapMaybe(refPendingWR.startPSN);
+        let wrEndPSN = unwrapMaybe(refPendingWR.endPSN);
 
         if (isOnlyRdmaOpCode(rdmaOpCode)) begin
             pendingWorkReqPipeOut4Ref.deq;
@@ -115,7 +121,7 @@ module mkTestReqGenSQ(Empty);
             if (isReadWR) begin
                 dynAssert(
                     bth.psn == wrStartPSN,
-                    "bth.psn read request packet assertion @ mkTestReqGenSQ",
+                    "bth.psn read request packet assertion @ mkTestReqGenNormalCase",
                     $format(
                         "bth.psn=%h should == wrStartPSN=%h when refPendingWR.wr.opcode=",
                         bth.psn, wrStartPSN, fshow(refPendingWR.wr.opcode)
@@ -125,7 +131,7 @@ module mkTestReqGenSQ(Empty);
             else begin
                 dynAssert(
                     bth.psn == wrStartPSN && bth.psn == wrEndPSN,
-                    "bth.psn only request packet assertion @ mkTestReqGenSQ",
+                    "bth.psn only request packet assertion @ mkTestReqGenNormalCase",
                     $format(
                         "bth.psn=%h should == wrStartPSN=%h and bth.psn=%h should == wrEndPSN=%h",
                         bth.psn, wrStartPSN, bth.psn, wrEndPSN,
@@ -140,28 +146,28 @@ module mkTestReqGenSQ(Empty);
 
             dynAssert(
                 bth.psn == wrEndPSN,
-                "bth.psn last request packet assertion @ mkTestReqGenSQ",
+                "bth.psn last request packet assertion @ mkTestReqGenNormalCase",
                 $format("bth.psn=%h shoud == wrEndPSN=%h", bth.psn, wrEndPSN)
             );
         end
         else if (isFirstRdmaOpCode(rdmaOpCode)) begin
             dynAssert(
                 bth.psn == wrStartPSN,
-                "bth.psn first request packet assertion @ mkTestReqGenSQ",
+                "bth.psn first request packet assertion @ mkTestReqGenNormalCase",
                 $format("bth.psn=%h shoud == wrStartPSN=%h", bth.psn, wrStartPSN)
             );
         end
         else begin
             dynAssert(
                 isMiddleRdmaOpCode(rdmaOpCode),
-                "rdmaOpCode middle request packet assertion @ mkTestReqGenSQ",
+                "rdmaOpCode middle request packet assertion @ mkTestReqGenNormalCase",
                 $format(
                     "rdmaOpCode=", fshow(rdmaOpCode), " should be middle RDMA request opcode"
                 )
             );
             dynAssert(
                 psnInRangeExclusive(bth.psn, wrStartPSN, wrEndPSN),
-                "bth.psn between wrStartPSN and wrEndPSN assertion @ mkTestReqGenSQ",
+                "bth.psn between wrStartPSN and wrEndPSN assertion @ mkTestReqGenNormalCase",
                 $format(
                     "bth.psn=%h should > wrStartPSN=%h and bth.psn=%h should < wrEndPSN=%h",
                     bth.psn, wrStartPSN, bth.psn, wrEndPSN,
@@ -173,7 +179,7 @@ module mkTestReqGenSQ(Empty);
 
         dynAssert(
             transTypeMatchQpType(transType, qpType),
-            "transTypeMatchQpType assertion @ mkTestReqGenSQ",
+            "transTypeMatchQpType assertion @ mkTestReqGenNormalCase",
             $format(
                 "transType=", fshow(transType),
                 " should match qpType=", fshow(qpType)
@@ -181,7 +187,7 @@ module mkTestReqGenSQ(Empty);
         );
         dynAssert(
             rdmaReqOpCodeMatchWorkReqOpCode(rdmaOpCode, refPendingWR.wr.opcode),
-            "rdmaReqOpCodeMatchWorkReqOpCode assertion @ mkTestReqGenSQ",
+            "rdmaReqOpCodeMatchWorkReqOpCode assertion @ mkTestReqGenNormalCase",
             $format(
                 "RDMA request opcode=", fshow(rdmaOpCode),
                 " should match workReqOpCode=", fshow(refPendingWR.wr.opcode)
@@ -197,11 +203,7 @@ module mkTestReqGenSQ(Empty);
         segDataStreamPipeOut4Ref.deq;
 
         if (refDataStream.isLast) begin
-            let lastFragValidByteNum = calcByteEnBitNumInSim(refDataStream.byteEn);
-            let padCnt = calcPadCnt(zeroExtend(lastFragValidByteNum));
-            let lastFragValidByteNumWithPadding = lastFragValidByteNum + zeroExtend(padCnt);
-            let lastFragByteEnWithPadding = genByteEn(lastFragValidByteNumWithPadding);
-
+            let lastFragByteEnWithPadding = addPadding2LastFragByteEn(refDataStream.byteEn);
             // $display(
             //     "time=%0d: refDataStream.byteEn=%h, padCnt=%0d",
             //     $time, refDataStream.byteEn, padCnt
@@ -210,7 +212,7 @@ module mkTestReqGenSQ(Empty);
         end
         dynAssert(
             payloadDataStream == refDataStream,
-            "payloadDataStream assertion @ mkTestReqGenSQ",
+            "payloadDataStream assertion @ mkTestReqGenNormalCase",
             $format(
                 "payloadDataStream=", fshow(payloadDataStream),
                 " should == refDataStream=", fshow(refDataStream)

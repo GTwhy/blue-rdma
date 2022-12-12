@@ -8,7 +8,7 @@ import Vector :: *;
 import Controller :: *;
 import DataTypes :: *;
 import Headers :: *;
-import ReqGenSQ :: *;
+import PrimUtils :: *;
 import Settings :: *;
 import Utils :: *;
 
@@ -97,6 +97,15 @@ function Tuple3#(TotalFragNum, ByteEn, ByteEnBitNum) calcTotalFragNumByLength(Le
     return tuple3(fragNum, lastFragByteEn, lastFragValidByteNum);
 endfunction
 
+// This function should only used in simulation
+function ByteEn addPadding2LastFragByteEn(ByteEn lastFragByteEn);
+    let lastFragValidByteNum = calcByteEnBitNumInSim(lastFragByteEn);
+    let padCnt = calcPadCnt(zeroExtend(lastFragValidByteNum));
+    let lastFragValidByteNumWithPadding = lastFragValidByteNum + zeroExtend(padCnt);
+    let lastFragByteEnWithPadding = genByteEn(lastFragValidByteNumWithPadding);
+    return lastFragByteEnWithPadding;
+endfunction
+
 function Bool transTypeMatchQpType(TransType tt, QpType qpt);
     return case (tt)
         TRANS_TYPE_CNP: True;
@@ -111,19 +120,19 @@ function Bool rdmaReqOpCodeMatchWorkReqOpCode(RdmaOpCode rdmaOpCode, WorkReqOpCo
     return case (rdmaOpCode)
         SEND_FIRST, SEND_MIDDLE            : (wrOpCode == IBV_WR_SEND || wrOpCode == IBV_WR_SEND_WITH_IMM || wrOpCode == IBV_WR_SEND_WITH_INV);
         SEND_LAST, SEND_ONLY               : (wrOpCode == IBV_WR_SEND);
-        SEND_LAST_WITH_IMMEDIATE,
+        SEND_LAST_WITH_IMMEDIATE           ,
         SEND_ONLY_WITH_IMMEDIATE           : (wrOpCode == IBV_WR_SEND_WITH_IMM);
 
         RDMA_WRITE_FIRST, RDMA_WRITE_MIDDLE: (wrOpCode == IBV_WR_RDMA_WRITE || wrOpCode == IBV_WR_RDMA_WRITE_WITH_IMM);
         RDMA_WRITE_LAST, RDMA_WRITE_ONLY   : (wrOpCode == IBV_WR_RDMA_WRITE);
-        RDMA_WRITE_LAST_WITH_IMMEDIATE,
+        RDMA_WRITE_LAST_WITH_IMMEDIATE     ,
         RDMA_WRITE_ONLY_WITH_IMMEDIATE     : (wrOpCode == IBV_WR_RDMA_WRITE_WITH_IMM);
 
         RDMA_READ_REQUEST                  : (wrOpCode == IBV_WR_RDMA_READ);
         COMPARE_SWAP                       : (wrOpCode == IBV_WR_ATOMIC_CMP_AND_SWP);
         FETCH_ADD                          : (wrOpCode == IBV_WR_ATOMIC_FETCH_AND_ADD);
 
-        SEND_LAST_WITH_INVALIDATE,
+        SEND_LAST_WITH_INVALIDATE          ,
         SEND_ONLY_WITH_INVALIDATE          : (wrOpCode == IBV_WR_SEND_WITH_INV);
 
         default                            : False;
@@ -154,8 +163,30 @@ function Bool rdmaRespOpCodeMatchWorkReqOpCode(RdmaOpCode rdmaOpCode, WorkReqOpC
         default                      : return False;
     endcase
 endfunction
-/*
-module mkRandomPipeOut(PipeOut#(anytype)) provisos(Bits#(anytype, tSz), Bounded#(anytype));
+
+function Bool pendingWorkReqNeedWorkComp(PendingWorkReq pwr);
+    return workReqNeedWorkComp(pwr.wr);
+endfunction
+
+function Bool workCompMatchWorkReqInSQ(WorkComp wc, WorkReq wr);
+    return wc.id == wr.id && case (wr.opcode)
+        IBV_WR_RDMA_WRITE          : (wc.opcode == IBV_WC_RDMA_WRITE);
+        IBV_WR_RDMA_WRITE_WITH_IMM : (wc.opcode == IBV_WC_RDMA_WRITE);
+        IBV_WR_SEND                : (wc.opcode == IBV_WC_SEND);
+        IBV_WR_SEND_WITH_IMM       : (wc.opcode == IBV_WC_SEND);
+        IBV_WR_RDMA_READ           : (wc.opcode == IBV_WC_RDMA_READ);
+        IBV_WR_ATOMIC_CMP_AND_SWP  : (wc.opcode == IBV_WC_COMP_SWAP);
+        IBV_WR_ATOMIC_FETCH_AND_ADD: (wc.opcode == IBV_WC_FETCH_ADD);
+        IBV_WR_LOCAL_INV           : (wc.opcode == IBV_WC_LOCAL_INV);
+        IBV_WR_BIND_MW             : (wc.opcode == IBV_WC_BIND_MW);
+        IBV_WR_SEND_WITH_INV       : (wc.opcode == IBV_WC_SEND);
+        IBV_WR_TSO                 : (wc.opcode == IBV_WC_TSO);
+        IBV_WR_DRIVER1             : (wc.opcode == IBV_WC_DRIVER1);
+        default                    : False;
+    endcase;
+endfunction
+
+module mkGenericRandomPipeOut(PipeOut#(anytype)) provisos(Bits#(anytype, tSz), Bounded#(anytype));
     Randomize#(anytype) randomGen <- mkGenericRandomizer;
     FIFOF#(anytype) randomValQ <- mkFIFOF;
 
@@ -173,7 +204,7 @@ module mkRandomPipeOut(PipeOut#(anytype)) provisos(Bits#(anytype, tSz), Bounded#
 
     return convertFifo2PipeOut(randomValQ);
 endmodule
-
+/*
 module mkRandomFromRangePipeOut#(
     anytype minInclusive, anytype maxInclusive
 )(Tuple2#(PipeOut#(anytype), PipeOut#(anytype))) provisos(Bits#(anytype, tSz), Bounded#(anytype));
@@ -340,54 +371,69 @@ module mkRandomItemFromVec#(
     return resultPipeOut;
 endmodule
 
-module mkRandomWorkReqInRange#(
-    Vector#(wrVecSz, WorkReqOpCode) workReqOpCodeVec,
+module mkSimGenWorkReqByOpCode#(
+    PipeOut#(WorkReqOpCode) workReqOpCodePipeIn,
     Length minLength,
     Length maxLength
 )(Vector#(vSz, PipeOut#(WorkReq)));
     FIFOF#(WorkReq) workReqOutQ <- mkFIFOF;
+    PipeOut#(WorkReqID) workReqIdPipeOut <- mkGenericRandomPipeOut;
     let dmaLenPipeOut <- mkRandomLenPipeOut(minLength, maxLength);
-    let workReqOpCodePipeOut <- mkRandomItemFromVec(workReqOpCodeVec);
     Vector#(vSz, PipeOut#(WorkReq)) resultPipeOutVec <-
         mkForkVector(convertFifo2PipeOut(workReqOutQ));
 
     rule genWorkReq;
+        let wrID = workReqIdPipeOut.first;
+        workReqIdPipeOut.deq;
+
         let dmaLen = dmaLenPipeOut.first;
         dmaLenPipeOut.deq;
 
-        let wrOpCode = workReqOpCodePipeOut.first;
-        workReqOpCodePipeOut.deq;
+        let wrOpCode = workReqOpCodePipeIn.first;
+        workReqOpCodePipeIn.deq;
 
-        Long comp = ?;
-        Long swap = ?;
-        IMM immDt = ?;
-        RKEY rkey2Inv = ?;
-        QPN srqn = ?;
-        QPN dqpn = ?;
-        QKEY qkey = ?;
+        Long comp = dontCareValue;
+        Long swap = dontCareValue;
+        IMM immDt = dontCareValue;
+        RKEY rkey2Inv = dontCareValue;
+        QPN srqn = dontCareValue;
+        QPN dqpn = dontCareValue;
+        QKEY qkey = dontCareValue;
         let workReq = WorkReq {
-            id: ?,
-            opcode: wrOpCode,
-            flags: IBV_SEND_NO_FLAGS,
-            raddr: ?,
-            rkey: ?,
-            len: isAtomicWorkReq(wrOpCode) ? fromInteger(valueOf(ATOMIC_WORK_REQ_LEN)) : dmaLen,
-            laddr: ?,
-            lkey: ?,
-            sqpn: ?,
-            solicited: ?,
-            comp: workReqHasComp(wrOpCode) ? (tagged Valid comp) : (tagged Invalid),
-            swap: workReqHasSwap(wrOpCode) ? (tagged Valid swap) : (tagged Invalid),
-            immDt: workReqHasImmDt(wrOpCode) ? (tagged Valid immDt) : (tagged Invalid),
-            rkey2Inv: workReqHasInv(wrOpCode) ? (tagged Valid rkey2Inv) : (tagged Invalid),
-            srqn: tagged Valid srqn,
-            dqpn: tagged Valid dqpn,
-            qkey: tagged Valid qkey
+            id       : wrID,
+            opcode   : wrOpCode,
+            flags    : IBV_SEND_NO_FLAGS,
+            raddr    : dontCareValue,
+            rkey     : dontCareValue,
+            len      : isAtomicWorkReq(wrOpCode) ? fromInteger(valueOf(ATOMIC_WORK_REQ_LEN)) : dmaLen,
+            laddr    : dontCareValue,
+            lkey     : dontCareValue,
+            sqpn     : dontCareValue,
+            solicited: dontCareValue,
+            comp     : workReqHasComp(wrOpCode) ? (tagged Valid comp) : (tagged Invalid),
+            swap     : workReqHasSwap(wrOpCode) ? (tagged Valid swap) : (tagged Invalid),
+            immDt    : workReqHasImmDt(wrOpCode) ? (tagged Valid immDt) : (tagged Invalid),
+            rkey2Inv : workReqHasInv(wrOpCode) ? (tagged Valid rkey2Inv) : (tagged Invalid),
+            srqn     : tagged Valid srqn,
+            dqpn     : tagged Valid dqpn,
+            qkey     : tagged Valid qkey
         };
         workReqOutQ.enq(workReq);
         // $display("time=%0d: generate random WR=", $time, fshow(workReq));
     endrule
 
+    return resultPipeOutVec;
+endmodule
+
+module mkRandomWorkReqInRange#(
+    Vector#(wrVecSz, WorkReqOpCode) workReqOpCodeVec,
+    Length minLength,
+    Length maxLength
+)(Vector#(vSz, PipeOut#(WorkReq)));
+    let workReqOpCodePipeOut <- mkRandomItemFromVec(workReqOpCodeVec);
+    let resultPipeOutVec <- mkSimGenWorkReqByOpCode(
+        workReqOpCodePipeOut, minLength, maxLength
+    );
     return resultPipeOutVec;
 endmodule
 
@@ -412,99 +458,165 @@ module mkRandomWorkReq#(
 endmodule
 
 module mkSimController#(QpType qpType, PMTU pmtu)(Controller);
-    QPN minQPN = 0;
-    QPN maxQPN = maxBound;
+    PSN minPSN = 0;
+    PSN maxPSN = maxBound;
 
-    let cntlr <- mkController;
-    Randomize#(QPN) randomNQPN <- mkConstrainedRandomizer(minQPN, maxQPN);
-    Randomize#(QPN) randomEQPN <- mkConstrainedRandomizer(minQPN, maxQPN);
+    let cntrl <- mkController;
+    Randomize#(PSN) randomNPSN <- mkConstrainedRandomizer(minPSN, maxPSN);
+    Randomize#(PSN) randomEPSN <- mkConstrainedRandomizer(minPSN, maxPSN);
     Reg#(Bool) initializedReg <- mkReg(False);
 
     rule initRandomizer if (!initializedReg);
-        randomNQPN.cntrl.init;
-        randomEQPN.cntrl.init;
+        randomNPSN.cntrl.init;
+        randomEPSN.cntrl.init;
         initializedReg <= True;
     endrule
 
-    rule initController if (initializedReg && cntlr.getQPS == IBV_QPS_RESET);
-        let npsn <- randomNQPN.next;
-        let epsn <- randomEQPN.next;
-        cntlr.initialize(
+    rule initController if (initializedReg && cntrl.getQPS == IBV_QPS_RESET);
+        let npsn <- randomNPSN.next;
+        let epsn <- randomEPSN.next;
+        cntrl.initialize(
             qpType,
             3, // maxRnrCnt
             3, // maxRetryCnt
-            1, // maxTimeOut 1 - 8.192 usec (0.000008 sec)
+            0, // maxTimeOut 0 - infinite, 1 - 8.192 usec (0.000008 sec)
             1, // minRnrTimer 1 - 0.01 milliseconds delay
-            fromInteger(valueOf(MAX_PENDING_REQ_NUM)), // pendingWorkReqNum
-            fromInteger(valueOf(MAX_PENDING_REQ_NUM)), // pendingRecvReqNum
+            fromInteger(valueOf(MAX_QP_WR)), // pendingWorkReqNum
+            fromInteger(valueOf(MAX_QP_WR)), // pendingRecvReqNum
+            fromInteger(valueOf(MAX_QP_RD_ATOM)), // pendingReadAtomicReqNum
             True, // sigAll
-            ?, // sqpn
-            ?, // dqpn
-            ?, // pkey
-            ?, // qkey
+            dontCareValue, // sqpn
+            dontCareValue, // dqpn
+            dontCareValue, // pkey
+            dontCareValue, // qkey
             pmtu,
             npsn,
             epsn
         );
     endrule
 
-    rule setRTR if (initializedReg && cntlr.isInit);
-        cntlr.setStateRTR;
+    rule setRTR if (initializedReg && cntrl.isInit);
+        cntrl.setStateRTR;
     endrule
 
-    rule setRTS if (initializedReg && cntlr.isRTR);
-        cntlr.setStateRTS;
+    rule setRTS if (initializedReg && cntrl.isRTR);
+        cntrl.setStateRTS;
     endrule
 
-    return cntlr;
+    return cntrl;
 endmodule
 
-module mkNewPendingWorkReqPipeOut#(
-    PipeOut#(WorkReq) workReqPipeIn
-)(PipeOut#(PendingWorkReq));
-    function PendingWorkReq genPendingWorkReq(WorkReq wr) = PendingWorkReq {
-        wr: wr,
-        startPSN: tagged Invalid,
-        endPSN: tagged Invalid,
-        pktNum: tagged Invalid,
-        isOnlyReqPkt: tagged Invalid
-    };
-
-    PipeOut#(PendingWorkReq) resultPipeOut <- mkFunc2Pipe(genPendingWorkReq, workReqPipeIn);
-    return resultPipeOut;
-endmodule
-
-module mkExistingPendingWorkReqPipeOut#(
-    Controller cntlr,
-    PipeOut#(WorkReq) workReqPipeIn
+module mkPendingWorkReqPipeOut#(
+    PipeOut#(WorkReq) workReqPipeIn, PMTU pmtu
 )(Vector#(vSz, PipeOut#(PendingWorkReq)));
+    Reg#(PSN) nextPSN <- mkReg(maxBound);
+
     function ActionValue#(PendingWorkReq) genExistingPendingWorkReq(WorkReq wr);
         actionvalue
-            let startPktSeqNum = cntlr.getNPSN;
+            let startPktSeqNum = nextPSN;
             let { isOnlyPkt, totalPktNum, nextPktSeqNum, endPktSeqNum } =
                 calcPktNumNextAndEndPSN(
                     startPktSeqNum,
                     wr.len,
-                    cntlr.getPMTU
+                    pmtu
                 );
 
-            cntlr.setNPSN(nextPktSeqNum);
+            nextPSN <= nextPktSeqNum;
             let isOnlyReqPkt = isOnlyPkt || isReadWorkReq(wr.opcode);
-
-            return PendingWorkReq {
+            let pendingWR = PendingWorkReq {
                 wr: wr,
                 startPSN: tagged Valid startPktSeqNum,
                 endPSN: tagged Valid endPktSeqNum,
                 pktNum: tagged Valid totalPktNum,
                 isOnlyReqPkt: tagged Valid isOnlyReqPkt
             };
+
+            // $display("time=%0d: generates pendingWR=", $time, fshow(pendingWR));
+            return pendingWR;
         endactionvalue
     endfunction
 
     PipeOut#(PendingWorkReq) pendingWorkReqPipeOut <- mkActionValueFunc2Pipe(
         genExistingPendingWorkReq, workReqPipeIn
     );
+
     Vector#(vSz, PipeOut#(PendingWorkReq)) resultPipeOutVec <-
         mkForkVector(pendingWorkReqPipeOut);
     return resultPipeOutVec;
+endmodule
+
+// module mkExistingPendingWorkReqPipeOut#(
+//     Controller cntrl,
+//     PipeOut#(WorkReq) workReqPipeIn
+// )(Vector#(vSz, PipeOut#(PendingWorkReq)));
+// /*
+//     function ActionValue#(PendingWorkReq) genExistingPendingWorkReq(WorkReq wr);
+//         actionvalue
+//             let startPktSeqNum = cntrl.getNPSN;
+//             let { isOnlyPkt, totalPktNum, nextPktSeqNum, endPktSeqNum } =
+//                 calcPktNumNextAndEndPSN(
+//                     startPktSeqNum,
+//                     wr.len,
+//                     cntrl.getPMTU
+//                 );
+
+//             cntrl.setNPSN(nextPktSeqNum);
+//             let isOnlyReqPkt = isOnlyPkt || isReadWorkReq(wr.opcode);
+
+//             return PendingWorkReq {
+//                 wr: wr,
+//                 startPSN: tagged Valid startPktSeqNum,
+//                 endPSN: tagged Valid endPktSeqNum,
+//                 pktNum: tagged Valid totalPktNum,
+//                 isOnlyReqPkt: tagged Valid isOnlyReqPkt
+//             };
+//         endactionvalue
+//     endfunction
+
+//     PipeOut#(PendingWorkReq) pendingWorkReqPipeOut <- mkActionValueFunc2Pipe(
+//         genExistingPendingWorkReq, workReqPipeIn
+//     );
+// */
+//     FIFOF#(PendingWorkReq) pendingWorkReqOutQ <- mkFIFOF;
+//     let pendingWorkReqPipeOut = convertFifo2PipeOut(pendingWorkReqOutQ);
+
+//     rule genExistingPendingWorkReq if (cntrl.isRTS);
+//         let wr = workReqPipeIn.first;
+//         workReqPipeIn.deq;
+
+//         let startPktSeqNum = cntrl.getNPSN;
+//         let { isOnlyPkt, totalPktNum, nextPktSeqNum, endPktSeqNum } =
+//             calcPktNumNextAndEndPSN(
+//                 startPktSeqNum,
+//                 wr.len,
+//                 cntrl.getPMTU
+//             );
+
+//         cntrl.setNPSN(nextPktSeqNum);
+//         let isOnlyReqPkt = isOnlyPkt || isReadWorkReq(wr.opcode);
+
+//         let pendingWR = PendingWorkReq {
+//             wr: wr,
+//             startPSN: tagged Valid startPktSeqNum,
+//             endPSN: tagged Valid endPktSeqNum,
+//             pktNum: tagged Valid totalPktNum,
+//             isOnlyReqPkt: tagged Valid isOnlyReqPkt
+//         };
+//         pendingWorkReqOutQ.enq(pendingWR);
+
+//         // $display(
+//         //     "time=%0d: generates pendingWR=", $time, fshow(pendingWR)
+//         // );
+//     endrule
+
+//     Vector#(vSz, PipeOut#(PendingWorkReq)) resultPipeOutVec <-
+//         mkForkVector(pendingWorkReqPipeOut);
+//     return resultPipeOutVec;
+// endmodule
+
+module mkDebugSink#(PipeOut#(anytype) pipeIn)(Empty) provisos(FShow#(anytype));
+   rule drain;
+      pipeIn.deq;
+      $display("time=%0d: mkDebugSink drain ", $time, fshow(pipeIn.first));
+   endrule
 endmodule

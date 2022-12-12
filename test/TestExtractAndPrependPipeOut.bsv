@@ -10,8 +10,9 @@ import Headers :: *;
 import DataTypes :: *;
 import Settings :: *;
 import SimDma :: *;
-import Utils4Test :: *;
+import PrimUtils :: *;
 import Utils :: *;
+import Utils4Test :: *;
 
 function Length headerMetaData2DmaLen(HeaderMetaData hmd) = zeroExtend(hmd.headerLen);
 
@@ -127,13 +128,13 @@ module mkTestExtractHeaderWithLessThanOneFragPayload(Empty);
     HeaderByteNum minHeaderLen = 1;
     HeaderByteNum maxHeaderLen = 64;
 
-    Vector#(1, PipeOut#(Length)) payloadLenPipeOutVec <-
-        mkRandomValueInRangePipeOut(minPayloadLen, maxPayloadLen);
+    PipeOut#(Length) payloadLenPipeOut <-
+        mkRandomLenPipeOut(minPayloadLen, maxPayloadLen);
 
     function ActionValue#(Length) headerLen2DmaLen(HeaderByteNum headerLen);
         actionvalue
-            let payloadLen = payloadLenPipeOutVec[0].first;
-            payloadLenPipeOutVec[0].deq;
+            let payloadLen = payloadLenPipeOut.first;
+            payloadLenPipeOut.deq;
             return zeroExtend(headerLen) + payloadLen;
         endactionvalue
     endfunction
