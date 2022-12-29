@@ -8,6 +8,7 @@ import Vector :: *;
 import Controller :: *;
 import DataTypes :: *;
 import Headers :: *;
+import MetaData :: *;
 import PrimUtils :: *;
 import Settings :: *;
 import Utils :: *;
@@ -15,7 +16,7 @@ import Utils :: *;
 typedef 60000 MAX_CMP_CNT;
 
 interface CountDown;
-    method Action dec();
+    method Action decr();
 endinterface
 
 module mkCountDown#(Integer maxValue)(CountDown);
@@ -26,7 +27,7 @@ module mkCountDown#(Integer maxValue)(CountDown);
         cycleNumReg <= cycleNumReg + 1;
     endrule
 
-    method Action dec();
+    method Action decr();
         cnt.incr(1);
         // $display("time=%0d: cycles=%0d, cmp cnt=%0d", $time, cycleNumReg, cnt);
 
@@ -60,7 +61,7 @@ function Bool compareRdmaHeaderDataInSim(
     return shiftedHeaderData == shiftedRefHeaderData;
 endfunction
 
-// This function should only used in simulation
+// This function should be used in simulation only
 function ByteEnBitNum calcByteEnBitNumInSim(ByteEn fragByteEn);
     let rightAlignedByteEn = reverseBits(fragByteEn);
     ByteEnBitNum byteEnBitNum = 0;
@@ -79,7 +80,7 @@ function ByteEnBitNum calcByteEnBitNumInSim(ByteEn fragByteEn);
     return byteEnBitNum;
 endfunction
 
-// This function should only used in simulation
+// This function should be used in simulation only
 function Tuple3#(TotalFragNum, ByteEn, ByteEnBitNum) calcTotalFragNumByLength(Length dmaLen);
     let shiftAmt = valueOf(TLog#(DATA_BUS_BYTE_WIDTH));
     TotalFragNum fragNum = truncate(dmaLen >> shiftAmt);
@@ -95,15 +96,6 @@ function Tuple3#(TotalFragNum, ByteEn, ByteEnBitNum) calcTotalFragNumByLength(Le
         zeroExtend(lastFragSize);
     ByteEn lastFragByteEn = genByteEn(lastFragValidByteNum);
     return tuple3(fragNum, lastFragByteEn, lastFragValidByteNum);
-endfunction
-
-// This function should only used in simulation
-function ByteEn addPadding2LastFragByteEn(ByteEn lastFragByteEn);
-    let lastFragValidByteNum = calcByteEnBitNumInSim(lastFragByteEn);
-    let padCnt = calcPadCnt(zeroExtend(lastFragValidByteNum));
-    let lastFragValidByteNumWithPadding = lastFragValidByteNum + zeroExtend(padCnt);
-    let lastFragByteEnWithPadding = genByteEn(lastFragValidByteNumWithPadding);
-    return lastFragByteEnWithPadding;
 endfunction
 
 function Bool transTypeMatchQpType(TransType tt, QpType qpt);
@@ -186,6 +178,86 @@ function Bool workCompMatchWorkReqInSQ(WorkComp wc, WorkReq wr);
     endcase;
 endfunction
 
+// This module should be used in simulation only
+module mkSegmentDataStreamByPmtu#(
+    DataStreamPipeOut dataStreamPipeIn,
+    PipeOut#(PMTU) pmtuPipeIn
+)(DataStreamPipeOut);
+    Reg#(PmtuFragNum) pmtuFragNumReg <- mkRegU;
+    Reg#(PmtuFragNum) fragCntReg <- mkRegU;
+    FIFOF#(DataStream) dataQ <- mkFIFOF;
+    Reg#(Bool) setFirstReg <- mkReg(False);
+
+    rule segment;
+        let curData = dataStreamPipeIn.first;
+        dataStreamPipeIn.deq;
+        Bool isFragCntZero = isZero(fragCntReg);
+
+        if (!setFirstReg && curData.isFirst) begin
+            let pmtu = pmtuPipeIn.first;
+            pmtuPipeIn.deq;
+            let pmtuFragNum = calcFragNumByPmtu(pmtu);
+            pmtuFragNumReg <= pmtuFragNum;
+            fragCntReg <= pmtuFragNum - 2;
+        end
+        else if (setFirstReg) begin
+            curData.isFirst = True;
+            setFirstReg <= False;
+            fragCntReg <= pmtuFragNumReg - 2;
+        end
+        else if (isFragCntZero) begin
+            curData.isLast = True;
+            setFirstReg <= True;
+        end
+        else if (!curData.isLast) begin
+            fragCntReg <= fragCntReg - 1;
+        end
+
+        dataQ.enq(curData);
+    endrule
+
+    method DataStream first() = dataQ.first;
+    method Action deq() = dataQ.deq;
+    method Bool notEmpty() = dataQ.notEmpty;
+endmodule
+
+// This function should be used in simulation only
+function ByteEn addPadding2LastFragByteEn(ByteEn lastFragByteEn);
+    let lastFragValidByteNum = calcByteEnBitNumInSim(lastFragByteEn);
+    let padCnt = calcPadCnt(zeroExtend(lastFragValidByteNum));
+    let lastFragValidByteNumWithPadding = lastFragValidByteNum + zeroExtend(padCnt);
+    let lastFragByteEnWithPadding = genByteEn(lastFragValidByteNumWithPadding);
+    return lastFragByteEnWithPadding;
+endfunction
+
+// This module should be used in simulation only
+module mkSegmentDataStreamByPmtuAndAddPadCnt#(
+    DataStreamPipeOut dataStreamPipeIn,
+    PipeOut#(PMTU) pmtuPipeIn
+)(DataStreamPipeOut);
+    function DataStream addPadding(DataStream inputDataStream);
+        if (inputDataStream.isLast) begin
+            let lastFragByteEnWithPadding = addPadding2LastFragByteEn(
+                inputDataStream.byteEn
+            );
+            // $display(
+            //     "time=%0d: inputDataStream.byteEn=%h, padCnt=%0d",
+            //     $time, inputDataStream.byteEn, padCnt
+            // );
+            inputDataStream.byteEn = lastFragByteEnWithPadding;
+        end
+
+        return inputDataStream;
+    endfunction
+
+    let segDataStreamPipeOut <- mkSegmentDataStreamByPmtu(
+        dataStreamPipeIn, pmtuPipeIn
+    );
+
+    let resultPipeOut <- mkFunc2Pipe(addPadding, segDataStreamPipeOut);
+    return resultPipeOut;
+endmodule
+
 module mkGenericRandomPipeOut(PipeOut#(anytype)) provisos(Bits#(anytype, tSz), Bounded#(anytype));
     Randomize#(anytype) randomGen <- mkGenericRandomizer;
     FIFOF#(anytype) randomValQ <- mkFIFOF;
@@ -204,52 +276,6 @@ module mkGenericRandomPipeOut(PipeOut#(anytype)) provisos(Bits#(anytype, tSz), B
 
     return convertFifo2PipeOut(randomValQ);
 endmodule
-/*
-module mkRandomFromRangePipeOut#(
-    anytype minInclusive, anytype maxInclusive
-)(Tuple2#(PipeOut#(anytype), PipeOut#(anytype))) provisos(Bits#(anytype, tSz), Bounded#(anytype));
-    FIFOF#(anytype) randomValQ <- mkFIFOF;
-    Randomize#(anytype) randomGen <-
-        mkConstrainedRandomizer(minInclusive, maxInclusive);
-    let tuplePipeOut <- mkForkAndBufferRight(convertFifo2PipeOut(randomValQ));
-
-    Reg#(Bool) initializedReg <- mkReg(False);
-
-    rule init if (!initializedReg);
-        randomGen.cntrl.init;
-        initializedReg <= True;
-    endrule
-
-    rule enq if (initializedReg);
-        let randomVal <- randomGen.next;
-        randomValQ.enq(randomVal);
-        // $display("time=%0d: randomVal=%0d", $time, randomVal);
-    endrule
-
-    return tuplePipeOut;
-endmodule
-
-module mkRandomHeaderDataPipeOut(PipeOut#(HeaderData));
-    Randomize#(HeaderData) randomHeaderDataGen <- mkGenericRandomizer;
-    FIFOF#(HeaderData) headerDataQ <- mkFIFOF;
-    // Vector#(vSz, PipeOut#(HeaderData)) resultPipeOut <-
-    //     mkForkVector(convertFifo2PipeOut(headerDataQ));
-
-    Reg#(Bool) initializedReg <- mkReg(False);
-
-    rule init if (!initializedReg);
-        randomHeaderDataGen.cntrl.init;
-        initializedReg <= True;
-    endrule
-
-    rule gen if (initializedReg);
-        let headerData <- randomHeaderDataGen.next;
-        headerDataQ.enq(headerData);
-    endrule
-
-    return convertFifo2PipeOut(headerDataQ);
-endmodule
-*/
 
 module mkRandomValueInRangePipeOut#(
     // Both min and max are inclusive
@@ -392,6 +418,8 @@ module mkSimGenWorkReqByOpCode#(
         let wrOpCode = workReqOpCodePipeIn.first;
         workReqOpCodePipeIn.deq;
 
+        let isAtomicWR = isAtomicWorkReq(wrOpCode);
+
         Long comp = dontCareValue;
         Long swap = dontCareValue;
         IMM immDt = dontCareValue;
@@ -403,9 +431,9 @@ module mkSimGenWorkReqByOpCode#(
             id       : wrID,
             opcode   : wrOpCode,
             flags    : IBV_SEND_NO_FLAGS,
-            raddr    : dontCareValue,
+            raddr    : isAtomicWR ? 0 : dontCareValue,
             rkey     : dontCareValue,
-            len      : isAtomicWorkReq(wrOpCode) ? fromInteger(valueOf(ATOMIC_WORK_REQ_LEN)) : dmaLen,
+            len      : isAtomicWR ? fromInteger(valueOf(ATOMIC_WORK_REQ_LEN)) : dmaLen,
             laddr    : dontCareValue,
             lkey     : dontCareValue,
             sqpn     : dontCareValue,
@@ -462,19 +490,25 @@ module mkSimController#(QpType qpType, PMTU pmtu)(Controller);
     PSN maxPSN = maxBound;
 
     let cntrl <- mkController;
-    Randomize#(PSN) randomNPSN <- mkConstrainedRandomizer(minPSN, maxPSN);
     Randomize#(PSN) randomEPSN <- mkConstrainedRandomizer(minPSN, maxPSN);
+    Randomize#(PSN) randomNPSN <- mkConstrainedRandomizer(minPSN, maxPSN);
+    Randomize#(PKEY) randomPKEY <- mkGenericRandomizer;
+    Randomize#(QKEY) randomQKEY <- mkGenericRandomizer;
     Reg#(Bool) initializedReg <- mkReg(False);
 
     rule initRandomizer if (!initializedReg);
-        randomNPSN.cntrl.init;
         randomEPSN.cntrl.init;
+        randomNPSN.cntrl.init;
+        randomPKEY.cntrl.init;
+        randomQKEY.cntrl.init;
         initializedReg <= True;
     endrule
 
     rule initController if (initializedReg && cntrl.getQPS == IBV_QPS_RESET);
-        let npsn <- randomNPSN.next;
         let epsn <- randomEPSN.next;
+        let npsn <- randomNPSN.next;
+        let pkey <- randomPKEY.next;
+        let qkey <- randomQKEY.next;
         cntrl.initialize(
             qpType,
             3, // maxRnrCnt
@@ -487,8 +521,8 @@ module mkSimController#(QpType qpType, PMTU pmtu)(Controller);
             True, // sigAll
             dontCareValue, // sqpn
             dontCareValue, // dqpn
-            dontCareValue, // pkey
-            dontCareValue, // qkey
+            pkey,
+            qkey,
             pmtu,
             npsn,
             epsn
@@ -504,6 +538,76 @@ module mkSimController#(QpType qpType, PMTU pmtu)(Controller);
     endrule
 
     return cntrl;
+endmodule
+
+module mkSimPermCheckMR(PermCheckMR);
+    FIFOF#(PermCheckInfo) checkReqQ <- mkFIFOF;
+
+    method Action checkReq(PermCheckInfo permCheckInfo);
+        checkReqQ.enq(permCheckInfo);
+    endmethod
+
+    method ActionValue#(Bool) checkResp();
+        let permCheckInfo = checkReqQ.first;
+        checkReqQ.deq;
+
+        return True;
+    endmethod
+endmodule
+
+module mkSimQPs#(QpType qpType, PMTU pmtu)(QPs);
+    let cntrl <- mkSimController(qpType, pmtu);
+
+    method Action createQP(QKEY qkey);
+        noAction;
+    endmethod
+
+    method ActionValue#(QPN) createResp();
+        return dontCareValue;
+    endmethod
+
+    method Action destroyQP(QPN qpn);
+        noAction;
+    endmethod
+
+    method ActionValue#(Bool) destroyResp();
+        return True;
+    endmethod
+
+    method Bool isValidQP(QPN qpn) = True;
+    method Maybe#(PdHandler) getPD(QPN qpn);
+        return tagged Valid dontCareValue;
+    endmethod
+    method Controller getCntrl(QPN qpn) = cntrl;
+
+    method Action clear();
+        noAction;
+    endmethod
+
+    method Bool notEmpty() = True;
+    method Bool notFull() = True;
+endmodule
+
+module mkSimGenRecvReq#(Controller cntrl)(Vector#(vSz, PipeOut#(RecvReq)));
+    FIFOF#(RecvReq) recvReqQ <- mkFIFOF;
+    PipeOut#(WorkReqID) recvReqIdPipeOut <- mkGenericRandomPipeOut;
+
+    rule genRR;
+        let rrID = recvReqIdPipeOut.first;
+        recvReqIdPipeOut.deq;
+        let rr = RecvReq {
+            id   : rrID,
+            len  : dontCareValue,
+            laddr: dontCareValue,
+            lkey : dontCareValue,
+            sqpn : cntrl.getSQPN
+        };
+        recvReqQ.enq(rr);
+    endrule
+
+    Vector#(vSz, PipeOut#(RecvReq)) resultPipeOutVec <-
+        mkForkVector(convertFifo2PipeOut(recvReqQ));
+    return resultPipeOutVec;
 endmodule
 
 module mkPendingWorkReqPipeOut#(
@@ -545,74 +649,80 @@ module mkPendingWorkReqPipeOut#(
     return resultPipeOutVec;
 endmodule
 
-// module mkExistingPendingWorkReqPipeOut#(
-//     Controller cntrl,
-//     PipeOut#(WorkReq) workReqPipeIn
-// )(Vector#(vSz, PipeOut#(PendingWorkReq)));
-// /*
-//     function ActionValue#(PendingWorkReq) genExistingPendingWorkReq(WorkReq wr);
-//         actionvalue
-//             let startPktSeqNum = cntrl.getNPSN;
-//             let { isOnlyPkt, totalPktNum, nextPktSeqNum, endPktSeqNum } =
-//                 calcPktNumNextAndEndPSN(
-//                     startPktSeqNum,
-//                     wr.len,
-//                     cntrl.getPMTU
-//                 );
+module mkExistingPendingWorkReqPipeOut#(
+    Controller cntrl,
+    PipeOut#(WorkReq) workReqPipeIn
+)(Vector#(vSz, PipeOut#(PendingWorkReq)));
+/*
+    function ActionValue#(PendingWorkReq) genExistingPendingWorkReq(WorkReq wr);
+        actionvalue
+            let startPktSeqNum = cntrl.getNPSN;
+            let { isOnlyPkt, totalPktNum, nextPktSeqNum, endPktSeqNum } =
+                calcPktNumNextAndEndPSN(
+                    startPktSeqNum,
+                    wr.len,
+                    cntrl.getPMTU
+                );
 
-//             cntrl.setNPSN(nextPktSeqNum);
-//             let isOnlyReqPkt = isOnlyPkt || isReadWorkReq(wr.opcode);
+            cntrl.setNPSN(nextPktSeqNum);
+            let isOnlyReqPkt = isOnlyPkt || isReadWorkReq(wr.opcode);
 
-//             return PendingWorkReq {
-//                 wr: wr,
-//                 startPSN: tagged Valid startPktSeqNum,
-//                 endPSN: tagged Valid endPktSeqNum,
-//                 pktNum: tagged Valid totalPktNum,
-//                 isOnlyReqPkt: tagged Valid isOnlyReqPkt
-//             };
-//         endactionvalue
-//     endfunction
+            return PendingWorkReq {
+                wr: wr,
+                startPSN: tagged Valid startPktSeqNum,
+                endPSN: tagged Valid endPktSeqNum,
+                pktNum: tagged Valid totalPktNum,
+                isOnlyReqPkt: tagged Valid isOnlyReqPkt
+            };
+        endactionvalue
+    endfunction
 
-//     PipeOut#(PendingWorkReq) pendingWorkReqPipeOut <- mkActionValueFunc2Pipe(
-//         genExistingPendingWorkReq, workReqPipeIn
-//     );
-// */
-//     FIFOF#(PendingWorkReq) pendingWorkReqOutQ <- mkFIFOF;
-//     let pendingWorkReqPipeOut = convertFifo2PipeOut(pendingWorkReqOutQ);
+    PipeOut#(PendingWorkReq) pendingWorkReqPipeOut <- mkActionValueFunc2Pipe(
+        genExistingPendingWorkReq, workReqPipeIn
+    );
+*/
+    FIFOF#(PendingWorkReq) pendingWorkReqOutQ <- mkFIFOF;
+    // Reg#(Bool) ePsnSetReg <- mkReg(False);
+    let pendingWorkReqPipeOut = convertFifo2PipeOut(pendingWorkReqOutQ);
 
-//     rule genExistingPendingWorkReq if (cntrl.isRTS);
-//         let wr = workReqPipeIn.first;
-//         workReqPipeIn.deq;
+    rule setExpectedPSN if (cntrl.isInit);
+        cntrl.contextRQ.restoreEPSN(cntrl.getNPSN);
+        // ePsnSetReg <= True;
+    endrule
 
-//         let startPktSeqNum = cntrl.getNPSN;
-//         let { isOnlyPkt, totalPktNum, nextPktSeqNum, endPktSeqNum } =
-//             calcPktNumNextAndEndPSN(
-//                 startPktSeqNum,
-//                 wr.len,
-//                 cntrl.getPMTU
-//             );
+    rule genExistingPendingWorkReq if (cntrl.isRTS);
+        let wr = workReqPipeIn.first;
+        workReqPipeIn.deq;
 
-//         cntrl.setNPSN(nextPktSeqNum);
-//         let isOnlyReqPkt = isOnlyPkt || isReadWorkReq(wr.opcode);
+        let startPktSeqNum = cntrl.getNPSN;
+        let { isOnlyPkt, totalPktNum, nextPktSeqNum, endPktSeqNum } =
+            calcPktNumNextAndEndPSN(
+                startPktSeqNum,
+                wr.len,
+                cntrl.getPMTU
+            );
 
-//         let pendingWR = PendingWorkReq {
-//             wr: wr,
-//             startPSN: tagged Valid startPktSeqNum,
-//             endPSN: tagged Valid endPktSeqNum,
-//             pktNum: tagged Valid totalPktNum,
-//             isOnlyReqPkt: tagged Valid isOnlyReqPkt
-//         };
-//         pendingWorkReqOutQ.enq(pendingWR);
+        cntrl.setNPSN(nextPktSeqNum);
+        let isOnlyReqPkt = isOnlyPkt || isReadWorkReq(wr.opcode);
 
-//         // $display(
-//         //     "time=%0d: generates pendingWR=", $time, fshow(pendingWR)
-//         // );
-//     endrule
+        let pendingWR = PendingWorkReq {
+            wr: wr,
+            startPSN: tagged Valid startPktSeqNum,
+            endPSN: tagged Valid endPktSeqNum,
+            pktNum: tagged Valid totalPktNum,
+            isOnlyReqPkt: tagged Valid isOnlyReqPkt
+        };
+        pendingWorkReqOutQ.enq(pendingWR);
 
-//     Vector#(vSz, PipeOut#(PendingWorkReq)) resultPipeOutVec <-
-//         mkForkVector(pendingWorkReqPipeOut);
-//     return resultPipeOutVec;
-// endmodule
+        // $display(
+        //     "time=%0d: generates pendingWR=", $time, fshow(pendingWR)
+        // );
+    endrule
+
+    Vector#(vSz, PipeOut#(PendingWorkReq)) resultPipeOutVec <-
+        mkForkVector(pendingWorkReqPipeOut);
+    return resultPipeOutVec;
+endmodule
 
 module mkDebugSink#(PipeOut#(anytype) pipeIn)(Empty) provisos(FShow#(anytype));
    rule drain;

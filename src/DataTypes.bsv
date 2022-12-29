@@ -14,7 +14,14 @@ typedef 3         RETRY_CNT_WIDTH;
 typedef 7 INFINITE_RETRY;
 typedef 0 INFINITE_TIMEOUT;
 
+typedef TMul#(8192, TExp#(30)) MAX_TIMEOUT_NS;
+typedef TMul#(655360, 1000)    MAX_RNR_WAIT_NS;
+
 typedef 16'hFFFF DEFAULT_PKEY;
+
+typedef 64 ATOMIC_ADDR_BIT_ALIGNMENT;
+
+typedef 32 PD_HANDLE_WIDTH;
 
 // Derived settings
 typedef AETH_VALUE_WIDTH TIMER_WIDTH;
@@ -34,6 +41,8 @@ typedef TAdd#(1, TLog#(TSub#(MAX_PMTU, DATA_BUS_BYTE_WIDTH)))           PMTU_FRA
 typedef TAdd#(1, TSub#(RDMA_MAX_LEN_WIDTH, TLog#(MIN_PMTU)))            PKT_NUM_WIDTH;
 typedef TAdd#(1, TLog#(MAX_PMTU))                                       PKT_LEN_WIDTH;
 
+typedef TDiv#(ATOMIC_ADDR_BIT_ALIGNMENT, 8) ATOMIC_ADDR_BYTE_ALIGNMENT;
+
 // typedef TLog#(TLog#(MAX_PMTU))               PMTU_VALUE_MAX_WIDTH;
 typedef TDiv#(MAX_PMTU, DATA_BUS_BYTE_WIDTH) PMTU_MAX_FRAG_NUM;
 typedef TDiv#(MIN_PMTU, DATA_BUS_BYTE_WIDTH) PMTU_MIN_FRAG_NUM;
@@ -42,6 +51,11 @@ typedef TExp#(PAD_WIDTH) FRAG_MIN_VALID_BYTE_NUM;
 
 typedef TMul#(MIN_PKT_NUM_IN_RECV_BUF, PMTU_MAX_FRAG_NUM)   DATA_STREAM_FRAG_BUF_SIZE;
 typedef TDiv#(DATA_STREAM_FRAG_BUF_SIZE, PMTU_MIN_FRAG_NUM) PKT_META_DATA_BUF_SIZE;
+
+typedef TDiv#(MAX_RNR_WAIT_NS, TARGET_CYCLE_NS) MAX_RNR_WAIT_CYCLES;
+typedef TLog#(MAX_RNR_WAIT_CYCLES)              RNR_WAIT_CYCLE_CNT_WIDTH;
+typedef TDiv#(MAX_TIMEOUT_NS, TARGET_CYCLE_NS)  MAX_TIMEOUT_CYCLES;
+typedef TAdd#(1, TLog#(MAX_TIMEOUT_CYCLES))     TIMEOUT_CYCLE_CNT_WIDTH;
 
 // Derived types
 typedef Bit#(DATA_BUS_WIDTH)      DATA;
@@ -75,8 +89,14 @@ typedef Bit#(RETRY_CNT_WIDTH) RetryCnt;
 typedef Bit#(TIMER_WIDTH)     TimeOutTimer;
 typedef Bit#(TIMER_WIDTH)     RnrTimer;
 
-typedef CBToken#(MAX_QP_WR) PendingReqToken;
-typedef PipeOut#(DataStream)          DataStreamPipeOut;
+typedef Bit#(TLog#(ATOMIC_ADDR_BYTE_ALIGNMENT)) AtomicAddrByteAlignment;
+
+typedef Bit#(RNR_WAIT_CYCLE_CNT_WIDTH) RnrWaitCycleCnt;
+typedef Bit#(TIMEOUT_CYCLE_CNT_WIDTH)  TimeOutCycleCnt;
+
+typedef Bit#(PD_HANDLE_WIDTH) PdHandler;
+
+typedef PipeOut#(DataStream) DataStreamPipeOut;
 
 typedef Server#(DmaReadReq, DmaReadResp)   DmaReadSrv;
 typedef Server#(DmaWriteReq, DmaWriteResp) DmaWriteSrv;
@@ -143,6 +163,7 @@ typedef struct {
     PktLen pktPayloadLen;
     PmtuFragNum pktFragNum;
     RdmaHeader pktHeader;
+    PdHandler pdHandler;
     Bool pktValid;
     PktVeriStatus pktStatus;
 } RdmaPktMetaData deriving(Bits, Bounded);
@@ -163,9 +184,14 @@ endinstance
 typedef struct {
     Maybe#(WorkReqID) wrID;
     LKEY lkey;
+    RKEY rkey;
+    Bool localOrRmtKey; // True for local, False for remote
     ADDR laddr;
-    Length len;
-} PermCheckInfo deriving(Bits);
+    Length totalLen;
+    PdHandler pdHandler;
+    Bool isZeroDmaLen;
+    MemAccessTypeFlags accType;
+} PermCheckInfo deriving(Bits, FShow);
 
 typedef struct {
     QPN sqpn;
@@ -211,20 +237,24 @@ typedef enum {
 typedef struct {
     OpInitiator initiator;
     Bool addPadding;
+    Bool segment;
+    PMTU pmtu;
     DmaReadReq dmaReadReq;
 } PayloadGenReq deriving(Bits, FShow);
 
 typedef struct {
     OpInitiator initiator;
     Bool addPadding;
+    Bool segment;
     DmaReadResp dmaReadResp;
 } PayloadGenResp deriving(Bits, FShow);
 
 typedef union tagged {
     void DiscardPayload;
     Tuple2#(DmaWriteMetaData, Long) AtomicRespInfoAndPayload;
-    DmaWriteMetaData ReadRespInfo;
-    DmaWriteMetaData SendWriteReqInfo;
+    // DmaWriteMetaData ReadRespInfo;
+    // DmaWriteMetaData SendWriteReqInfo;
+    DmaWriteMetaData SendWriteReqReadRespInfo;
 } PayloadConInfo deriving(Bits, Eq, FShow);
 
 typedef struct {
@@ -241,7 +271,9 @@ typedef struct {
 typedef struct {
     OpInitiator initiator;
     Bool casOrFetchAdd;
-    Long atomicData;
+    ADDR startAddr;
+    Long compData;
+    Long swapData;
     QPN sqpn;
     PSN psn;
 } AtomicOpReq deriving(Bits);
@@ -470,14 +502,16 @@ typedef enum {
 } WorkCompReqType deriving(Bits, Eq, FShow);
 
 typedef struct {
-    RecvReq recvReq;
-    Bool isZeroLen;
+    Maybe#(WorkReqID) rrID;
+    Length len;
+    QPN sqpn;
     PSN reqPSN;
+    Bool isZeroDmaLen;
     WorkCompStatus wcStatus;
     RdmaOpCode reqOpCode;
     Maybe#(IMM) immDt;
     Maybe#(RKEY) rkey2Inv;
-} WorkCompGenReqRQ deriving(Bits);
+} WorkCompGenReqRQ deriving(Bits, FShow);
 
 typedef struct {
     PendingWorkReq pendingWR;

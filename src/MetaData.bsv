@@ -8,6 +8,7 @@ import DataTypes :: *;
 import Headers :: *;
 import PrimUtils :: *;
 import Settings :: *;
+import Utils :: *;
 
 interface TagVector#(numeric type vSz, type anytype);
     method Action insertReq(anytype insertVal);
@@ -42,6 +43,11 @@ module mkTagVector(TagVector#(vSz, anytype)) provisos(
     Count#(Bit#(cntSz)) itemCnt <- mkCount(0);
 
     function Bool readTagVec1(Array#(Reg#(Bool)) tagArray) = tagArray[1];
+    function Action clearTag(Array#(Reg#(Bool)) tagReg);
+        action
+            tagReg[1] <= False;
+        endaction
+    endfunction
 
     // (* no_implicit_conditions, fire_when_enabled *)
     (* fire_when_enabled *)
@@ -50,9 +56,12 @@ module mkTagVector(TagVector#(vSz, anytype)) provisos(
             itemCnt   <= 0;
             emptyReg  <= True;
             fullReg   <= False;
-            for (Integer idx = 0; idx < valueOf(vSz); idx = idx + 1) begin
-                tagVec[idx][1] <= False;
-            end
+            mapM_(clearTag, tagVec);
+            // for (Integer idx = 0; idx < valueOf(vSz); idx = idx + 1) begin
+            //     tagVec[idx][1] <= False;
+            // end
+            insertRespQ.clear;
+            removeRespQ.clear;
         end
         else begin
             let inserted = False;
@@ -62,7 +71,6 @@ module mkTagVector(TagVector#(vSz, anytype)) provisos(
                 if (maybeIndex matches tagged Valid .index) begin
                     tagVec[index][1] <= True;
                     dataVec[index] <= insertVal;
-                    // insertReqQ.deq;
                     insertRespQ.enq(index);
                     inserted = True;
                 end
@@ -70,12 +78,8 @@ module mkTagVector(TagVector#(vSz, anytype)) provisos(
 
             let removed = False;
             if (removeReqReg[1] matches tagged Valid .index) begin
-                // removeReqQ.deq;
                 removed = True;
             end
-
-            insertReqReg[1] <= tagged Invalid;
-            removeReqReg[1] <= tagged Invalid;
 
             let almostFull = isAllOnes(removeMSB(itemCnt));
             let almostEmpty = isOne(itemCnt);
@@ -89,7 +93,16 @@ module mkTagVector(TagVector#(vSz, anytype)) provisos(
                 emptyReg <= almostEmpty;
                 fullReg <= False;
             end
+
+            // $display(
+            //     "time=%0d: inserted=", $time, fshow(inserted),
+            //     ", removed=", fshow(removed)
+            // );
         end
+
+        clearReg[1] <= False;
+        insertReqReg[1] <= tagged Invalid;
+        removeReqReg[1] <= tagged Invalid;
     endrule
 
     method Maybe#(anytype) getItem(UInt#(vLogSz) index);
@@ -150,12 +163,23 @@ interface MRs;
         Maybe#(MrKeyPart)  rkeyPart
     );
     method ActionValue#(Tuple3#(MrIndex, LKEY, Maybe#(RKEY))) allocResp();
-    method Maybe#(MR) getMR(MrIndex mrIndex);
     method Action deAllocMR(MrIndex mrIndex);
     method ActionValue#(Bool) deAllocResp();
+    method Maybe#(MR) getMR(MrIndex mrIndex);
+    method Action clear();
     method Bool notEmpty();
     method Bool notFull();
 endinterface
+
+function Maybe#(MR) getMemRegionByLKey(MRs mrMetaData, LKEY lkey);
+    MrIndex mrIndex = unpack(truncateLSB(lkey));
+    return mrMetaData.getMR(mrIndex);
+endfunction
+
+function Maybe#(MR) getMemRegionByRKey(MRs mrMetaData, RKEY rkey);
+    MrIndex mrIndex = unpack(truncateLSB(rkey));
+    return mrMetaData.getMR(mrIndex);
+endfunction
 
 module mkMRs(MRs);
     TagVector#(MAX_MR_PER_PD, MR) mrTagVec <- mkTagVector;
@@ -188,18 +212,23 @@ module mkMRs(MRs);
 
         LKEY lkey = { pack(mrIndex), mr.lkeyPart };
         Maybe#(RKEY) rkey = case (mr.rkeyPart) matches
-            tagged Valid .keyPart: begin
-                RKEY rk = { pack(mrIndex), keyPart };
-                tagged Valid rk;
+            tagged Valid .rmtKeyPart: begin
+                RKEY rmtKey = { pack(mrIndex), rmtKeyPart };
+                tagged Valid rmtKey;
             end
             default: tagged Invalid;
         endcase;
         return tuple3(mrIndex, lkey, rkey);
     endmethod
 
-    method Maybe#(MR) getMR(MrIndex mrIndex) = mrTagVec.getItem(mrIndex);
     method Action deAllocMR(MrIndex mrIndex) = mrTagVec.removeReq(mrIndex);
     method ActionValue#(Bool) deAllocResp() = mrTagVec.removeResp;
+    method Maybe#(MR) getMR(MrIndex mrIndex) = mrTagVec.getItem(mrIndex);
+
+    method Action clear();
+        mrTagVec.clear;
+        mrOutQ.clear;
+    endmethod
 
     method Bool notEmpty() = mrTagVec.notEmpty;
     method Bool notFull() = mrTagVec.notFull;
@@ -207,11 +236,9 @@ endmodule
 
 // PD related
 
-typedef 32 PD_HANDLE_WIDTH;
 typedef TLog#(MAX_PD) PD_INDEX_WIDTH;
 typedef TSub#(PD_HANDLE_WIDTH, PD_INDEX_WIDTH) PD_KEY_WIDTH;
 
-typedef Bit#(PD_HANDLE_WIDTH) PdHandler;
 typedef Bit#(PD_KEY_WIDTH)    PdKey;
 typedef UInt#(PD_INDEX_WIDTH) PdIndex;
 
@@ -222,6 +249,7 @@ interface PDs;
     method ActionValue#(Bool) deAllocResp();
     method Bool isValidPD(PdHandler pdHandler);
     method Maybe#(MRs) getMRs(PdHandler pdHandler);
+    method Action clear();
     method Bool notEmpty();
     method Bool notFull();
 endinterface
@@ -232,6 +260,11 @@ module mkPDs(PDs);
     FIFOF#(PdKey) pdKeyOutQ <- mkFIFOF;
 
     function PdIndex getPdIndex(PdHandler pdHandler) = unpack(truncateLSB(pdHandler));
+    function Action clearMRs(MRs mrMetaData);
+        action
+            mrMetaData.clear;
+        endaction
+    endfunction
 
     method Action allocPD(PdKey pdKey);
         pdTagVec.insertReq(pdKey);
@@ -262,6 +295,12 @@ module mkPDs(PDs);
             (tagged Valid pdMrVec[pdIndex]) : (tagged Invalid);
     endmethod
 
+    method Action clear();
+        pdTagVec.clear;
+        pdKeyOutQ.clear;
+        mapM_(clearMRs, pdMrVec);
+    endmethod
+
     method Bool notEmpty() = pdTagVec.notEmpty;
     method Bool notFull()  = pdTagVec.notFull;
 endmodule
@@ -280,6 +319,7 @@ interface QPs;
     method Maybe#(PdHandler) getPD(QPN qpn);
     method Controller getCntrl(QPN qpn);
     // method Maybe#(Controller) getCntrl2(QPN qpn);
+    method Action clear();
     method Bool notEmpty();
     method Bool notFull();
 endinterface
@@ -331,6 +371,105 @@ module mkQPs(QPs);
     //     return isValid(pdHandler) ? tagged Valid qpCntrl : tagged Invalid;
     // endmethod
 
+    method Action clear();
+        qpTagVec.clear;
+        pdHandlerOutQ.clear;
+    endmethod
+
     method Bool notEmpty() = qpTagVec.notEmpty;
     method Bool notFull()  = qpTagVec.notFull;
+endmodule
+
+// MR check related
+
+interface PermCheckMR;
+    method Action checkReq(PermCheckInfo permCheckInfo);
+    method ActionValue#(Bool) checkResp();
+endinterface
+
+module mkPermCheckMR#(PDs pdMetaData)(PermCheckMR);
+    FIFOF#(Tuple3#(PermCheckInfo, Bool, Maybe#(MR))) checkReqQ <- mkFIFOF;
+
+    function Bool checkPermByMR(PermCheckInfo permCheckInfo, MR mr);
+        let keyMatch = case (permCheckInfo.localOrRmtKey)
+            True   : (truncate(permCheckInfo.lkey) == mr.lkeyPart);
+            default: (isValid(mr.rkeyPart) ?
+                truncate(permCheckInfo.rkey) == unwrapMaybe(mr.rkeyPart) : False);
+        endcase;
+
+        let accTypeMatch = compareAccessTypeFlags(permCheckInfo.accType, mr.accType);
+
+        let addrLenMatch = checkAddrAndLenWithinRange(
+            permCheckInfo.laddr, permCheckInfo.totalLen, mr.laddr, mr.len
+        );
+        return keyMatch && accTypeMatch && addrLenMatch;
+    endfunction
+
+    function Maybe#(MR) mrSearchByLKey(
+        PDs pdMetaData, PdHandler pdHandler, LKEY lkey
+    );
+        let maybeMR = tagged Invalid;
+        // let maybePD = qpMetaData.getPD(qpn);
+        // if (maybePD matches tagged Valid .pdHandler) begin
+        let maybeMRs = pdMetaData.getMRs(pdHandler);
+        if (maybeMRs matches tagged Valid .mrMetaData) begin
+            maybeMR = getMemRegionByLKey(mrMetaData, lkey);
+        end
+        // end
+        return maybeMR;
+    endfunction
+
+    function Maybe#(MR) mrSearchByRKey(
+        PDs pdMetaData, PdHandler pdHandler, RKEY rkey
+    );
+        let maybeMR = tagged Invalid;
+        // let maybePD = qpMetaData.getPD(qpn);
+        // if (maybePD matches tagged Valid .pdHandler) begin
+        let maybeMRs = pdMetaData.getMRs(pdHandler);
+        if (maybeMRs matches tagged Valid .mrMetaData) begin
+            maybeMR = getMemRegionByRKey(mrMetaData, rkey);
+        end
+        // end
+        return maybeMR;
+    endfunction
+
+    method Action checkReq(PermCheckInfo permCheckInfo);
+        let isZeroDmaLen = isZero(permCheckInfo.totalLen);
+        dynAssert(
+            !isZeroDmaLen,
+            "isZeroDmaLen assertion @ mkPermCheckMR",
+            $format(
+                "isZeroDmaLen=", fshow(isZeroDmaLen),
+                " should be false in PermCheckMR.checkReq()"
+            )
+        );
+
+        let maybeMR = tagged Invalid;
+        if (permCheckInfo.localOrRmtKey) begin
+            maybeMR = mrSearchByLKey(
+                pdMetaData, permCheckInfo.pdHandler, permCheckInfo.lkey
+            );
+        end
+        else begin
+            maybeMR = mrSearchByRKey(
+                pdMetaData, permCheckInfo.pdHandler, permCheckInfo.rkey
+            );
+        end
+
+        checkReqQ.enq(tuple3(permCheckInfo, isZeroDmaLen, maybeMR));
+    endmethod
+
+    method ActionValue#(Bool) checkResp();
+        let { permCheckInfo, isZeroDmaLen, maybeMR } = checkReqQ.first;
+        checkReqQ.deq;
+
+        let checkResult = isZeroDmaLen;
+        if (!isZeroDmaLen) begin
+            if (maybeMR matches tagged Valid .mr) begin
+                checkResult = checkPermByMR(permCheckInfo, mr);
+            end
+        end
+
+        return checkResult;
+    endmethod
 endmodule

@@ -20,63 +20,39 @@ function DataStream getDataStreamFromPayloadGenRespPipeOut(
 ) = resp.dmaReadResp.dataStream;
 
 interface PayloadGenerator;
-    method Action request(PayloadGenReq req);
     interface PipeOut#(PayloadGenResp) respPipeOut;
 endinterface
 
 module mkPayloadGenerator#(
     Controller cntrl,
-    DmaReadSrv dmaReadSrv
+    DmaReadSrv dmaReadSrv,
+    PipeOut#(PayloadGenReq) payloadGenReqPipeIn
 )(PayloadGenerator);
-    FIFOF#(PayloadGenResp)                generateRespQ <- mkFIFOF;
-    FIFOF#(Tuple2#(PayloadGenReq, ByteEn)) generateReqQ <- mkFIFOF;
+    FIFOF#(PayloadGenResp) payloadGenRespQ <- mkFIFOF;
+    FIFOF#(Tuple3#(PayloadGenReq, ByteEn, PmtuFragNum)) pendingPayloadGenReqQ <- mkFIFOF;
 
-    rule generatePayload if (cntrl.isRTRorRTSorSQD);
-        let dmaReadResp <- dmaReadSrv.response.get;
-        let { generateReq, lastFragByteEnWithPadding } = generateReqQ.first;
+    Reg#(PmtuFragNum) pmtuFragCntReg <- mkRegU;
+    Reg#(Bool) shouldSetFirstReg <- mkReg(False);
 
-        if (dmaReadResp.dataStream.isLast) begin
-            generateReqQ.deq;
-
-            if (generateReq.addPadding) begin
-                dmaReadResp.dataStream.byteEn = lastFragByteEnWithPadding;
-            end
-        end
-
-        let generateResp = PayloadGenResp {
-            initiator  : generateReq.initiator,
-            addPadding : generateReq.addPadding,
-            dmaReadResp: dmaReadResp
-        };
-        generateRespQ.enq(generateResp);
-        // $display("time=%0d: generateResp=", $time, fshow(generateResp));
-    endrule
-
-    rule flushDmaReadResp if (cntrl.isERR);
-        let dmaReadResp <- dmaReadSrv.response.get;
-    endrule
-
-    rule flushReqRespQ if (cntrl.isERR);
-        generateReqQ.clear;
-        generateRespQ.clear;
-    endrule
-
-    method Action request(PayloadGenReq generateReq) if (cntrl.isRTRorRTSorSQD);
+    rule recvPayloadGenReq if (cntrl.isNonErr);
+        let payloadGenReq = payloadGenReqPipeIn.first;
+        payloadGenReqPipeIn.deq;
         dynAssert(
-            !isZero(generateReq.dmaReadReq.len),
-            "generateReq.dmaReadReq.len assertion @ mkPayloadGenerator",
+            !isZero(payloadGenReq.dmaReadReq.len),
+            "payloadGenReq.dmaReadReq.len assertion @ mkPayloadGenerator",
             $format(
-                "generateReq.dmaReadReq.len=%0d should not be zero",
-                generateReq.dmaReadReq.len
+                "payloadGenReq.dmaReadReq.len=%0d should not be zero",
+                payloadGenReq.dmaReadReq.len
             )
         );
-        // $display("time=%0d: generateReq=", $time, fshow(generateReq));
+        // $display("time=%0d: payloadGenReq=", $time, fshow(payloadGenReq));
 
-        let dmaLen = generateReq.dmaReadReq.len;
+        let dmaLen = payloadGenReq.dmaReadReq.len;
         let padCnt = calcPadCnt(dmaLen);
         let lastFragValidByteNum = calcLastFragValidByteNum(dmaLen);
         let lastFragValidByteNumWithPadding = lastFragValidByteNum + zeroExtend(padCnt);
         let lastFragByteEnWithPadding = genByteEn(lastFragValidByteNumWithPadding);
+        let pmtuFragNum = calcFragNumByPmtu(payloadGenReq.pmtu);
         dynAssert(
             !isZero(lastFragValidByteNumWithPadding),
             "lastFragValidByteNumWithPadding assertion @ mkPayloadGenerator",
@@ -88,11 +64,60 @@ module mkPayloadGenerator#(
             )
         );
 
-        generateReqQ.enq(tuple2(generateReq, lastFragByteEnWithPadding));
-        dmaReadSrv.request.put(generateReq.dmaReadReq);
-    endmethod
+        pendingPayloadGenReqQ.enq(tuple3(payloadGenReq, lastFragByteEnWithPadding, pmtuFragNum));
+        dmaReadSrv.request.put(payloadGenReq.dmaReadReq);
+    endrule
 
-    interface respPipeOut = convertFifo2PipeOut(generateRespQ);
+    rule generatePayloadResp if (cntrl.isNonErr);
+        let dmaReadResp <- dmaReadSrv.response.get;
+        let { payloadGenReq, lastFragByteEnWithPadding, pmtuFragNum } = pendingPayloadGenReqQ.first;
+
+        let curData = dmaReadResp.dataStream;
+        if (curData.isLast) begin
+            pendingPayloadGenReqQ.deq;
+
+            if (payloadGenReq.addPadding) begin
+                curData.byteEn = lastFragByteEnWithPadding;
+            end
+        end
+
+        if (payloadGenReq.segment) begin
+            Bool isFragCntZero = isZero(pmtuFragCntReg);
+            if (shouldSetFirstReg || curData.isFirst) begin
+                curData.isFirst = True;
+                shouldSetFirstReg <= False;
+                pmtuFragCntReg <= pmtuFragNum - 2;
+            end
+            else if (isFragCntZero) begin
+                curData.isLast = True;
+                shouldSetFirstReg <= True;
+            end
+            else if (!curData.isLast) begin
+                pmtuFragCntReg <= pmtuFragCntReg - 1;
+            end
+        end
+
+        dmaReadResp.dataStream = curData;
+        let generateResp = PayloadGenResp {
+            initiator  : payloadGenReq.initiator,
+            addPadding : payloadGenReq.addPadding,
+            segment    : payloadGenReq.segment,
+            dmaReadResp: dmaReadResp
+        };
+        payloadGenRespQ.enq(generateResp);
+        // $display("time=%0d: generateResp=", $time, fshow(generateResp));
+    endrule
+
+    rule flushDmaReadResp if (cntrl.isERR);
+        let dmaReadResp <- dmaReadSrv.response.get;
+    endrule
+
+    rule flushReqRespQ if (cntrl.isERR);
+        pendingPayloadGenReqQ.clear;
+        payloadGenRespQ.clear;
+    endrule
+
+    interface respPipeOut = convertFifo2PipeOut(payloadGenRespQ);
 endmodule
 
 interface PayloadConsumer;
@@ -151,9 +176,9 @@ module mkPayloadConsumer#(
     );
         action
             case (consumeReq.consumeInfo) matches
-                tagged ReadRespInfo .readRespInfo: begin
+                tagged SendWriteReqReadRespInfo .sendWriteReqReadRespInfo: begin
                     let dmaWriteReq = DmaWriteReq {
-                        metaData  : readRespInfo,
+                        metaData  : sendWriteReqReadRespInfo,
                         dataStream: payload
                     };
                     // $display("time=%0d: dmaWriteReq=", $time, fshow(dmaWriteReq));
@@ -177,7 +202,7 @@ module mkPayloadConsumer#(
         endaction
     endfunction
 
-    rule recvReq if (cntrl.isRTRorRTSorSQD);
+    rule recvReq if (cntrl.isNonErr);
         let consumeReq = payloadConReqPipeIn.first;
         payloadConReqPipeIn.deq;
 
@@ -203,12 +228,12 @@ module mkPayloadConsumer#(
                     )
                 );
             end
-            tagged ReadRespInfo .readRespInfo: begin
+            tagged SendWriteReqReadRespInfo .sendWriteReqReadRespInfo    : begin
                 dynAssert(
                     !isZero(consumeReq.fragNum),
                     "consumeReq.fragNum assertion @ mkPayloadConsumer",
                     $format(
-                        "consumeReq.fragNum=%h should not be zero when consumeInfo is ReadRespPayload",
+                        "consumeReq.fragNum=%h should not be zero when consumeInfo is SendWriteReqReadRespInfo",
                         consumeReq.fragNum
                     )
                 );
@@ -219,7 +244,7 @@ module mkPayloadConsumer#(
         consumeReqQ.enq(consumeReq);
     endrule
 
-    rule processReq if (cntrl.isRTRorRTSorSQD && !busyReg);
+    rule processReq if (cntrl.isNonErr && !busyReg);
         let consumeReq = consumeReqQ.first;
         case (consumeReq.consumeInfo) matches
             tagged DiscardPayload: begin
@@ -241,7 +266,7 @@ module mkPayloadConsumer#(
                 pendingConReqQ.enq(consumeReq);
                 sendDmaWriteReq(consumeReq, dontCareValue);
             end
-            tagged ReadRespInfo .readRespInfo: begin
+            tagged SendWriteReqReadRespInfo .sendWriteReqReadRespInfo: begin
                 let payload = payloadPipeIn.first;
                 payloadPipeIn.deq;
                 if (isLessOrEqOne(consumeReq.fragNum)) begin
@@ -249,33 +274,45 @@ module mkPayloadConsumer#(
                     consumeReqQ.deq;
                     pendingConReqQ.enq(consumeReq);
                     // $display(
-                    //     "time=%0d: read response consumeReq.fragNum=%0d",
+                    //     "time=%0d: single packet response consumeReq.fragNum=%0d",
                     //     $time, consumeReq.fragNum
                     // );
                 end
                 else begin
-                    checkIsFirstPayloadDataStream(payload, consumeReq.consumeInfo);
+                    // checkIsFirstPayloadDataStream(payload, consumeReq.consumeInfo);
+                    dynAssert(
+                        payload.isFirst,
+                        "only payload assertion @ mkPayloadConsumer",
+                        $format(
+                            "payload.isFirst=", fshow(payload.isFirst),
+                            " should be true when consumeInfo=",
+                            fshow(consumeReq.consumeInfo)
+                        )
+                    );
+
                     remainingFragNumReg <= consumeReq.fragNum - 2;
                     busyReg <= True;
                     // $display(
-                    //     "time=%0d: read response remainingFragNumReg=%0d, change to busy",
+                    //     "time=%0d: multi-packet response remainingFragNumReg=%0d, change to busy",
                     //     $time, consumeReq.fragNum - 1
                     // );
                 end
 
                 sendDmaWriteReq(consumeReq, payload);
             end
+            // tagged SendWriteReqInfo .sendWriteReqInfo: begin
+            // end
             default: begin end
         endcase
     endrule
 
-    rule consumePayload if (cntrl.isRTRorRTSorSQD && busyReg);
+    rule consumePayload if (cntrl.isNonErr && busyReg);
         let consumeReq = consumeReqQ.first;
         let payload = payloadPipeIn.first;
         payloadPipeIn.deq;
         remainingFragNumReg <= remainingFragNumReg - 1;
         // $display(
-        //     "time=%0d: read response remainingFragNumReg=%0d, payload.isLast=",
+        //     "time=%0d: multi-packet response remainingFragNumReg=%0d, payload.isLast=",
         //     $time, remainingFragNumReg, fshow(payload.isLast)
         // );
 
@@ -291,7 +328,7 @@ module mkPayloadConsumer#(
             );
 
             consumeReqQ.deq;
-            if (consumeReq.consumeInfo matches tagged ReadRespInfo .r) begin
+            if (consumeReq.consumeInfo matches tagged SendWriteReqReadRespInfo .info) begin
                 // Only read responses have multi-fragment payload data to consume
                 pendingConReqQ.enq(consumeReq);
             end
@@ -301,7 +338,7 @@ module mkPayloadConsumer#(
         sendDmaWriteReq(consumeReq, payload);
     endrule
 
-    rule genResp if (cntrl.isRTRorRTSorSQD);
+    rule genResp if (cntrl.isNonErr);
         let dmaWriteResp <- dmaWriteSrv.response.get;
         let consumeReq = pendingConReqQ.first;
         pendingConReqQ.deq;
@@ -311,25 +348,25 @@ module mkPayloadConsumer#(
         // );
 
         case (consumeReq.consumeInfo) matches
-            tagged ReadRespInfo .readRespInfo: begin
+            tagged SendWriteReqReadRespInfo .sendWriteReqReadRespInfo: begin
                 let consumeResp = PayloadConResp {
                     initiator   : consumeReq.initiator,
                     dmaWriteResp: DmaWriteResp {
-                        sqpn    : readRespInfo.sqpn,
-                        psn     : readRespInfo.psn
+                        sqpn    : sendWriteReqReadRespInfo.sqpn,
+                        psn     : sendWriteReqReadRespInfo.psn
                     }
                 };
                 consumeRespQ.enq(consumeResp);
 
                 dynAssert(
-                    dmaWriteResp.sqpn == readRespInfo.sqpn &&
-                    dmaWriteResp.psn  == readRespInfo.psn,
+                    dmaWriteResp.sqpn == sendWriteReqReadRespInfo.sqpn &&
+                    dmaWriteResp.psn  == sendWriteReqReadRespInfo.psn,
                     "dmaWriteResp SQPN and PSN assertion @ ",
                     $format(
-                        "dmaWriteResp.sqpn=%h should == readRespInfo.sqpn=%h",
-                        dmaWriteResp.sqpn, readRespInfo.sqpn,
-                        ", and dmaWriteResp.psn=%h should == readRespInfo.psn=%h",
-                        dmaWriteResp.psn, readRespInfo.psn
+                        "dmaWriteResp.sqpn=%h should == sendWriteReqReadRespInfo.sqpn=%h",
+                        dmaWriteResp.sqpn, sendWriteReqReadRespInfo.sqpn,
+                        ", and dmaWriteResp.psn=%h should == sendWriteReqReadRespInfo.psn=%h",
+                        dmaWriteResp.psn, sendWriteReqReadRespInfo.psn
                     )
                 );
             end
@@ -387,7 +424,7 @@ module mkAtomicOp#(
         // TODO: implement atomic operations
         let atomicOpResp = AtomicOpResp {
             initiator: atomicOpReq.initiator,
-            original : atomicOpReq.atomicData,
+            original : atomicOpReq.compData,
             sqpn     : atomicOpReq.sqpn,
             psn      : atomicOpReq.psn
         };

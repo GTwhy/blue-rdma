@@ -126,6 +126,7 @@ function Maybe#(RdmaHeader) genFirstOrOnlyPktHeader(WorkReq wr, Controller cntrl
     let maybeOpCode = genFirstOrOnlyReqRdmaOpCode(wr.opcode, isOnlyReqPkt);
     let maybeDQPN   = getMaybeDQPN(wr, cntrl);
 
+    let isReadOrAtomicWR = isReadOrAtomicWorkReq(wr.opcode);
     if (
         maybeTrans  matches tagged Valid .trans  &&&
         maybeOpCode matches tagged Valid .opcode &&&
@@ -136,7 +137,7 @@ function Maybe#(RdmaHeader) genFirstOrOnlyPktHeader(WorkReq wr, Controller cntrl
             opcode   : opcode,
             solicited: wr.solicited,
             migReq   : unpack(0),
-            padCnt   : isOnlyReqPkt ? calcPadCnt(wr.len) : 0,
+            padCnt   : (isOnlyReqPkt && !isReadOrAtomicWR) ? calcPadCnt(wr.len) : 0,
             tver     : unpack(0),
             pkey     : cntrl.getPKEY,
             fecn     : unpack(0),
@@ -458,33 +459,34 @@ module mkReqGenSQ#(
     PipeOut#(PendingWorkReq) pendingWorkReqPipeIn,
     Bool pendingWorkReqBufNotEmpty
 )(ReqGenSQ);
+    FIFOF#(PayloadGenReq)     payloadGenReqOutQ <- mkFIFOF;
     FIFOF#(PendingWorkReq)   pendingWorkReqOutQ <- mkFIFOF;
     FIFOF#(WorkCompGenReqSQ) workCompGenReqOutQ <- mkFIFOF;
 
     FIFOF#(PendingWorkReq) pendingReqGenQ <- mkFIFOF;
     FIFOF#(RdmaHeader)         reqHeaderQ <- mkFIFOF;
 
-    // Reg#(PendingWorkReq) curPendingWorkReqReg <- mkRegU;
-    Reg#(PktNum) pktNumReg <- mkRegU;
-    Reg#(PSN)    curPsnReg <- mkRegU;
-    Reg#(Bool)     busyReg <- mkReg(False);
+    Reg#(PktNum)         pktNumReg <- mkRegU;
+    Reg#(PSN)            curPsnReg <- mkRegU;
+    Reg#(Bool) isGenMultiPktReqReg <- mkReg(False);
 
-    let payloadGenerator <- mkPayloadGenerator(cntrl, dmaReadSrv);
+    let payloadGenerator <- mkPayloadGenerator(
+        cntrl, dmaReadSrv, convertFifo2PipeOut(payloadGenReqOutQ)
+    );
     let payloadDataStreamPipeOut <- mkFunc2Pipe(
         getDataStreamFromPayloadGenRespPipeOut,
         payloadGenerator.respPipeOut
     );
-    let segDataStreamPipeOut <- mkSegmentDataStreamByPmtu(
-        payloadDataStreamPipeOut,
-        cntrl.getPMTU
-    );
+
+    // Generate header DataStream
     let headerDataStreamAndMetaDataPipeOut <- mkHeader2DataStream(
         convertFifo2PipeOut(reqHeaderQ)
     );
+    // Prepend header to payload if any
     let rdmaReqPipeOut <- mkPrependHeader2PipeOut(
         headerDataStreamAndMetaDataPipeOut.headerDataStream,
         headerDataStreamAndMetaDataPipeOut.headerMetaData,
-        segDataStreamPipeOut
+        payloadDataStreamPipeOut
     );
 
     rule deqWorkReqPipeOut if (cntrl.isRTS);
@@ -599,7 +601,7 @@ module mkReqGenSQ#(
         end
     endrule
 
-    rule genFirstOrOnlyReqHeader if (cntrl.isRTS && !busyReg);
+    rule genFirstOrOnlyReqHeader if (cntrl.isRTS && !isGenMultiPktReqReg);
         let pendingWorkReq = pendingReqGenQ.first;
 
         PSN startPSN = unwrapMaybe(pendingWorkReq.startPSN);
@@ -616,9 +618,11 @@ module mkReqGenSQ#(
             pktNumReg <= pktNum - 2;
         end
 
+        let qpType = cntrl.getQpType;
         let maybeFirstOrOnlyHeader = genFirstOrOnlyPktHeader(
             pendingWorkReq.wr, cntrl, startPSN, isOnlyReqPkt
         );
+        // TODO: remove this assertion, just report error by WC
         dynAssert(
             isValid(maybeFirstOrOnlyHeader),
             "maybeFirstOrOnlyHeader assertion @ mkReqGenSQ",
@@ -629,28 +633,41 @@ module mkReqGenSQ#(
         );
 
         if (maybeFirstOrOnlyHeader matches tagged Valid .firstOrOnlyHeader) begin
-            // TODO: check WR length cannot be larger than PMTU for UD
-            if (workReqNeedDmaRead(pendingWorkReq.wr)) begin
-                let payloadGenReq = PayloadGenReq {
-                    initiator    : OP_INIT_SQ_RD,
-                    addPadding   : True,
-                    dmaReadReq   : DmaReadReq {
-                        sqpn     : cntrl.getSQPN,
-                        startAddr: pendingWorkReq.wr.laddr,
-                        len      : pendingWorkReq.wr.len,
-                        wrID     : pendingWorkReq.wr.id
-                    }
-                };
-                payloadGenerator.request(payloadGenReq);
+            // Check WR length cannot be larger than PMTU for UD
+            let isValidRdmaReq = qpType == IBV_QPT_UD ? isOnlyReqPkt : True;
+            if (isValidRdmaReq) begin
+                if (workReqNeedDmaRead(pendingWorkReq.wr)) begin
+                    let payloadGenReq = PayloadGenReq {
+                        initiator    : OP_INIT_SQ_RD,
+                        addPadding   : True,
+                        segment      : True,
+                        pmtu         : cntrl.getPMTU,
+                        dmaReadReq   : DmaReadReq {
+                            sqpn     : cntrl.getSQPN,
+                            startAddr: pendingWorkReq.wr.laddr,
+                            len      : pendingWorkReq.wr.len,
+                            wrID     : pendingWorkReq.wr.id
+                        }
+                    };
+                    payloadGenReqOutQ.enq(payloadGenReq);
+                    // payloadGenerator.request(payloadGenReq);
+                end
+
+                reqHeaderQ.enq(firstOrOnlyHeader);
+                isGenMultiPktReqReg <= !isOnlyReqPkt;
+
+                // $display(
+                //     "time=%0d: output PendingWorkReq=", $time, fshow(pendingWorkReq),
+                //     ", output header=", fshow(firstOrOnlyHeader)
+                // );
             end
-
-            reqHeaderQ.enq(firstOrOnlyHeader);
-            busyReg <= !isOnlyReqPkt;
-
-            // $display(
-            //     "time=%0d: output PendingWorkReq=", $time, fshow(pendingWorkReq),
-            //     ", output header=", fshow(firstOrOnlyHeader)
-            // );
+            else begin
+                $info(
+                    "time=%0d: discard PendingWorkReq with length=%0d",
+                    $time, pendingWorkReq.wr.len,
+                    " larger than PMTU when QpType=", fshow(qpType)
+                );
+            end
         end
         else begin
             let wcWaitDmaResp     = False;
@@ -668,7 +685,7 @@ module mkReqGenSQ#(
         end
     endrule
 
-    rule genMiddleOrLastReqHeader if (cntrl.isRTS && busyReg);
+    rule genMiddleOrLastReqHeader if (cntrl.isRTS && isGenMultiPktReqReg);
         let pendingWorkReq = pendingReqGenQ.first;
 
         let qpType = cntrl.getQpType;
@@ -721,7 +738,7 @@ module mkReqGenSQ#(
 
         if (isLastReqPkt) begin
             pendingReqGenQ.deq;
-            busyReg <= !isLastReqPkt;
+            isGenMultiPktReqReg <= !isLastReqPkt;
             let endPSN = unwrapMaybe(pendingWorkReq.endPSN);
             dynAssert(
                 curPsnReg == endPSN,

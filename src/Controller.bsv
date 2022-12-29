@@ -1,9 +1,41 @@
 import DataTypes :: *;
 import Headers :: *;
 import Settings :: *;
+import PrimUtils :: *;
 import Utils :: *;
 
+typedef Bit#(1) Epoch;
+
+interface ContextRQ;
+    method PermCheckInfo getPermCheckInfo();
+    method Action        setPermCheckInfo(PermCheckInfo permCheckInfo);
+    method Length        getTotalDmaWriteLen();
+    method Action        setTotalDmaWriteLen(Length totalDmaWriteLen);
+    method Length        getRemainingDmaWriteLen();
+    method Action        setRemainingDmaWriteLen(Length remainingDmaWriteLen);
+    method ADDR          getNextDmaWriteAddr();
+    method Action        setNextDmaWriteAddr(ADDR nextDmaWriteAddr);
+    method PktNum        getSendWriteReqPktNum();
+    method Action        setSendWriteReqPktNum(PktNum sendWriteReqPktNum);
+    method RdmaOpCode    getPreReqOpCode();
+    method Action        setPreReqOpCode(RdmaOpCode preOpCode);
+    method Action        restorePreReqOpCode(RdmaOpCode preOpCode);
+    method Epoch         getEpoch();
+    method Action        incEpoch();
+    method MSN           getMSN();
+    method Action        setMSN(MSN msn);
+    method PktNum        getRespPktNum();
+    method Action        setRespPktNum(PktNum respPktNum);
+    method PSN           getCurRespPsn();
+    method Action        setCurRespPsn(PSN curRespPsn);
+    method PSN           getEPSN();
+    method Action        setEPSN(PSN psn);
+    method Action        restoreEPSN(PSN psn);
+endinterface
+
 interface Controller;
+    interface ContextRQ contextRQ;
+
     method Action initialize(
         QpType                  qpType,
         RetryCnt                maxRnrCnt,
@@ -28,7 +60,7 @@ interface Controller;
     method Bool isReset();
     method Bool isRTR();
     method Bool isRTS();
-    method Bool isRTRorRTSorSQD();
+    method Bool isNonErr();
     method Bool isSQD();
 
     method QpState getQPS();
@@ -69,9 +101,6 @@ interface Controller;
     // method Action setPMTU(PMTU pmtu);
     method PSN getNPSN();
     method Action setNPSN(PSN psn);
-    method PSN getEPSN();
-    method Action incEPSN();
-    method Action setEPSN(PSN psn);
 endinterface
 
 module mkController(Controller);
@@ -98,9 +127,40 @@ module mkController(Controller);
     Reg#(PMTU) pmtuReg <- mkRegU;
     Reg#(PSN)  npsnReg <- mkRegU;
 
-    Reg#(PSN) epsnReg[2] <- mkCRegU(2);
-
     Bool inited = stateReg != IBV_QPS_RESET;
+
+    // ContextRQ related
+    Reg#(PermCheckInfo) permCheckInfoReg <- mkRegU;
+    Reg#(Length)     totalDmaWriteLenReg <- mkRegU;
+    Reg#(Length) remainingDmaWriteLenReg <- mkRegU;
+    Reg#(ADDR)       nextDmaWriteAddrReg <- mkRegU;
+    Reg#(PktNum)   sendWriteReqPktNumReg <- mkRegU; // TODO: remove it
+    Reg#(RdmaOpCode)  preReqOpCodeReg[2] <- mkCReg(2, SEND_ONLY);
+
+    // Reg#(Bit#(RNR_WAIT_CNT_WIDTH)) rnrWaitCntReg <- mkRegU;
+    // Reg#(Bool) rnrFlushReg <- mkReg(False);
+
+    Reg#(Bool) errFlushReg <- mkReg(False);
+    Reg#(Epoch)   epochReg <- mkReg(0);
+    Reg#(MSN)       msnReg <- mkReg(0);
+
+    Reg#(PktNum) respPktNumReg <- mkRegU;
+    Reg#(PSN)    curRespPsnReg <- mkRegU;
+    Reg#(PSN)       epsnReg[2] <- mkCRegU(2);
+
+    // rule loadRnrTimer if (inited && !rnrFlushReg);
+    //     rnrWaitCntReg <= fromInteger(getRnrTimeOutValue(minRnrTimerReg));
+    // endrule
+
+    // rule rnrWait if (inited && rnrFlushReg);
+    //     if (isZero(rnrWaitCntReg)) begin
+    //         rnrFlushReg <= False;
+    //     end
+    //     else begin
+    //         rnrWaitCntReg <= rnrWaitCntReg - 1;
+    //     end
+    // endrule
+    // End ContextRQ related
 
     method Action initialize(
         QpType                  qpType,
@@ -141,13 +201,13 @@ module mkController(Controller);
         epsnReg[0]                 <= epsn;
     endmethod
 
-    method Bool isERR()           = stateReg == IBV_QPS_ERR;
-    method Bool isInit()          = stateReg == IBV_QPS_INIT;
-    method Bool isReset()         = stateReg == IBV_QPS_RESET;
-    method Bool isRTR()           = stateReg == IBV_QPS_RTR;
-    method Bool isRTS()           = stateReg == IBV_QPS_RTS;
-    method Bool isRTRorRTSorSQD() = stateReg == IBV_QPS_RTR || stateReg == IBV_QPS_RTS || stateReg == IBV_QPS_SQD;
-    method Bool isSQD()           = stateReg == IBV_QPS_SQD;
+    method Bool isERR()    = stateReg == IBV_QPS_ERR;
+    method Bool isInit()   = stateReg == IBV_QPS_INIT;
+    method Bool isNonErr() = stateReg == IBV_QPS_RTR || stateReg == IBV_QPS_RTS || stateReg == IBV_QPS_SQD;
+    method Bool isReset()  = stateReg == IBV_QPS_RESET;
+    method Bool isRTR()    = stateReg == IBV_QPS_RTR;
+    method Bool isRTS()    = stateReg == IBV_QPS_RTS;
+    method Bool isSQD()    = stateReg == IBV_QPS_SQD;
 
     method QpState getQPS() = stateReg;
     // method Action setQPS(QpState qps) if (inited);
@@ -224,11 +284,67 @@ module mkController(Controller);
     method Action setNPSN(PSN psn);
         npsnReg <= psn;
     endmethod
-    method    PSN getEPSN() if (inited) = epsnReg[0];
-    method Action incEPSN() if (inited);
-        epsnReg[0] <= epsnReg[0] + 1;
-    endmethod
-    method Action setEPSN(PSN psn) if (inited);
-        epsnReg[1] <= psn;
-    endmethod
+
+    interface contextRQ = interface ContextRQ;
+        method PermCheckInfo getPermCheckInfo() if (inited) = permCheckInfoReg;
+        method Action        setPermCheckInfo(PermCheckInfo permCheckInfo) if (inited);
+            permCheckInfoReg <= permCheckInfo;
+        endmethod
+
+        method Length getTotalDmaWriteLen() if (inited) = totalDmaWriteLenReg;
+        method Action setTotalDmaWriteLen(Length totalDmaWriteLen) if (inited);
+            totalDmaWriteLenReg <= totalDmaWriteLen;
+        endmethod
+
+        method Length getRemainingDmaWriteLen() if (inited) = remainingDmaWriteLenReg;
+        method Action setRemainingDmaWriteLen(Length remainingDmaWriteLen) if (inited);
+            remainingDmaWriteLenReg <= remainingDmaWriteLen;
+        endmethod
+
+        method ADDR   getNextDmaWriteAddr() if (inited) = nextDmaWriteAddrReg;
+        method Action setNextDmaWriteAddr(ADDR nextDmaWriteAddr) if (inited);
+            nextDmaWriteAddrReg <= nextDmaWriteAddr;
+        endmethod
+
+        method PktNum getSendWriteReqPktNum() if (inited) = sendWriteReqPktNumReg;
+        method Action setSendWriteReqPktNum(PktNum sendWriteReqPktNum) if (inited);
+            sendWriteReqPktNumReg <= sendWriteReqPktNum;
+        endmethod
+
+        method RdmaOpCode getPreReqOpCode() if (inited) = preReqOpCodeReg[0];
+        method Action     setPreReqOpCode(RdmaOpCode preOpCode) if (inited);
+            preReqOpCodeReg[0] <= preOpCode;
+        endmethod
+        method Action     restorePreReqOpCode(RdmaOpCode preOpCode) if (inited);
+            preReqOpCodeReg[1] <= preOpCode;
+        endmethod
+
+        method Epoch  getEpoch() if (inited) = epochReg;
+        method Action incEpoch() if (inited);
+            epochReg <= ~epochReg;
+        endmethod
+
+        method MSN    getMSN() if (inited) = msnReg;
+        method Action setMSN(MSN msn) if (inited);
+            msnReg <= msn;
+        endmethod
+
+        method PktNum getRespPktNum() if (inited) = respPktNumReg;
+        method Action setRespPktNum(PktNum respPktNum) if (inited);
+            respPktNumReg <= respPktNum;
+        endmethod
+
+        method PSN    getCurRespPsn() if (inited) = curRespPsnReg;
+        method Action setCurRespPsn(PSN curRespPsn) if (inited);
+            curRespPsnReg <= curRespPsn;
+        endmethod
+
+        method PSN    getEPSN() if (inited) = epsnReg[0];
+        method Action setEPSN(PSN psn) if (inited);
+            epsnReg[0] <= psn;
+        endmethod
+        method Action restoreEPSN(PSN psn) if (inited);
+            epsnReg[1] <= psn;
+        endmethod
+    endinterface;
 endmodule

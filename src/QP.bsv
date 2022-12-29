@@ -1,13 +1,14 @@
 import PAClib :: *;
 
 import Controller :: *;
+import DataTypes :: *;
 import Headers :: *;
 import SpecialFIFOF :: *;
 import Settings :: *;
 import RetryHandleSQ :: *;
 import ReqGenSQ :: *;
 import RespHandleSQ :: *;
-import WorkCompGenReqSQ :: *;
+import WorkCompGenSQ :: *;
 import Utils :: *;
 
 interface SQ;
@@ -70,4 +71,13 @@ module mkSQ#(
 
     interface rdmaReqDataStreamPipeOut = reqGenSQ.rdmaReqDataStreamPipeOut;
     interface workCompPipeOut = wcPipeOut;
+endmodule
+
+interface QP;
+    PipeOut#(WorkComp) workCompPipeOutSQ;
+    PipeOut#(WorkComp) workCompPipeOutRQ;
+endinterface
+
+module mkQP#()(QP);
+
 endmodule

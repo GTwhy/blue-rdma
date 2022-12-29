@@ -97,9 +97,9 @@ module mkRespHandleSQ#(
         PendingWorkReq, RdmaPktMetaData, WorkReqAction,
         Maybe#(WorkCompStatus), WorkCompReqType
     )) pendingLenCheckQ <- mkFIFOF;
-    FIFOF#(Tuple7#(
+    FIFOF#(Tuple6#(
         PendingWorkReq, RdmaPktMetaData, Maybe#(WorkCompStatus),
-        WorkCompReqType, PktLen, ADDR, Bools4WorkCompAndDmaWrite
+        WorkCompReqType, ADDR, Bools4WorkCompAndDmaWrite
     )) pendingDmaReqQ <- mkFIFOF;
 
     Reg#(Length)     remainingReadRespLenReg <- mkRegU;
@@ -110,7 +110,7 @@ module mkRespHandleSQ#(
 
     // TODO: check discard duplicate or ghost reponses has
     // no response from PayloadConsumer will not incur bugs.
-    function Action discardPayload(PmtuFragNum fragNum);
+    function Action discardPktPayload(PmtuFragNum fragNum);
         action
             if (!isZero(fragNum)) begin
                 let discardReq = PayloadConReq {
@@ -323,7 +323,7 @@ module mkRespHandleSQ#(
             $format(
                 "wrAckType=", fshow(wrAckType),
                 ", and wcReqType=", fshow(wcReqType),
-                " should not be unknown in rule recvRespHeader"
+                " should not be unknown"
             )
         );
         pendingRespQ.enq(tuple6(
@@ -344,7 +344,7 @@ module mkRespHandleSQ#(
 
         let wcStatus = tagged Invalid;
         if (rdmaRespHasAETH(bth.opcode)) begin
-            wcStatus = genWorkCompStatusFromAETH(aeth);
+            wcStatus = genWorkCompStatusFromAethSQ(aeth);
             dynAssert(
                 isValid(wcStatus),
                 "isValid(wcStatus) assertion @ handleRetryResp() in mkRespHandleSQ",
@@ -354,7 +354,7 @@ module mkRespHandleSQ#(
 
         Bool isReadWR           = isReadWorkReq(curPendingWR.wr.opcode);
         Bool isAtomicWR         = isAtomicWorkReq(curPendingWR.wr.opcode);
-        Bool respOpCodeSeqCheck = rdmaNormalRespOpCodeSeqCheck(preRdmaOpCodeReg, bth.opcode);
+        Bool respOpCodeSeqCheck = checkNormalRespOpCodeSeqSQ(preRdmaOpCodeReg, bth.opcode);
         Bool respMatchWorkReq   = rdmaRespMatchWorkReq(bth.opcode, curPendingWR.wr.opcode);
 
         let hasWorkComp = False;
@@ -449,18 +449,15 @@ module mkRespHandleSQ#(
         } = pendingLenCheckQ.first;
         pendingLenCheckQ.deq;
 
-        let rdmaHeader       = pktMetaData.pktHeader;
-        let bth              = extractBTH(rdmaHeader.headerData);
-        // let atomicAckAeth    = extractAtomicAckEth(rdmaHeader.headerData);
-        let pktPayloadLen    = pktMetaData.pktPayloadLen - zeroExtend(bth.padCnt);
-        let isReadWR         = isReadWorkReq(pendingWR.wr.opcode);
-        // let isZeroWorkReqLen = isZero(pendingWR.wr.len);
-        // let isAtomicWR       = isAtomicWorkReq(pendingWR.wr.opcode);
-        let isFirstPkt       = isFirstRdmaOpCode(bth.opcode);
-        let isMidPkt         = isMiddleRdmaOpCode(bth.opcode);
-        let isLastPkt        = isLastRdmaOpCode(bth.opcode);
-        let isOnlyPkt        = isOnlyRdmaOpCode(bth.opcode);
-        let needWorkComp     = workReqNeedWorkComp(pendingWR.wr);
+        let rdmaHeader    = pktMetaData.pktHeader;
+        let bth           = extractBTH(rdmaHeader.headerData);
+        let pktPayloadLen = pktMetaData.pktPayloadLen;
+        let isReadWR      = isReadWorkReq(pendingWR.wr.opcode);
+        let isFirstPkt    = isFirstRdmaOpCode(bth.opcode);
+        let isMidPkt      = isMiddleRdmaOpCode(bth.opcode);
+        let isLastPkt     = isLastRdmaOpCode(bth.opcode);
+        let isOnlyPkt     = isOnlyRdmaOpCode(bth.opcode);
+        let needWorkComp  = workReqNeedWorkComp(pendingWR.wr);
 
         let genWorkComp   = False;
         let shouldDiscard = False;
@@ -475,7 +472,7 @@ module mkRespHandleSQ#(
             WR_ACT_BAD_RESP: begin
                 genWorkComp = True;
                 shouldDiscard = True;
-                // discardPayload(pktMetaData.pktFragNum);
+                // discardPktPayload(pktMetaData.pktFragNum);
             end
             WR_ACT_ERROR_RESP: begin
                 genWorkComp = True;
@@ -531,20 +528,20 @@ module mkRespHandleSQ#(
             end
             WR_ACT_DUPLICATE_RESP: begin
                 shouldDiscard = True;
-                // discardPayload(pktMetaData.pktFragNum);
+                // discardPktPayload(pktMetaData.pktFragNum);
             end
             WR_ACT_GHOST_RESP: begin
                 shouldDiscard = True;
-                // discardPayload(pktMetaData.pktFragNum);
+                // discardPktPayload(pktMetaData.pktFragNum);
             end
             WR_ACT_ILLEGAL_RESP: begin
                 genWorkComp   = True;
                 shouldDiscard = True;
-                // discardPayload(pktMetaData.pktFragNum);
+                // discardPktPayload(pktMetaData.pktFragNum);
             end
             WR_ACT_DISCARD_RESP, WR_ACT_FLUSH_RESP: begin
                 shouldDiscard = True;
-                // discardPayload(pktMetaData.pktFragNum);
+                // discardPktPayload(pktMetaData.pktFragNum);
             end
             WR_ACT_EXPLICIT_RETRY, WR_ACT_IMPLICIT_RETRY: begin
                 Bool isRetryErr  = retryHandler.hasRetryErr;
@@ -566,8 +563,8 @@ module mkRespHandleSQ#(
             enoughDmaSpace  : enoughDmaSpace,
             readRespLenMatch: readRespLenMatch
         };
-        pendingDmaReqQ.enq(tuple7(
-            pendingWR, pktMetaData, wcStatus, wcReqType, pktPayloadLen,
+        pendingDmaReqQ.enq(tuple6(
+            pendingWR, pktMetaData, wcStatus, wcReqType,
             nextReadRespWriteAddr, bools4WorkCompAndDmaWrite
         ));
     endrule
@@ -575,7 +572,7 @@ module mkRespHandleSQ#(
     // Response handle pipeline fourth stage
     rule genWorkCompAndInitDma if (cntrl.isRTS || cntrl.isERR); // This rule still runs at retry or error state
         let {
-            pendingWR, pktMetaData, wcStatus, wcReqType, pktPayloadLen,
+            pendingWR, pktMetaData, wcStatus, wcReqType,
             nextReadRespWriteAddr, bools4WorkCompAndDmaWrite
         } = pendingDmaReqQ.first;
         pendingDmaReqQ.deq;
@@ -593,12 +590,12 @@ module mkRespHandleSQ#(
 
         let wcWaitDmaResp = False;
         if (shouldDiscard) begin
-            discardPayload(pktMetaData.pktFragNum);
+            discardPktPayload(pktMetaData.pktFragNum);
         end
         else if (isReadWR) begin
             if (!enoughDmaSpace || !readRespLenMatch) begin
                 // Read response length not match WR length
-                discardPayload(pktMetaData.pktFragNum);
+                discardPktPayload(pktMetaData.pktFragNum);
                 wcStatus  = tagged Valid IBV_WC_LOC_LEN_ERR;
                 wcReqType = WC_REQ_TYPE_ERR_FULL_ACK;
             end
@@ -606,10 +603,10 @@ module mkRespHandleSQ#(
                 let payloadConReq = PayloadConReq {
                     initiator    : OP_INIT_SQ_WR,
                     fragNum      : pktMetaData.pktFragNum,
-                    consumeInfo  : tagged ReadRespInfo DmaWriteMetaData {
+                    consumeInfo  : tagged SendWriteReqReadRespInfo DmaWriteMetaData {
                         sqpn     : cntrl.getSQPN,
                         startAddr: nextReadRespWriteAddr,
-                        len      : pktPayloadLen,
+                        len      : pktMetaData.pktPayloadLen,
                         psn      : bth.psn
                     }
                 };

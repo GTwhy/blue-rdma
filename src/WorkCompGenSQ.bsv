@@ -76,13 +76,12 @@ module mkWorkCompGenSQ#(
     PipeOut#(PendingWorkReq) pendingWorkReqPipeIn,
     PipeOut#(WorkCompGenReqSQ) wcGenReqPipeInFromReqGenInSQ,
     PipeOut#(WorkCompGenReqSQ) wcGenReqPipeInFromRespHandleInSQ,
-    PipeOut#(WorkComp) workCompPipeInFromRQ
+    PipeOut#(WorkCompStatus) workCompStatusPipeInFromRQ
 )(PipeOut#(WorkComp));
     FIFOF#(WorkComp) workCompOutQ4SQ <- mkSizedFIFOF(valueOf(MAX_CQE));
-    FIFOF#(WorkComp) workCompOutQ4RQ <- mkSizedFIFOF(valueOf(MAX_CQE));
     FIFOF#(WorkCompGenReqSQ) pendingWorkCompQ4SQ <- mkSizedFIFOF(valueOf(MAX_PENDING_WORK_COMP_NUM));
 
-    PulseWire hasErrWorkCompRQPulse <- mkPulseWire;
+    PulseWire pulseHasErrFromRQ <- mkPulseWire;
     Reg#(WorkCompGenState) workCompGenStateReg <- mkReg(WC_GEN_ST_STOP);
 
     function ActionValue#(Bool) submitWorkCompUntilFirstErr(
@@ -182,22 +181,13 @@ module mkWorkCompGenSQ#(
         end
     endrule
 
-    rule recvWorkCompRQ if (workCompGenStateReg == WC_GEN_ST_NORMAL);
-        let wcRQ = workCompPipeInFromRQ.first;
-        workCompPipeInFromRQ.deq;
+    rule recvWorkCompStatusRQ if (workCompGenStateReg == WC_GEN_ST_NORMAL);
+        let wcStatusRQ = workCompStatusPipeInFromRQ.first;
+        workCompStatusPipeInFromRQ.deq;
 
-        if (wcRQ.status != IBV_WC_SUCCESS) begin
-            hasErrWorkCompRQPulse.send;
+        if (wcStatusRQ != IBV_WC_SUCCESS) begin
+            pulseHasErrFromRQ.send;
         end
-        workCompOutQ4RQ.enq(wcRQ);
-    endrule
-
-    rule flushWorkCompRQ if (workCompGenStateReg == WC_GEN_ST_ERR_FLUSH);
-        let wcRQ = workCompPipeInFromRQ.first;
-        workCompPipeInFromRQ.deq;
-
-        wcRQ.status = IBV_WC_WR_FLUSH_ERR;
-        workCompOutQ4RQ.enq(wcRQ);
     endrule
 
     rule genWorkCompNormalCase if (cntrl.isRTS && workCompGenStateReg == WC_GEN_ST_NORMAL);
@@ -218,7 +208,7 @@ module mkWorkCompGenSQ#(
             workCompOutQ4SQ
         );
 
-        if (hasErrWorkCompOrCompQueueFullSQ || hasErrWorkCompRQPulse) begin
+        if (hasErrWorkCompOrCompQueueFullSQ || pulseHasErrFromRQ) begin
             cntrl.setStateErr;
             workCompGenStateReg <= WC_GEN_ST_ERR_FLUSH;
 
@@ -231,7 +221,6 @@ module mkWorkCompGenSQ#(
     endrule
 
     rule errFlushPendingWorkCompGenReqSQ if (
-        // cntrl.isERR &&
         workCompGenStateReg == WC_GEN_ST_ERR_FLUSH
     );
         let wcGenReqSQ = pendingWorkCompQ4SQ.first;
@@ -254,10 +243,10 @@ module mkWorkCompGenSQ#(
             end
         end
 
-        $display(
-            "time=%0d: flush pendingWorkCompQ4SQ, errFlushWC=",
-            $time, fshow(errFlushWC)
-        );
+        // $display(
+        //     "time=%0d: flush pendingWorkCompQ4SQ, errFlushWC=",
+        //     $time, fshow(errFlushWC)
+        // );
     endrule
 
     // (* no_implicit_conditions, fire_when_enabled *)

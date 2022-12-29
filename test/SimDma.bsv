@@ -145,7 +145,7 @@ module mkSimDmaReadSrvAndReqRespPipeOut(DmaReadSrvAndReqRespPipeOut);
         //     $time, totalFragCntReg, fshow(dataStream)
         // );
 
-        countDown.dec;
+        countDown.decr;
     endrule
 
     interface dmaReadSrv = interface DmaReadSrv;

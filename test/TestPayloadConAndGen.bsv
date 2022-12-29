@@ -21,6 +21,7 @@ module mkTestPayloadConAndGenNormalCase(Empty);
     let qpType = IBV_QPT_XRC_SEND;
     let pmtu = IBV_MTU_4096;
 
+    FIFOF#(PayloadGenReq) payloadGenReqQ <- mkFIFOF;
     FIFOF#(PayloadConReq) payloadConReqQ <- mkFIFOF;
     FIFOF#(PSN) payloadConReqPsnQ <- mkFIFOF;
 
@@ -34,7 +35,9 @@ module mkTestPayloadConAndGenNormalCase(Empty);
     let simDmaReadSrv <- mkSimDmaReadSrvAndDataStreamPipeOut;
     let simDmaReadSrvDataStreamPipeOut <- mkBufferN(2, simDmaReadSrv.dataStream);
 
-    let payloadGenerator <- mkPayloadGenerator(cntrl, simDmaReadSrv.dmaReadSrv);
+    let payloadGenerator <- mkPayloadGenerator(
+        cntrl, simDmaReadSrv.dmaReadSrv, convertFifo2PipeOut(payloadGenReqQ)
+    );
     let payloadDataStreamPipeOut <- mkFunc2Pipe(
         getDataStreamFromPayloadGenRespPipeOut,
         payloadGenerator.respPipeOut
@@ -58,13 +61,15 @@ module mkTestPayloadConAndGenNormalCase(Empty);
     // - simDmaWriteSrvDataStreamPipeOut
     // - payloadConsumer.respPipeOut
 
-    rule genPayloadGenReq if (cntrl.isRTRorRTSorSQD);
+    rule genPayloadGenReq if (cntrl.isNonErr);
         let pktLen = pktLenPipeOut4Gen.first;
         pktLenPipeOut4Gen.deq;
 
         let payloadGenReq = PayloadGenReq {
             initiator    : OP_INIT_SQ_RD,
             addPadding   : False,
+            segment      : False,
+            pmtu         : pmtu,
             dmaReadReq   : DmaReadReq {
                 sqpn     : cntrl.getSQPN,
                 startAddr: dontCareValue,
@@ -72,10 +77,11 @@ module mkTestPayloadConAndGenNormalCase(Empty);
                 wrID     : dontCareValue
             }
         };
-        payloadGenerator.request(payloadGenReq);
+        payloadGenReqQ.enq(payloadGenReq);
+        // payloadGenerator.request(payloadGenReq);
     endrule
 
-    rule genPayloadConReq if (cntrl.isRTRorRTSorSQD);
+    rule genPayloadConReq if (cntrl.isNonErr);
         let pktLen = pktLenPipeOut4Con.first;
         pktLenPipeOut4Con.deq;
 
@@ -93,7 +99,7 @@ module mkTestPayloadConAndGenNormalCase(Empty);
         let payloadConReq = PayloadConReq {
             initiator    : OP_INIT_SQ_WR,
             fragNum      : truncate(totalFragNum),
-            consumeInfo  : tagged ReadRespInfo DmaWriteMetaData {
+            consumeInfo  : tagged SendWriteReqReadRespInfo DmaWriteMetaData {
                 sqpn     : cntrl.getSQPN,
                 startAddr: dontCareValue,
                 len      : pktLen,
@@ -119,10 +125,10 @@ module mkTestPayloadConAndGenNormalCase(Empty);
                 payloadConResp.dmaWriteResp.psn, expectedPSN
             )
         );
-        $display(
-            "time=%0d: payloadConResp.dmaWriteResp.psn=%h should == expectedPSN=%h",
-            $time, payloadConResp.dmaWriteResp.psn, expectedPSN
-        );
+        // $display(
+        //     "time=%0d: payloadConResp.dmaWriteResp.psn=%h should == expectedPSN=%h",
+        //     $time, payloadConResp.dmaWriteResp.psn, expectedPSN
+        // );
     endrule
 
     rule comparePayloadDataStream;

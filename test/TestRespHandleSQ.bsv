@@ -8,13 +8,15 @@ import Headers :: *;
 import Controller :: *;
 import DataTypes :: *;
 import InputPktHandle :: *;
+import MetaData :: *;
 import PayloadConAndGen :: *;
+import PrimUtils :: *;
 import RespHandleSQ :: *;
 import RetryHandleSQ :: *;
 import SpecialFIFOF :: *;
 import Settings :: *;
 import SimDma :: *;
-import SimGenRdmaResp :: *;
+import SimGenRdmaReqAndResp :: *;
 import Utils :: *;
 import Utils4Test :: *;
 import WorkCompGenSQ :: *;
@@ -27,7 +29,10 @@ module mkTestRespHandleNormalCase(Empty);
     let qpType = IBV_QPT_XRC_SEND;
     let pmtu = IBV_MTU_256;
 
-    let cntrl <- mkSimController(qpType, pmtu);
+    let qpMetaData <- mkSimQPs(qpType, pmtu);
+    let qpn = dontCareValue;
+    let cntrl = qpMetaData.getCntrl(qpn);
+    // let cntrl <- mkSimController(qpType, pmtu);
 
     // WorkReq generation
     PendingWorkReqBuf pendingWorkReqBuf <- mkScanFIFOF;
@@ -48,9 +53,9 @@ module mkTestRespHandleNormalCase(Empty);
     // Payload DataStream generation
     let simDmaReadSrv <- mkSimDmaReadSrvAndDataStreamPipeOut;
     let simDmaReadSrvDataStreamPipeOut <- mkBufferN(4, simDmaReadSrv.dataStream);
-    let segSimDmaReadSrvDataStreamPipeOut <- mkSegmentDataStreamByPmtu(
-        simDmaReadSrvDataStreamPipeOut,
-        cntrl.getPMTU
+    let pmtuPipeOut <- mkConstantPipeOut(cntrl.getPMTU);
+    let segSimDmaReadSrvDataStreamPipeOut <- mkSegmentDataStreamByPmtuAndAddPadCnt(
+        simDmaReadSrvDataStreamPipeOut, pmtuPipeOut
     );
     // Generate RDMA responses
     let rdmaRespAndHeaderPipeOut <- mkSimGenRdmaResp(
@@ -62,9 +67,9 @@ module mkTestRespHandleNormalCase(Empty);
     );
     // Build RdmaPktMetaData and payload DataStream
     let pktMetaDataAndPayloadPipeOut <- mkInputRdmaPktBufAndHeaderValidation(
-        headerAndMetaDataAndPayloadPipeOut, pmtu
+        headerAndMetaDataAndPayloadPipeOut, qpMetaData
     );
-
+    // Retry handler
     let retryHandler <- mkRetryHandleSQ(cntrl, pendingWorkReqBuf.scanIfc);
 
     // DUT
@@ -85,17 +90,17 @@ module mkTestRespHandleNormalCase(Empty);
     );
     // WorkCompGenSQ
     FIFOF#(WorkCompGenReqSQ) wcGenReqQ4ReqGenInSQ <- mkFIFOF;
-    FIFOF#(WorkComp) workCompQFromRQ <- mkFIFOF;
+    FIFOF#(WorkCompStatus) workCompStatusQFromRQ <- mkFIFOF;
     let workCompPipeOut <- mkWorkCompGenSQ(
         cntrl,
         payloadConsumer.respPipeOut,
         convertFifo2PipeOut(pendingWorkReqBuf.fifoIfc),
         convertFifo2PipeOut(wcGenReqQ4ReqGenInSQ),
         dut.workCompGenReqPipeOut,
-        convertFifo2PipeOut(workCompQFromRQ)
+        convertFifo2PipeOut(workCompStatusQFromRQ)
     );
 
-    // PipeOut need handle:
+    // PipeOut need to handle:
     // - pendingWorkReqPipeOut4WorkComp
     // - pendingWorkReqPipeOut4RespGen
     // - convertFifo2PipeOut(pendingWorkReqBuf.fifoIfc)
@@ -142,14 +147,6 @@ module mkTestRespHandleNormalCase(Empty);
 
             let refDataStream = segSimDmaReadSrvDataStreamPipeOut.first;
             segSimDmaReadSrvDataStreamPipeOut.deq;
-            if (refDataStream.isLast) begin
-                let lastFragByteEnWithPadding = addPadding2LastFragByteEn(refDataStream.byteEn);
-                // $display(
-                //     "time=%0d: refDataStream.byteEn=%h, padCnt=%0d",
-                //     $time, refDataStream.byteEn, padCnt
-                // );
-                refDataStream.byteEn = lastFragByteEnWithPadding;
-            end
 
             dynAssert(
                 payloadDataStream == refDataStream,

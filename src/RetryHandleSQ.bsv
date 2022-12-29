@@ -10,10 +10,6 @@ import SpecialFIFOF :: *;
 import Settings :: *;
 import Utils :: *;
 
-typedef TMul#(8192, TExp#(30))                 MAX_TIMEOUT_NS;
-typedef TDiv#(MAX_TIMEOUT_NS, TARGET_CYCLE_NS) MAX_TIMEOUT_CYCLES;
-typedef TLog#(MAX_TIMEOUT_CYCLES)              TIMEOUT_CNT_WIDTH;
-
 interface RetryHandleSQ;
     method Bool hasRetryErr();
     method Bool isRetryDone();
@@ -30,6 +26,7 @@ interface RetryHandleSQ;
 endinterface
 
 typedef enum {
+    RETRY_ST_RNR_CHECK,
     RETRY_ST_RNR_WAIT,
     RETRY_ST_PARTIAL_RETRY_WR,
     RETRY_ST_FULL_RETRY_WR,
@@ -45,8 +42,9 @@ module mkRetryHandleSQ#(
 )(RetryHandleSQ);
     FIFOF#(PendingWorkReq) retryPendingWorkReqOutQ <- mkFIFOF;
 
-    Reg#(Bit#(TIMEOUT_CNT_WIDTH)) timeOutCntReg <- mkRegU;
-    Reg#(Bool) disableTimeOutReg <- mkRegU;
+    Reg#(RnrWaitCycleCnt) rnrWaitCntReg <- mkRegU;
+    Reg#(TimeOutCycleCnt) timeOutCntReg <- mkRegU;
+    Reg#(Bool)        disableTimeOutReg <- mkRegU;
 
     Reg#(Bool) resetRetryCntReg[2] <- mkCReg(2, False);
     Reg#(Bool)  resetTimeOutReg[2] <- mkCReg(2, False);
@@ -148,7 +146,7 @@ module mkRetryHandleSQ#(
                 retryHandleStateReg <= RETRY_ST_RETRY_LIMIT_EXC;
             end
             else begin
-                retryHandleStateReg <= RETRY_ST_RNR_WAIT;
+                retryHandleStateReg <= RETRY_ST_RNR_CHECK;
                 pendingWorkReqScan.scanStart;
 
                 // If both notified retry and timeout retry,
@@ -164,7 +162,7 @@ module mkRetryHandleSQ#(
         end
     endrule
 
-    rule rnrWait if (cntrl.isRTS && retryHandleStateReg == RETRY_ST_RNR_WAIT);
+    rule rnrCheck if (cntrl.isRTS && retryHandleStateReg == RETRY_ST_RNR_CHECK);
         let curRetryWR = pendingWorkReqScan.current;
         if (retryReasonReg != RETRY_REASON_TIME_OUT) begin
             dynAssert(
@@ -190,9 +188,21 @@ module mkRetryHandleSQ#(
         let rnrTimer = cntrl.getMinRnrTimer;
         if (retryReasonReg == RETRY_REASON_RNR) begin
             rnrTimer = retryRnrTimerReg > rnrTimer ? retryRnrTimerReg : rnrTimer;
+            rnrWaitCntReg <= fromInteger(getRnrTimeOutValue(rnrTimer));
+            retryHandleStateReg <= RETRY_ST_RNR_WAIT;
         end
-        // TODO: wait for RNR timer out
-        retryHandleStateReg <= RETRY_ST_PARTIAL_RETRY_WR;
+        else begin
+            retryHandleStateReg <= RETRY_ST_PARTIAL_RETRY_WR;
+        end
+    endrule
+
+    rule rnrWait if (cntrl.isRTS && retryHandleStateReg == RETRY_ST_RNR_WAIT);
+        if (isZero(rnrWaitCntReg)) begin
+            retryHandleStateReg <= RETRY_ST_PARTIAL_RETRY_WR;
+        end
+        else begin
+            rnrWaitCntReg <= rnrWaitCntReg - 1;
+        end
     endrule
 
     rule partialRetryWR if (cntrl.isRTS && retryHandleStateReg == RETRY_ST_PARTIAL_RETRY_WR);

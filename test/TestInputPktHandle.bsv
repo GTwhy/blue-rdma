@@ -6,43 +6,14 @@ import Vector :: *;
 
 import Assertions :: *;
 import DataTypes :: *;
-import InputPktHandle :: *;
 import Headers :: *;
-import ReqGenSQ :: *;
+import InputPktHandle :: *;
+import MetaData :: *;
 import PrimUtils :: *;
 import Settings :: *;
-import SimDma :: *;
+import SimGenRdmaReqAndResp :: *;
 import Utils :: *;
 import Utils4Test :: *;
-
-module mkSimGenRdmaReqByWorkReq#(
-    PipeOut#(PendingWorkReq) pendingWorkReqPipeIn,
-    QpType qpType,
-    PMTU pmtu
-)(ReqGenSQ);
-    let cntrl <- mkSimController(qpType, pmtu);
-    let simDmaReadSrv <- mkSimDmaReadSrv;
-    // Assume no pending WR
-    let pendingWorkReqBufNotEmpty = False;
-    let resultPipeOut <- mkReqGenSQ(
-        cntrl, simDmaReadSrv, pendingWorkReqPipeIn,
-        pendingWorkReqBufNotEmpty
-    );
-
-    rule noErrWC;
-        dynAssert(
-            !resultPipeOut.workCompGenReqPipeOut.notEmpty,
-            "No error WC assertion @ mkSimGenRdmaReqByWorkReq",
-            $format(
-                "resultPipeOut.workCompGenReqPipeOut.notEmpty=",
-                fshow(resultPipeOut.workCompGenReqPipeOut.notEmpty),
-                " should be false, since it should have no error WC"
-            )
-        );
-    endrule
-
-    return resultPipeOut;
-endmodule
 
 module mkTestCalculatePktLen#(
     QpType qpType,
@@ -50,27 +21,14 @@ module mkTestCalculatePktLen#(
     Length minPayloadLen,
     Length maxPayloadLen
 )(Empty);
-    WorkReqOpCode workReqOpCodeArray[8] = {
-        IBV_WR_RDMA_WRITE,
-        IBV_WR_RDMA_WRITE_WITH_IMM,
-        IBV_WR_SEND,
-        IBV_WR_SEND_WITH_IMM,
-        IBV_WR_RDMA_READ,
-        IBV_WR_ATOMIC_CMP_AND_SWP,
-        IBV_WR_ATOMIC_FETCH_AND_ADD,
-        IBV_WR_SEND_WITH_INV
-    };
-    // Prepare PendingWorkReq input
-    Vector#(8, WorkReqOpCode) workReqOpCodeVec =
-        arrayToVector(workReqOpCodeArray);
-    Vector#(1, PipeOut#(WorkReq)) workReqPipeOutVec <- mkRandomWorkReqInRange(
-        workReqOpCodeVec, minPayloadLen, maxPayloadLen
+    Vector#(1, PipeOut#(WorkReq)) workReqPipeOutVec <- mkRandomWorkReq(
+        minPayloadLen, maxPayloadLen
     );
     let newPendingWorkReqPipeOut <-
         mkNewPendingWorkReqPipeOut(workReqPipeOutVec[0]);
 
     // Generate RDMA requests
-    let reqGenSQ <- mkSimGenRdmaReqByWorkReq(
+    let reqGenSQ <- mkSimGenRdmaReq(
         newPendingWorkReqPipeOut, qpType, pmtu
     );
     let pendingWorkReqPipeOut4Ref <- mkBufferN(4, reqGenSQ.pendingWorkReqPipeOut);
@@ -81,9 +39,12 @@ module mkTestCalculatePktLen#(
         rdmaReqPipeOut
     );
 
+    // QP metadata
+    let qpMetaData <- mkSimQPs(qpType, pmtu);
+
     // DUT
     let dut <- mkInputRdmaPktBufAndHeaderValidation(
-        headerAndMetaDataAndPayloadPipeOut, pmtu
+        headerAndMetaDataAndPayloadPipeOut, qpMetaData
     );
     let pktMetaDataPipeOut = dut.pktMetaData;
 
@@ -120,13 +81,16 @@ module mkTestCalculatePktLen#(
                 );
             end
             else begin
-                Length pktPadCnt = zeroExtend(bth.padCnt);
+                // Length pktPadCnt = zeroExtend(bth.padCnt);
                 dynAssert(
-                    pktLenSum == (pendingWR.wr.len + pktPadCnt),
+                    pktLenSum == pendingWR.wr.len,
+                    // pktLenSum == (pendingWR.wr.len + pktPadCnt),
                     "pktLenSum assertion @ mkTestCalculatePktLen",
                     $format(
-                        "pktLenSum=%0d should == pendingWR.wr.len=%0d + pktPadCnt=%0d",
-                        pktLenSum, pendingWR.wr.len, pktPadCnt
+                        "pktLenSum=%0d should == pendingWR.wr.len=%0d",
+                        pktLenSum, pendingWR.wr.len
+                        // "pktLenSum=%0d should == pendingWR.wr.len=%0d + pktPadCnt=%0d",
+                        // pktLenSum, pendingWR.wr.len, pktPadCnt
                     )
                 );
             end
@@ -144,7 +108,7 @@ module mkTestCalculatePktLen#(
         // Decrement the count down counter when zero payload length,
         // since ReqGenSQ will not send zero payload length request to DMA.
         if (maxPayloadLen == 0) begin
-            countDown.dec;
+            countDown.decr;
         end
         // $display("time=%0d: pending WR=", $time, fshow(pendingWR));
     endrule
@@ -153,9 +117,9 @@ endmodule
 (* synthesize *)
 module mkTestCalculateRandomPktLen(Empty);
     let qpType = IBV_QPT_RC;
-    let pmtu = IBV_MTU_4096;
-    Length minPayloadLen = 4096;
-    Length maxPayloadLen = 40960;
+    let pmtu = IBV_MTU_256;
+    Length minPayloadLen = 1;
+    Length maxPayloadLen = 1025;
 
     let ret <- mkTestCalculatePktLen(
         qpType, pmtu, minPayloadLen, maxPayloadLen

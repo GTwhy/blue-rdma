@@ -5,6 +5,7 @@ import Vector :: *;
 
 import Assertions :: *;
 import Controller :: *;
+import DataTypes :: *;
 import Headers :: *;
 import MetaData :: *;
 import Settings :: *;
@@ -124,7 +125,7 @@ module mkTestPDs(Empty);
     endrule
 
     rule deAllocResp if (pdTestStateReg == TEST_ST_POP);
-        countDown.dec;
+        countDown.decr;
 
         if (isAllOnes(pdCnt)) begin
             pdCnt <= 0;
@@ -265,7 +266,7 @@ module mkTestMRs(Empty);
     endrule
 
     rule deAllocResp if (mrTestStateReg == TEST_ST_POP);
-        countDown.dec;
+        countDown.decr;
 
         if (isAllOnes(mrCnt)) begin
             mrCnt <= 0;
@@ -436,7 +437,7 @@ module mkTestQPs(Empty);
     endrule
 
     rule destroyResp if (qpTestStateReg == TEST_ST_POP);
-        countDown.dec;
+        countDown.decr;
 
         if (isAllOnes(qpCnt)) begin
             qpCnt <= 0;
@@ -462,5 +463,249 @@ module mkTestQPs(Empty);
         //     " should be true when qpCnt=%0d",
         //     qpCnt
         // );
+    endrule
+endmodule
+
+(* synthesize *)
+module mkTestPermCheckMR(Empty);
+    let pdMetaData  <- mkPDs;
+    let permCheckMR <- mkPermCheckMR(pdMetaData);
+
+    Count#(Bit#(TLog#(TAdd#(1, MAX_PD))))         pdCnt <- mkCount(0);
+    Count#(Bit#(TLog#(TAdd#(1, MAX_MR_PER_PD))))  mrCnt <- mkCount(0);
+    Count#(Bit#(TLog#(TAdd#(1, MAX_PD)))) mrMetaDataCnt <- mkCount(0);
+    Count#(Bit#(TLog#(TMul#(2, TMul#(MAX_PD, MAX_MR_PER_PD))))) searchCnt <- mkCount(0);
+
+    PipeOut#(PdKey) pdKeyPipeOut <- mkGenericRandomPipeOut;
+    PipeOut#(MrKeyPart) mrKeyPipeOut <- mkGenericRandomPipeOut;
+
+    FIFOF#(PdHandler) pdHandlerQ4FillMR <- mkFIFOF;
+    FIFOF#(Tuple2#(PdHandler, LKEY)) lKeyQ4Search <- mkSizedFIFOF(valueOf(TMul#(MAX_PD, MAX_MR_PER_PD)));
+    FIFOF#(Tuple2#(PdHandler, RKEY)) rKeyQ4Search <- mkSizedFIFOF(valueOf(TMul#(MAX_PD, MAX_MR_PER_PD)));
+    FIFOF#(PermCheckInfo) lKeyPermCheckInfoQ <- mkFIFOF;
+    FIFOF#(PermCheckInfo) rKeyPermCheckInfoQ <- mkFIFOF;
+
+    Reg#(SeqTestState) mrCheckStateReg <- mkReg(TEST_ST_FILL);
+
+    let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
+
+    ADDR defaultAddr = fromInteger(0);
+    Length defaultLen = fromInteger(valueOf(RDMA_MAX_LEN));
+    let defaultAccPerm = IBV_ACCESS_REMOTE_WRITE;
+
+    rule allocPDs if (pdCnt < fromInteger(valueOf(MAX_PD)) && mrCheckStateReg == TEST_ST_FILL);
+        pdCnt.incr(1);
+        let curPdKey = pdKeyPipeOut.first;
+        pdKeyPipeOut.deq;
+
+        pdMetaData.allocPD(curPdKey);
+
+        // $display("time=%0d: curPdKey=%h", $time, curPdKey);
+    endrule
+
+    rule allocRespPDs if (mrCheckStateReg == TEST_ST_FILL);
+        let pdHandler <- pdMetaData.allocResp;
+        pdHandlerQ4FillMR.enq(pdHandler);
+
+        // $display("time=%0d: pdHandler=%h", $time, pdHandler);
+    endrule
+
+    rule allocMRs if (mrCheckStateReg == TEST_ST_FILL);
+        let pdHandler = pdHandlerQ4FillMR.first;
+        let maybeMRs = pdMetaData.getMRs(pdHandler);
+        dynAssert(
+            isValid(maybeMRs),
+            "maybeMRs assertion @ mkTestPermCheckMR",
+            $format(
+                "isValid(maybeMRs)=", fshow(isValid(maybeMRs)),
+                " should be valid for pdHandler=%h", pdHandler
+            )
+        );
+
+        // let mrMetaData = unwrapMaybe(maybeMRs);
+        if (maybeMRs matches tagged Valid .mrMetaData &&& mrMetaData.notFull) begin
+            let curMrKey = mrKeyPipeOut.first;
+            mrKeyPipeOut.deq;
+
+            mrMetaData.allocMR(
+                defaultAddr,          // laddr
+                defaultLen,           // len
+                defaultAccPerm,       // accType
+                pdHandler,            // pdHandler
+                curMrKey,             // lkeyPart
+                tagged Valid curMrKey // rkeyPart
+            );
+
+            // $display("time=%0d: curMrKey=%h", $time, curMrKey);
+        end
+    endrule
+
+    rule allocRespMRs if (mrCheckStateReg == TEST_ST_FILL);
+        if (mrMetaDataCnt < fromInteger(valueOf(MAX_PD))) begin
+            if (mrCnt < fromInteger(valueOf(MAX_MR_PER_PD))) begin
+                mrCnt.incr(1);
+
+                let pdHandler = pdHandlerQ4FillMR.first;
+                let maybeMRs = pdMetaData.getMRs(pdHandler);
+                dynAssert(
+                    isValid(maybeMRs),
+                    "maybeMRs assertion @ mkTestPermCheckMR",
+                    $format(
+                        "isValid(maybeMRs)=", fshow(isValid(maybeMRs)),
+                        " should be valid for pdHandler=%h", pdHandler
+                    )
+                );
+
+                if (maybeMRs matches tagged Valid .mrMetaData) begin
+                    let { mrIndex, lkey, rkey } <- mrMetaData.allocResp;
+
+                    dynAssert(
+                        isValid(rkey),
+                        "rkey assertion @ mkTestPermCheckMR",
+                        $format("rkey=", rkey, " should be valid")
+                    );
+
+                    lKeyQ4Search.enq(tuple2(pdHandler, lkey));
+                    rKeyQ4Search.enq(tuple2(pdHandler, unwrapMaybe(rkey)));
+
+                    // $display("time=%0d: mrIndex=%h", $time, mrIndex);
+                end
+            end
+            else begin
+                mrCnt <= 0;
+                mrMetaDataCnt.incr(1);
+                pdHandlerQ4FillMR.deq;
+            end
+        end
+        else begin
+            mrMetaDataCnt <= 0;
+            searchCnt <= fromInteger(valueOf(TSub#(TMul#(2, TMul#(MAX_PD, MAX_MR_PER_PD)), 1)));
+            mrCheckStateReg <= TEST_ST_ACT;
+        end
+
+        // $display(
+        //     "time=%0d: mrMetaDataCnt=%h, mrCnt=%h", $time, mrMetaDataCnt, mrCnt
+        // );
+    endrule
+
+    rule checkReqByLKey if (lKeyQ4Search.notEmpty && mrCheckStateReg == TEST_ST_ACT);
+        let { pdHandler, lkey } = lKeyQ4Search.first;
+        lKeyQ4Search.deq;
+
+        let permCheckInfo = PermCheckInfo {
+            wrID         : tagged Invalid,
+            lkey         : lkey,
+            rkey         : dontCareValue,
+            localOrRmtKey: True,
+            laddr        : defaultAddr,
+            totalLen     : defaultLen,
+            pdHandler    : pdHandler,
+            isZeroDmaLen : isZero(defaultLen),
+            accType      : defaultAccPerm
+        };
+
+        permCheckMR.checkReq(permCheckInfo);
+        // lKeyPermCheckInfoQ.enq(permCheckInfo);
+
+        // $display(
+        //     "time=%0d: permCheckInfo=", $time, fshow(permCheckInfo)
+        // );
+    endrule
+
+    rule checkReqByRKey if (!lKeyQ4Search.notEmpty && mrCheckStateReg == TEST_ST_ACT);
+        let { pdHandler, rkey } = rKeyQ4Search.first;
+        rKeyQ4Search.deq;
+
+        let permCheckInfo = PermCheckInfo {
+            wrID         : tagged Invalid,
+            lkey         : dontCareValue,
+            rkey         : rkey,
+            localOrRmtKey: False,
+            laddr        : defaultAddr,
+            totalLen     : defaultLen,
+            pdHandler    : pdHandler,
+            isZeroDmaLen : isZero(defaultLen),
+            accType      : defaultAccPerm
+        };
+
+        permCheckMR.checkReq(permCheckInfo);
+        // rKeyPermCheckInfoQ.enq(permCheckInfo);
+    endrule
+
+    rule checkResp if (mrCheckStateReg == TEST_ST_ACT);
+        countDown.decr;
+
+        // if (lKeyPermCheckInfoQ.notEmpty) begin
+        //     let lKeyCheckResp <- permCheckMR.checkResp;
+        //     dynAssert(
+        //         lKeyCheckResp,
+        //         "lKeyCheckResp @ mkTestPermCheckMR",
+        //         $format(
+        //             "lKeyCheckResp=", fshow(lKeyCheckResp),
+        //             " should be true"
+        //         )
+        //     );
+        //     searchCnt.decr(1);
+
+        //     $display(
+        //         "time=%0d: lKeyCheckResp=", $time, fshow(lKeyCheckResp), " should be true"
+        //     );
+        // end
+        // else if (rKeyPermCheckInfoQ.notEmpty) begin
+        //     let rKeyCheckResp <- permCheckMR.checkResp;
+        //     dynAssert(
+        //         rKeyCheckResp,
+        //         "rKeyCheckResp @ mkTestPermCheckMR",
+        //         $format(
+        //             "rKeyCheckResp=", fshow(rKeyCheckResp),
+        //             " should be true"
+        //         )
+        //     );
+        //     searchCnt.decr(1);
+
+        //     $display(
+        //         "time=%0d: rKeyCheckResp=", $time, fshow(rKeyCheckResp), " should be true"
+        //     );
+        // end
+
+        let checkResp <- permCheckMR.checkResp;
+        dynAssert(
+            checkResp,
+            "checkResp @ mkTestPermCheckMR",
+            $format(
+                "checkResp=", fshow(checkResp), " should be true"
+            )
+        );
+
+        if (searchCnt == 0) begin
+            mrCheckStateReg <= TEST_ST_POP;
+        end
+        else begin
+            searchCnt.decr(1);
+        end
+
+        // $display(
+        //     "time=%0d: searchCnt=%0d, checkResp=",
+        //     $time, searchCnt, fshow(checkResp),
+        //     " should be true"
+        // );
+    endrule
+
+    rule clear if (mrCheckStateReg == TEST_ST_POP);
+        pdCnt <= 0;
+        mrCnt <= 0;
+        mrMetaDataCnt <= 0;
+
+        pdHandlerQ4FillMR.clear;
+        lKeyQ4Search.clear;
+        rKeyQ4Search.clear;
+        // lKeyPermCheckInfoQ.clear;
+        // rKeyPermCheckInfoQ.clear;
+
+        pdMetaData.clear;
+
+        mrCheckStateReg <= TEST_ST_FILL;
+
+        // $display("time=%0d: clear", $time);
     endrule
 endmodule

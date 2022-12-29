@@ -49,3 +49,7 @@ function anytype unwrapMaybeWithDefault(
 ) provisos(Bits#(anytype, nSz));
     return fromMaybe(defaultVal, maybe);
 endfunction
+
+function anytype2 getTupleSecond(Tuple2#(anytype1, anytype2) tupleVal);
+    return tpl_2(tupleVal);
+endfunction

@@ -22,7 +22,7 @@ module mkTestWorkCompGenNormalCaseSQ(Empty);
 endmodule
 
 (* synthesize *)
-module mkTestWorkCompGenErrorCaseSQ(Empty);
+module mkTestWorkCompGenErrFlushCaseSQ(Empty);
     let isNormalCase = False;
     let result <- mkTestWorkCompGenSQ(isNormalCase);
 endmodule
@@ -59,8 +59,8 @@ module mkTestWorkCompGenSQ#(Bool isNormalCase)(Empty);
     FIFOF#(WorkCompGenReqSQ) wcGenReqQ4ReqGenInSQ <- mkFIFOF;
     FIFOF#(WorkCompGenReqSQ) wcGenReqQ4RespHandleInSQ <- mkFIFOF;
 
-    // WC from RQ
-    FIFOF#(WorkComp) workCompQFromRQ <- mkFIFOF;
+    // WC status from RQ
+    FIFOF#(WorkCompStatus) workCompStatusQFromRQ <- mkFIFOF;
 
     // DUT
     let workCompPipeOut <- mkWorkCompGenSQ(
@@ -69,7 +69,7 @@ module mkTestWorkCompGenSQ#(Bool isNormalCase)(Empty);
         convertFifo2PipeOut(pendingWorkReqBuf.fifoIfc),
         convertFifo2PipeOut(wcGenReqQ4ReqGenInSQ),
         convertFifo2PipeOut(wcGenReqQ4RespHandleInSQ),
-        convertFifo2PipeOut(workCompQFromRQ)
+        convertFifo2PipeOut(workCompStatusQFromRQ)
     );
 
     let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
@@ -132,27 +132,27 @@ module mkTestWorkCompGenSQ#(Bool isNormalCase)(Empty);
         let pendingWR = pendingWorkReqPipeOut4Ref.first;
         pendingWorkReqPipeOut4Ref.deq;
 
-        let workComp = workCompPipeOut.first;
+        let workCompSQ = workCompPipeOut.first;
         workCompPipeOut.deq;
 
         dynAssert(
-            workCompMatchWorkReqInSQ(workComp, pendingWR.wr),
-            "workCompMatchWorkReqInSQ assertion @ mkTestWorkCompGen",
-            $format("WC=", fshow(workComp), " not match WR=", fshow(pendingWR.wr))
+            workCompMatchWorkReqInSQ(workCompSQ, pendingWR.wr),
+            "workCompMatchWorkReqInSQ assertion @ mkTestWorkCompGenSQ",
+            $format("WC=", fshow(workCompSQ), " not match WR=", fshow(pendingWR.wr))
         );
 
         let expectedWorkCompStatus = isNormalCase ? IBV_WC_SUCCESS : IBV_WC_WR_FLUSH_ERR;
         dynAssert(
-            workComp.status == expectedWorkCompStatus,
-            "workCompMatchWorkReqInSQ assertion @ mkTestWorkCompGen",
+            workCompSQ.status == expectedWorkCompStatus,
+            "workCompSQ.status assertion @ mkTestWorkCompGenSQ",
             $format(
-                "WC=", fshow(workComp), " not match expected status=", fshow(expectedWorkCompStatus)
+                "WC=", fshow(workCompSQ), " not match expected status=", fshow(expectedWorkCompStatus)
             )
         );
 
-        countDown.dec;
+        countDown.decr;
         // $display(
-        //     "time=%0d: WC=", $time, fshow(workComp), " not match WR=", fshow(pendingWR.wr)
+        //     "time=%0d: WC=", $time, fshow(workCompSQ), " not match WR=", fshow(pendingWR.wr)
         // );
     endrule
 endmodule

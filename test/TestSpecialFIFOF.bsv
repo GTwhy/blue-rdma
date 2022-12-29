@@ -76,7 +76,7 @@ module mkTestScanFIFOF(Empty);
 
     rule compareDeq if (scanTestStateReg == TEST_Q_POP);
         if (scanQ.fifoIfc.notEmpty) begin
-            countDown.dec;
+            countDown.decr;
 
             let curDeqData = scanQ.fifoIfc.first;
             scanQ.fifoIfc.deq;
@@ -177,7 +177,7 @@ module mkTestSearchFIFOF(Empty);
 
     rule compareDeq if (searchTestStateReg == TEST_Q_POP);
         if (searchQ.fifoIfc.notEmpty) begin
-            countDown.dec;
+            countDown.decr;
 
             let curDeqData = searchQ.fifoIfc.first;
             searchQ.fifoIfc.deq;
@@ -205,6 +205,74 @@ module mkTestSearchFIFOF(Empty);
 endmodule
 
 (* synthesize *)
+module mkTestCacheFIFO(Empty);
+    CacheFIFO#(MAX_QP_RD_ATOM, ItemType) cacheQ <- mkCacheFIFO;
+
+    PipeOut#(ItemType) qElemPipeOut <- mkGenericRandomPipeOut;
+    Vector#(3, PipeOut#(ItemType)) qElemPipeOutVec <-
+        mkForkVector(qElemPipeOut);
+    let qElemPipeOut4Q = qElemPipeOutVec[0];
+    let qElemPipeOut4SearchReq <- mkBufferN(2, qElemPipeOutVec[1]);
+    let qElemPipeOut4SearchResp <- mkBufferN(2, qElemPipeOutVec[2]);
+
+    let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
+
+    function Bool searchFunc(ItemType searchItem, ItemType fifoItem);
+        return searchItem == fifoItem;
+    endfunction
+
+    rule pushCacheQ;
+        let curEnqData = qElemPipeOut4Q.first;
+        qElemPipeOut4Q.deq;
+
+        cacheQ.cacheQIfc.push(curEnqData);
+        // $display(
+        //     "time=%0d: curEnqData=%h when in fill mode",
+        //     $time, curEnqData
+        // );
+    endrule
+
+    rule searchReq;
+        let searchData = qElemPipeOut4SearchReq.first;
+        qElemPipeOut4SearchReq.deq;
+
+        cacheQ.searchIfc.searchReq(searchFunc(searchData));
+    endrule
+
+    rule compareSearchResp;
+        countDown.decr;
+
+        let searchResult <- cacheQ.searchIfc.searchResp;
+
+        let refSearchData = qElemPipeOut4SearchResp.first;
+        qElemPipeOut4SearchResp.deq;
+
+        dynAssert(
+            isValid(searchResult),
+            "searchResult assertion @ mkTestCacheFIFO",
+            $format(
+                "searchResult=", fshow(searchResult),
+                " should be valid"
+            )
+        );
+
+        let searchData = unwrapMaybe(searchResult);
+        dynAssert(
+            searchData == refSearchData,
+            "searchData assertion @ mkTestCacheFIFO",
+            $format(
+                "searchData=%h should == refSearchData=%h",
+                searchData, refSearchData
+            )
+        );
+        // $display(
+        //     "time=%0d: searchData=%h should == refSearchData=%h",
+        //     $time, searchData, refSearchData
+        // );
+    endrule
+endmodule
+
+(* synthesize *)
 module mkTestVectorSearch(Empty);
     Vector#(MAX_QP_RD_ATOM, Reg#(ItemType)) searchVec <- replicateM(mkRegU);
     Vector#(MAX_QP_RD_ATOM, Reg#(Bool)) tagVec <- replicateM(mkReg(False));
@@ -222,7 +290,7 @@ module mkTestVectorSearch(Empty);
     let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
 
     function Bool searchFunc(ItemType searchItem, Tuple2#(Bool, ItemType) fifoItem);
-        return tpl_1(fifoItem) && searchItem == tpl_2(fifoItem);
+        return tpl_1(fifoItem) && searchItem == getTupleSecond(fifoItem);
     endfunction
 
     rule fillSearchQ if (searchTestStateReg == TEST_Q_FILL);
@@ -257,7 +325,6 @@ module mkTestVectorSearch(Empty);
         let refSearchData = qElemPipeOut4SearchRef.first;
         qElemPipeOut4SearchRef.deq;
 
-
         let zipVec = zip(readVReg(tagVec), readVReg(searchVec));
         let maybeFindData = findIndex(searchFunc(refSearchData), zipVec);
         // let maybeFindData = findElem(tuple2(True, refSearchData), zipVec);
@@ -271,8 +338,8 @@ module mkTestVectorSearch(Empty);
             )
         );
 
-        let findIndex = unwrapMaybe(maybeFindData);
-        let { curSearchTag, curSearchData } = zipVec[findIndex];
+        let index = unwrapMaybe(maybeFindData);
+        let { curSearchTag, curSearchData } = zipVec[index];
         // let { curSearchTag, curSearchData } = unwrapMaybe(maybeFindData);
         dynAssert(
             curSearchTag && curSearchData == refSearchData,
@@ -301,7 +368,7 @@ module mkTestVectorSearch(Empty);
             elemCnt.incr(1);
         end
 
-        countDown.dec;
+        countDown.decr;
 
         tagVec[elemCnt] <= False;
         let curDeqData = searchVec[elemCnt];

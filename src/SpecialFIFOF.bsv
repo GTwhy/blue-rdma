@@ -205,6 +205,12 @@ module mkSearchFIFOF(SearchFIFOF#(qSz, anytype)) provisos(
             (removeMSB(nextEnqPtr) == removeMSB(deqPtrReg[1]));
     endfunction
 
+    function Action clearTag(Array#(Reg#(Bool)) tagReg);
+        action
+            tagReg[2] <= False;
+        endaction
+    endfunction
+
     interface fifoIfc = interface FIFOF#(qSz, anytype);
         method anytype first() if (!emptyReg[0]);
             return dataVec[removeMSB(deqPtrReg[0])];
@@ -231,9 +237,10 @@ module mkSearchFIFOF(SearchFIFOF#(qSz, anytype)) provisos(
         endmethod
 
         method Action clear();
-            for (Integer idx = 0; idx < valueOf(qSz); idx = idx + 1) begin
-                tagVec[idx][2] <= False;
-            end
+            mapM_(clearTag, tagVec);
+            // for (Integer idx = 0; idx < valueOf(qSz); idx = idx + 1) begin
+            //     tagVec[idx][2] <= False;
+            // end
             enqPtrReg[2] <= 0;
             deqPtrReg[2] <= 0;
             emptyReg[2]  <= True;
@@ -241,22 +248,118 @@ module mkSearchFIFOF(SearchFIFOF#(qSz, anytype)) provisos(
         endmethod
     endinterface;
 
-    interface searchIfc = interface SearchIfc#(qSz, anytype);
+    interface searchIfc = interface SearchIfc#(anytype);
         method Maybe#(anytype) search(function Bool searchFunc(anytype fifoItem));
             let zipVec = zip(tagVec, dataVec);
+            // TODO: change findIndex() to find()
             let maybeFindResult = findIndex(predFunc(searchFunc), zipVec);
-            if (maybeFindResult matches tagged Valid .findIndex) begin
-                // let tag = readReg(tagVec[findIndex]);
+            if (maybeFindResult matches tagged Valid .index) begin
+                // let tag = readReg(tagVec[index]);
                 // dynAssert(
                 //     tag,
                 //     "tag assertion @ mkSearchFIFOF",
                 //     $format("search found tag=", fshow(tag), " must be true")
                 // );
-                return tagged Valid readReg(dataVec[findIndex]);
+                return tagged Valid readReg(dataVec[index]);
             end
             else begin
                 return tagged Invalid;
             end
+        endmethod
+    endinterface;
+endmodule
+
+
+interface SearchIfc2#(type anytype);
+    method Action searchReq(function Bool searchFunc(anytype fifoItem));
+    method ActionValue#(Maybe#(anytype)) searchResp();
+endinterface
+
+interface CacheQIfc#(type anytype);
+    method Action push(anytype inputVal);
+    method Action clear();
+endinterface
+
+interface CacheFIFO#(numeric type qSz, type anytype);
+    interface CacheQIfc#(anytype) cacheQIfc;
+    interface SearchIfc2#(anytype) searchIfc;
+endinterface
+
+module mkCacheFIFO(CacheFIFO#(qSz, anytype)) provisos(
+    Bits#(anytype, tSz),
+    NumAlias#(TLog#(qSz), cntSz),
+    Add#(TLog#(qSz), 1, TLog#(TAdd#(qSz, 1))) // qSz must be power of 2
+);
+    Vector#(qSz, Reg#(anytype)) dataVec <- replicateM(mkRegU);
+    Vector#(qSz, Reg#(Bool))     tagVec <- replicateM(mkReg(False));
+
+    FIFOF#(Maybe#(anytype)) searchResultQ <- mkFIFOF;
+
+    Reg#(Maybe#(anytype)) pushValReg[3] <- mkCReg(3, tagged Invalid);
+    Reg#(Bool)              clearReg[2] <- mkCReg(2, False);
+
+    Reg#(Bit#(cntSz)) enqPtrReg <- mkReg(0);
+
+    function Bool predFunc(
+        function Bool searchFunc(anytype fifoItem),
+        Tuple2#(Bool, anytype) zipItem
+    );
+        let { tag, anydata } = zipItem;
+        return tag && searchFunc(anydata);
+    endfunction
+
+    (* no_implicit_conditions, fire_when_enabled *)
+    rule canonicalize;
+        if (clearReg[1]) begin
+            writeVReg(tagVec, replicate(False));
+            enqPtrReg   <= 0;
+            clearReg[1] <= False;
+        end
+        else begin
+            if (pushValReg[2] matches tagged Valid .pushVal) begin
+                dataVec[enqPtrReg] <= pushVal;
+                tagVec[enqPtrReg]  <= True;
+
+                enqPtrReg     <= enqPtrReg + 1;
+                pushValReg[2] <= tagged Invalid;
+            end
+        end
+    endrule
+
+    interface cacheQIfc = interface CacheQIfc#(anytype);
+        method Action push(anytype pushVal);
+            pushValReg[0] <= tagged Valid pushVal;
+        endmethod
+
+        method Action clear();
+            clearReg[0] <= True;
+        endmethod
+    endinterface;
+
+    interface searchIfc = interface SearchIfc2#(anytype);
+        method Action searchReq(function Bool searchFunc(anytype fifoItem));
+            let zipVec = zip(readVReg(tagVec), readVReg(dataVec));
+            // TODO: change findIndex() to find()
+            let maybeFindResult = findIndex(predFunc(searchFunc), zipVec);
+            if (maybeFindResult matches tagged Valid .index) begin
+                searchResultQ.enq(tagged Valid dataVec[index]);
+            // let maybeFindResult = find(predFunc(searchFunc), zipVec);
+            // if (maybeFindResult matches tagged Valid .findResult) begin
+            //     searchResultQ.enq(tagged Valid getTupleSecond(findResult));
+            end
+            else if (pushValReg[1] matches tagged Valid .pushVal &&& searchFunc(pushVal)) begin
+                searchResultQ.enq(pushValReg[1]);
+            end
+            else begin
+                searchResultQ.enq(tagged Invalid);
+            end
+        endmethod
+
+        method ActionValue#(Maybe#(anytype)) searchResp();
+            let maybeFindResult = searchResultQ.first;
+            searchResultQ.deq;
+
+            return maybeFindResult;
         endmethod
     endinterface;
 endmodule

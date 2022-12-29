@@ -16,7 +16,7 @@ import Utils4Test :: *;
 // TODO: test zero length WR case
 (* synthesize *)
 module mkTestReqGenNormalCase(Empty);
-    let minDmaLength = 128;
+    let minDmaLength = 1;
     let maxDmaLength = 1024;
     let qpType = IBV_QPT_XRC_SEND;
     let pmtu = IBV_MTU_256;
@@ -30,10 +30,11 @@ module mkTestReqGenNormalCase(Empty);
         mkNewPendingWorkReqPipeOut(workReqPipeOutVec[0]);
     let workReqPipeOut4Ref <- mkBufferN(4, workReqPipeOutVec[1]);
 
-    // Payload DataStream generation
+    // Request payload DataStream generation
     let simDmaReadSrv <- mkSimDmaReadSrvAndDataStreamPipeOut;
-    let segDataStreamPipeOut <- mkSegmentDataStreamByPmtu(
-        simDmaReadSrv.dataStream, pmtu
+    let pmtuPipeOut <- mkConstantPipeOut(pmtu);
+    let segDataStreamPipeOut <- mkSegmentDataStreamByPmtuAndAddPadCnt(
+        simDmaReadSrv.dataStream, pmtuPipeOut
     );
     let segDataStreamPipeOut4Ref <- mkBufferN(4, segDataStreamPipeOut);
 
@@ -202,14 +203,6 @@ module mkTestReqGenNormalCase(Empty);
         let refDataStream = segDataStreamPipeOut4Ref.first;
         segDataStreamPipeOut4Ref.deq;
 
-        if (refDataStream.isLast) begin
-            let lastFragByteEnWithPadding = addPadding2LastFragByteEn(refDataStream.byteEn);
-            // $display(
-            //     "time=%0d: refDataStream.byteEn=%h, padCnt=%0d",
-            //     $time, refDataStream.byteEn, padCnt
-            // );
-            refDataStream.byteEn = lastFragByteEnWithPadding;
-        end
         dynAssert(
             payloadDataStream == refDataStream,
             "payloadDataStream assertion @ mkTestReqGenNormalCase",

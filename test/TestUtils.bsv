@@ -21,7 +21,10 @@ module mkTestSegmentDataStream(Empty);
 
     Vector#(2, DataStreamPipeOut) dataStreamPipeOutVec <-
         mkRandomLenSimDataStreamPipeOut(minDmaLen, maxDmaLen);
-    let pmtuSegPipeOut <- mkSegmentDataStreamByPmtu(dataStreamPipeOutVec[0], pmtu);
+    let pmtuPipeOut <- mkConstantPipeOut(pmtu);
+    let pmtuSegPipeOut <- mkSegmentDataStreamByPmtu(
+        dataStreamPipeOutVec[0], pmtuPipeOut
+    );
     let refDataStreamPipeOut <- mkBuffer_n(2, dataStreamPipeOutVec[1]);
     Reg#(PmtuFragNum) pmtuFragCntReg <- mkRegU;
 
@@ -142,7 +145,7 @@ module mkTestPsnFunc(Empty);
 
         testPSN(startPSN, len, pmtu);
 
-        countDown.dec;
+        countDown.decr;
     endrule
 
     rule testZeroLen if (initializedReg);
