@@ -42,6 +42,7 @@ function Maybe#(WorkComp) genErrFlushWorkComp4WorkCompGenReqRQ(
 );
     let maybeWorkCompOpCode = rdmaOpCode2WorkCompOpCode4RQ(wcGenReqRQ.reqOpCode);
     let wcFlags = rdmaOpCode2WorkCompFlagsRQ(wcGenReqRQ.reqOpCode);
+
     if (
         maybeWorkCompOpCode matches tagged Valid .opcode &&&
         wcGenReqRQ.rrID matches tagged Valid .rrID
@@ -97,7 +98,7 @@ endinterface
 module mkWorkCompGenRQ#(
     Controller cntrl,
     PipeOut#(PayloadConResp) payloadConRespPipeIn,
-    RecvReqBuf recvReqBuf,
+    // RecvReqBuf recvReqBuf,
     PipeOut#(WorkCompGenReqRQ) wcGenReqPipeInFromRQ
 )(WorkCompGenRQ);
     FIFOF#(WorkComp)    workCompOutQ4RQ <- mkSizedFIFOF(valueOf(MAX_CQE));
@@ -109,6 +110,13 @@ module mkWorkCompGenRQ#(
     (* fire_when_enabled *)
     rule start if (cntrl.isNonErr && workCompGenStateReg == WC_GEN_ST_STOP);
         workCompGenStateReg <= WC_GEN_ST_NORMAL;
+    endrule
+
+    rule discardPayloadConResp if (
+        workCompGenStateReg == WC_GEN_ST_ERR_FLUSH
+    );
+        let payloadConsumeResp = payloadConRespPipeIn.first;
+        payloadConRespPipeIn.deq;
     endrule
 
     rule genWorkCompRQ if (
@@ -127,6 +135,7 @@ module mkWorkCompGenRQ#(
         let maybeWorkComp             = genWorkComp4RecvReq(cntrl, wcGenReqRQ);
         let isWorkCompSuccess         = wcGenReqRQ.wcStatus == IBV_WC_SUCCESS;
         let needWaitDmaRespWhenNormal = !wcGenReqRQ.isZeroDmaLen && (isSendReq || isWriteReq);
+
         if (isWorkCompSuccess) begin
             if (isLastOrOnlyReq && (isSendReq || isWriteImmReq)) begin
                 dynAssert(
@@ -151,12 +160,17 @@ module mkWorkCompGenRQ#(
                 // TODO: report error if waiting too long for DMA write response
                 let payloadConsumeResp = payloadConRespPipeIn.first;
                 payloadConRespPipeIn.deq;
+
+                // TODO: better error handling
+                let dmaRespPsnMatch = payloadConsumeResp.dmaWriteResp.psn == wcGenReqRQ.reqPSN;
                 dynAssert (
-                    payloadConsumeResp.dmaWriteResp.psn == wcGenReqRQ.reqPSN,
+                    dmaRespPsnMatch,
                     "dmaWriteRespMatchPSN assertion @ mkWorkCompGenRQ",
                     $format(
-                        "payloadConsumeResp.dmaWriteResp.psn=%h should == wcGenReqRQ.reqPSN=%h",
-                        payloadConsumeResp.dmaWriteResp.psn, wcGenReqRQ.reqPSN
+                        "dmaRespPsnMatch=", fshow(dmaRespPsnMatch),
+                        " should either be true, payloadConsumeResp.dmaWriteResp.psn=%h should == wcGenReqRQ.reqPSN=%h",
+                        payloadConsumeResp.dmaWriteResp.psn, wcGenReqRQ.reqPSN,
+                        ", reqOpCode=", fshow(reqOpCode)
                     )
                 );
                 // $display(
@@ -178,18 +192,22 @@ module mkWorkCompGenRQ#(
                 end
             end
         end
+        // $display(
+        //     "time=%0d: wcGenReqRQ=", $time, fshow(wcGenReqRQ),
+        //     ", maybeWorkComp=", fshow(maybeWorkComp),
+        //     ", needWaitDmaRespWhenNormal=", fshow(needWaitDmaRespWhenNormal)
+        // );
     endrule
 
-    rule errFlushPendingWorkCompGenReqSQ if (
-        workCompGenStateReg == WC_GEN_ST_ERR_FLUSH
-    );
+    rule errFlushRQ if (workCompGenStateReg == WC_GEN_ST_ERR_FLUSH);
         let wcGenReqRQ = wcGenReqPipeInFromRQ.first;
         wcGenReqPipeInFromRQ.deq;
 
         let reqOpCode   = wcGenReqRQ.reqOpCode;
         let isSendReq   = isSendReqRdmaOpCode(reqOpCode);
         let isWriteImmReq    = isWriteImmReqRdmaOpCode(reqOpCode);
-        let isFirstOrOnlyReq  = isFirstOrOnlyRdmaOpCode(reqOpCode);
+        let isFirstOrOnlyReq = isFirstOrOnlyRdmaOpCode(reqOpCode);
+        let isCompQueueFull  = False;
 
         let maybeErrFlushWC = genErrFlushWorkComp4WorkCompGenReqRQ(cntrl, wcGenReqRQ);
         if (maybeErrFlushWC matches tagged Valid .errFlushWC) begin
@@ -198,39 +216,40 @@ module mkWorkCompGenRQ#(
                 "isSendReq or isWriteImmReq assertion @ mkWorkCompGenRQ",
                 $format(
                     "maybeErrFlushWC=", fshow(maybeErrFlushWC),
-                    " should be valid, when isSendReq=", fshow(isSendReq),
-                    " or isWriteImmReq=", fshow(isWriteImmReq)
+                    " should be valid, when reqOpCode=", fshow(reqOpCode),
+                    " should be send or write with imm"
                 )
             );
 
-            // When error, generate WC in RQ on first or only request packets
-            if (isFirstOrOnlyReq) begin
+            if (wcGenReqRQ.wcStatus != IBV_WC_WR_FLUSH_ERR) begin
+                // When error, generate WC in RQ on first or only send request packets,
+                // since the middle or last send request packets might be discarded.
+                if ((isSendReq && isFirstOrOnlyReq) || isWriteImmReq) begin
+                    if (workCompOutQ4RQ.notFull) begin
+                        workCompOutQ4RQ.enq(errFlushWC);
+                    end
+                    else begin
+                        isCompQueueFull = True;
+                    end
+                end
+            end
+            else begin
                 if (workCompOutQ4RQ.notFull) begin
                     workCompOutQ4RQ.enq(errFlushWC);
+                end
+                else begin
+                    isCompQueueFull = True;
                 end
             end
         end
 
         // $display(
-        //     "time=%0d: flush wcGenReqPipeInFromRQ, maybeErrFlushWC=",
-        //     $time, fshow(maybeErrFlushWC)
+        //     "time=%0d: flush wcGenReqPipeInFromRQ, wcGenReqRQ=",
+        //     $time, fshow(wcGenReqRQ),
+        //     ", maybeErrFlushWC=", fshow(maybeErrFlushWC)
         // );
     endrule
 
-    // (* no_implicit_conditions, fire_when_enabled *)
-    (* fire_when_enabled *)
-    rule errFlushWorkReqRQ if (
-        cntrl.isERR && !wcGenReqPipeInFromRQ.notEmpty
-    );
-        let rr = recvReqBuf.first;
-        recvReqBuf.deq;
-
-        let flushWorkCompRQ = genErrFlushWorkComp4RecvReq(cntrl, rr);
-        if (workCompOutQ4RQ.notFull) begin
-            workCompOutQ4RQ.enq(flushWorkCompRQ);
-        end
-    endrule
-
-    interface workCompPipeOut       = convertFifo2PipeOut(workCompOutQ4RQ);
+    interface workCompPipeOut         = convertFifo2PipeOut(workCompOutQ4RQ);
     interface workCompStatusPipeOutRQ = convertFifo2PipeOut(wcStatusQ4SQ);
 endmodule

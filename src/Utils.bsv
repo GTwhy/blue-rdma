@@ -754,18 +754,33 @@ function Bool isAlignedAtomicAddr(ADDR atomicAddr);
     return isZero(alignment);
 endfunction
 
-function ImmDt extractImmDt(HeaderData headerData, TransType transType);
-    let immDt = case (transType)
-        TRANS_TYPE_XRC: unpack(headerData[
-            valueOf(HEADER_MAX_DATA_WIDTH) - valueOf(BTH_WIDTH) - valueOf(XRCETH_WIDTH) -1 :
-            valueOf(HEADER_MAX_DATA_WIDTH) - valueOf(BTH_WIDTH) - valueOf(XRCETH_WIDTH) - valueOf(IMM_DT_WIDTH)
-        ]);
-        default: unpack(headerData[
-            valueOf(HEADER_MAX_DATA_WIDTH) - valueOf(BTH_WIDTH) -1 :
-            valueOf(HEADER_MAX_DATA_WIDTH) - valueOf(BTH_WIDTH) - valueOf(IMM_DT_WIDTH)
-        ]);
-    endcase;
-    return immDt;
+function ImmDt extractImmDt(HeaderData headerData, RdmaOpCode opcode, TransType transType);
+    case (opcode)
+        RDMA_WRITE_ONLY_WITH_IMMEDIATE: begin
+            return case (transType)
+                TRANS_TYPE_XRC: unpack(headerData[
+                    valueOf(HEADER_MAX_DATA_WIDTH) - valueOf(BTH_WIDTH) - valueOf(XRCETH_WIDTH) - valueOf(RETH_WIDTH) -1 :
+                    valueOf(HEADER_MAX_DATA_WIDTH) - valueOf(BTH_WIDTH) - valueOf(XRCETH_WIDTH) - valueOf(RETH_WIDTH) - valueOf(IMM_DT_WIDTH)
+                ]);
+                default: unpack(headerData[
+                    valueOf(HEADER_MAX_DATA_WIDTH) - valueOf(BTH_WIDTH) - valueOf(RETH_WIDTH) -1 :
+                    valueOf(HEADER_MAX_DATA_WIDTH) - valueOf(BTH_WIDTH) - valueOf(RETH_WIDTH) - valueOf(IMM_DT_WIDTH)
+                ]);
+            endcase;
+        end
+        default: begin
+            return case (transType)
+                TRANS_TYPE_XRC: unpack(headerData[
+                    valueOf(HEADER_MAX_DATA_WIDTH) - valueOf(BTH_WIDTH) - valueOf(XRCETH_WIDTH) -1 :
+                    valueOf(HEADER_MAX_DATA_WIDTH) - valueOf(BTH_WIDTH) - valueOf(XRCETH_WIDTH) - valueOf(IMM_DT_WIDTH)
+                ]);
+                default: unpack(headerData[
+                    valueOf(HEADER_MAX_DATA_WIDTH) - valueOf(BTH_WIDTH) -1 :
+                    valueOf(HEADER_MAX_DATA_WIDTH) - valueOf(BTH_WIDTH) - valueOf(IMM_DT_WIDTH)
+                ]);
+            endcase;
+        end
+    endcase
 endfunction
 
 function IETH extractIETH(HeaderData headerData, TransType transType);
@@ -889,6 +904,22 @@ function Bool isWriteImmReqRdmaOpCode(RdmaOpCode opcode);
     endcase;
 endfunction
 
+function Bool isSendWriteImmReqRdmaOpCode(RdmaOpCode opcode);
+    return case (opcode)
+        SEND_FIRST                    ,
+        SEND_MIDDLE                   ,
+        SEND_LAST                     ,
+        SEND_LAST_WITH_IMMEDIATE      ,
+        SEND_ONLY                     ,
+        SEND_ONLY_WITH_IMMEDIATE      ,
+        SEND_LAST_WITH_INVALIDATE     ,
+        SEND_ONLY_WITH_INVALIDATE     ,
+        RDMA_WRITE_LAST_WITH_IMMEDIATE,
+        RDMA_WRITE_ONLY_WITH_IMMEDIATE: True;
+        default                       : False;
+    endcase;
+endfunction
+
 function Bool isReadReqRdmaOpCode(RdmaOpCode opcode);
     return opcode == RDMA_READ_REQUEST;
 endfunction
@@ -934,7 +965,7 @@ function Bool rdmaRespHasAETH(RdmaOpCode opcode);
     endcase;
 endfunction
 
-function Bool rdmaRespHasAtomicAckEth(RdmaOpCode opcode);
+function Bool isAtomicRespRdmaOpCode(RdmaOpCode opcode);
     return opcode == ATOMIC_ACKNOWLEDGE;
 endfunction
 
@@ -1139,7 +1170,7 @@ function Bool workReqHasPayload(WorkReq wr);
     return !(isZero(wr.len) || isReadOrAtomicWorkReq(wr.opcode));
 endfunction
 
-function Bool workReqNeedWorkComp(WorkReq wr);
+function Bool workReqNeedWorkCompSQ(WorkReq wr);
     return
         compareWorkReqFlags(wr.flags, IBV_SEND_SIGNALED) ||
         isReadOrAtomicWorkReq(wr.opcode);
@@ -1154,6 +1185,15 @@ function Bool workReqHasSwap(WorkReqOpCode opcode);
         IBV_WR_ATOMIC_CMP_AND_SWP,
         IBV_WR_ATOMIC_FETCH_AND_ADD: True;
         default: False;
+    endcase;
+endfunction
+
+function Bool isSendWorkReq(WorkReqOpCode opcode);
+    return case (opcode)
+        IBV_WR_SEND               ,
+        IBV_WR_SEND_WITH_IMM      ,
+        IBV_WR_SEND_WITH_INV      : True;
+        default                   : False;
     endcase;
 endfunction
 
@@ -1263,12 +1303,12 @@ function Maybe#(WorkCompOpCode) workReqOpCode2WorkCompOpCode4SQ(WorkReqOpCode wr
     endcase;
 endfunction
 
-function Maybe#(WorkCompStatus) genWorkCompStatusFromAethSQ(AETH aeth);
+function Maybe#(WorkCompStatus) genErrWorkCompStatusFromAethSQ(AETH aeth);
     case (aeth.code)
-        AETH_CODE_ACK: return tagged Valid IBV_WC_SUCCESS;
-        AETH_CODE_RNR: return tagged Valid IBV_WC_RNR_RETRY_EXC_ERR;
+        // AETH_CODE_ACK: return tagged Valid IBV_WC_SUCCESS;
+        // AETH_CODE_RNR: return tagged Valid IBV_WC_RNR_RETRY_EXC_ERR;
         AETH_CODE_NAK: return case (aeth.value)
-            zeroExtend(pack(AETH_NAK_SEQ_ERR)): tagged Valid IBV_WC_RETRY_EXC_ERR;
+            // zeroExtend(pack(AETH_NAK_SEQ_ERR)): tagged Valid IBV_WC_RETRY_EXC_ERR;
             zeroExtend(pack(AETH_NAK_INV_REQ)): tagged Valid IBV_WC_REM_INV_REQ_ERR;
             zeroExtend(pack(AETH_NAK_RMT_ACC)): tagged Valid IBV_WC_REM_ACCESS_ERR;
             zeroExtend(pack(AETH_NAK_RMT_OP)) : tagged Valid IBV_WC_REM_OP_ERR;
@@ -1411,28 +1451,62 @@ module mkActionValueFunc2Pipe#(
     return ret;
 endmodule
 
-module mkMuxPipeOut#(
+function PipeOut#(anytype) muxPipeOut(
     Bool sel, PipeOut#(anytype) pipeIn1, PipeOut#(anytype) pipeIn2
-)(PipeOut#(anytype));
-    method anytype first();
-        return sel ? pipeIn1.first : pipeIn2.first;
-    endmethod
+);
+    PipeOut#(anytype) resultPipeOut = interface PipeOut;
+        method anytype first();
+            return sel ? pipeIn1.first : pipeIn2.first;
+        endmethod
 
-    method Action deq();
-        if (sel) begin
-            pipeIn1.deq;
-        end
-        else begin
-            pipeIn2.deq;
-        end
-    endmethod
+        method Action deq();
+            if (sel) begin
+                pipeIn1.deq;
+            end
+            else begin
+                pipeIn2.deq;
+            end
+        endmethod
 
-    method Bool notEmpty();
-        return sel ? pipeIn1.notEmpty : pipeIn2.notEmpty;
-    endmethod
-endmodule
+        method Bool notEmpty();
+            return sel ? pipeIn1.notEmpty : pipeIn2.notEmpty;
+        endmethod
+    endinterface;
 
-function Tuple2#(PipeOut#(anytype), PipeOut#(anytype)) mkDeMuxPipeOut(
+    return resultPipeOut;
+endfunction
+
+function PipeOut#(anytype) muxPipeOut2(
+    PipeOut#(Bool) selectPipeIn, PipeOut#(anytype) pipeIn1, PipeOut#(anytype) pipeIn2
+);
+    PipeOut#(anytype) resultPipeOut = interface PipeOut;
+        method anytype first();
+            return selectPipeIn.first ? pipeIn1.first : pipeIn2.first;
+        endmethod
+
+        method Action deq();
+            let sel = selectPipeIn.first;
+            selectPipeIn.deq;
+
+            if (sel) begin
+                pipeIn1.deq;
+            end
+            else begin
+                pipeIn2.deq;
+            end
+
+            // $display("time=%0d: sel=", $time, fshow(sel));
+        endmethod
+
+        method Bool notEmpty();
+            return selectPipeIn.first ? pipeIn1.notEmpty : pipeIn2.notEmpty;
+        endmethod
+    endinterface;
+
+    return resultPipeOut;
+endfunction
+
+function Tuple2#(PipeOut#(anytype), PipeOut#(anytype)) deMuxPipeOut(
     Bool sel, PipeOut#(anytype) pipeIn
 );
     PipeOut#(anytype) p1 = interface PipeOut;
@@ -1455,6 +1529,38 @@ function Tuple2#(PipeOut#(anytype), PipeOut#(anytype)) mkDeMuxPipeOut(
             pipeIn.deq;
         endmethod
         method Bool notEmpty() if (!sel);
+            return pipeIn.notEmpty;
+        endmethod
+    endinterface;
+
+    return tuple2(p1, p2);
+endfunction
+
+function Tuple2#(PipeOut#(anytype), PipeOut#(anytype)) deMuxPipeOut2(
+    PipeOut#(Bool) selectPipeIn, PipeOut#(anytype) pipeIn
+);
+    PipeOut#(anytype) p1 = interface PipeOut;
+        method anytype first() if (selectPipeIn.first);
+            return pipeIn.first;
+        endmethod
+        method Action deq() if (selectPipeIn.first);
+            pipeIn.deq;
+            selectPipeIn.deq;
+        endmethod
+        method Bool notEmpty() if (selectPipeIn.first);
+            return pipeIn.notEmpty;
+        endmethod
+    endinterface;
+
+    PipeOut#(anytype) p2 = interface PipeOut;
+        method anytype first() if (!selectPipeIn.first);
+            return pipeIn.first;
+        endmethod
+        method Action deq() if (!selectPipeIn.first);
+            pipeIn.deq;
+            selectPipeIn.deq;
+        endmethod
+        method Bool notEmpty() if (!selectPipeIn.first);
             return pipeIn.notEmpty;
         endmethod
     endinterface;

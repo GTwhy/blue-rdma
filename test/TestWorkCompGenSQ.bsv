@@ -6,11 +6,8 @@ import Assertions :: *;
 import Headers :: *;
 import Controller :: *;
 import DataTypes :: *;
-import InputPktHandle :: *;
 import PrimUtils :: *;
-import SpecialFIFOF :: *;
 import Settings :: *;
-import SimDma :: *;
 import Utils :: *;
 import Utils4Test :: *;
 import WorkCompGenSQ :: *;
@@ -28,7 +25,7 @@ module mkTestWorkCompGenErrFlushCaseSQ(Empty);
 endmodule
 
 module mkTestWorkCompGenSQ#(Bool isNormalCase)(Empty);
-    function Bool workReqNeedDmaWriteResp(PendingWorkReq pwr);
+    function Bool workReqNeedDmaWriteRespSQ(PendingWorkReq pwr);
         return !isZero(pwr.wr.len) && isReadOrAtomicWorkReq(pwr.wr.opcode);
     endfunction
 
@@ -38,27 +35,23 @@ module mkTestWorkCompGenSQ#(Bool isNormalCase)(Empty);
     let pmtu = IBV_MTU_512;
 
     let cntrl <- mkSimController(qpType, pmtu);
-    PendingWorkReqBuf pendingWorkReqBuf <- mkScanFIFOF;
+    // PendingWorkReqBuf pendingWorkReqBuf <- mkScanFIFOF;
 
     // WorkReq generation
     Vector#(1, PipeOut#(WorkReq)) workReqPipeOutVec <-
         mkRandomWorkReq(minDmaLength, maxDmaLength);
     Vector#(2, PipeOut#(PendingWorkReq)) existingPendingWorkReqPipeOutVec <-
         mkPendingWorkReqPipeOut(workReqPipeOutVec[0], pmtu);
-    let pendingWorkReqPipeOut4Dut = existingPendingWorkReqPipeOutVec[0];
+    let pendingWorkReqPipeOut4WorkCompReq = existingPendingWorkReqPipeOutVec[0];
     let pendingWorkReqPipeOut4DmaResp = existingPendingWorkReqPipeOutVec[1];
-    // let pendingWorkReqPipeOut4Ref <- mkBufferN(2, existingPendingWorkReqPipeOutVec[2]);
     FIFOF#(PendingWorkReq) pendingWorkReqPipeOut4Ref <- mkFIFOF;
-    let pendingWorkReq2Q <- mkConnectPendingWorkReqPipeOut2PendingWorkReqQ(
-        pendingWorkReqPipeOut4Dut, pendingWorkReqBuf
-    );
+
     // PayloadConResp
     FIFOF#(PayloadConResp) payloadConRespQ <- mkFIFOF;
 
     // WC requests
     FIFOF#(WorkCompGenReqSQ) wcGenReqQ4ReqGenInSQ <- mkFIFOF;
     FIFOF#(WorkCompGenReqSQ) wcGenReqQ4RespHandleInSQ <- mkFIFOF;
-
     // WC status from RQ
     FIFOF#(WorkCompStatus) workCompStatusQFromRQ <- mkFIFOF;
 
@@ -66,7 +59,6 @@ module mkTestWorkCompGenSQ#(Bool isNormalCase)(Empty);
     let workCompPipeOut <- mkWorkCompGenSQ(
         cntrl,
         convertFifo2PipeOut(payloadConRespQ),
-        convertFifo2PipeOut(pendingWorkReqBuf.fifoIfc),
         convertFifo2PipeOut(wcGenReqQ4ReqGenInSQ),
         convertFifo2PipeOut(wcGenReqQ4RespHandleInSQ),
         convertFifo2PipeOut(workCompStatusQFromRQ)
@@ -78,7 +70,7 @@ module mkTestWorkCompGenSQ#(Bool isNormalCase)(Empty);
         let pendingWR = pendingWorkReqPipeOut4DmaResp.first;
         pendingWorkReqPipeOut4DmaResp.deq;
 
-        if (workReqNeedDmaWriteResp(pendingWR)) begin
+        if (workReqNeedDmaWriteRespSQ(pendingWR)) begin
             let endPSN = unwrapMaybe(pendingWR.endPSN);
             let payloadConResp = PayloadConResp {
                 initiator: dontCareValue,
@@ -89,28 +81,32 @@ module mkTestWorkCompGenSQ#(Bool isNormalCase)(Empty);
             };
             if (isNormalCase) begin
                 payloadConRespQ.enq(payloadConResp);
+                // $display(
+                //     "time=%0d: pendingWR=", $time, fshow(pendingWR),
+                //     " payloadConResp=", fshow(payloadConResp)
+                // );
             end
         end
     endrule
 
-    rule filterWR;
-        let pendingWR = pendingWorkReqBuf.fifoIfc.first;
-        pendingWorkReqBuf.fifoIfc.deq;
+    rule filterWorkReqNeedWorkComp if (cntrl.isRTS || cntrl.isERR);
+        let pendingWR = pendingWorkReqPipeOut4WorkCompReq.first;
+        pendingWorkReqPipeOut4WorkCompReq.deq;
 
-        let wcWaitDmaResp = True;
-        let wcReqType = isNormalCase ? WC_REQ_TYPE_SUC_FULL_ACK : WC_REQ_TYPE_ERR_FULL_ACK;
+        let wcWaitDmaResp = workReqNeedDmaWriteRespSQ(pendingWR);
+        let wcReqType = WC_REQ_TYPE_FULL_ACK;
         let triggerPSN = unwrapMaybe(pendingWR.endPSN);
         let wcStatus = isNormalCase ? IBV_WC_SUCCESS : IBV_WC_WR_FLUSH_ERR;
 
         let wcGenReq = WorkCompGenReqSQ {
-            pendingWR: pendingWR,
+            pendingWR    : pendingWR,
             wcWaitDmaResp: wcWaitDmaResp,
-            wcReqType: wcReqType,
-            triggerPSN: triggerPSN,
-            wcStatus: wcStatus
+            wcReqType    : wcReqType,
+            triggerPSN   : triggerPSN,
+            wcStatus     : wcStatus
         };
 
-        if (cntrl.isRTS && pendingWorkReqNeedWorkComp(pendingWR)) begin
+        if (workReqNeedWorkCompSQ(pendingWR.wr)) begin
             wcGenReqQ4RespHandleInSQ.enq(wcGenReq);
             pendingWorkReqPipeOut4Ref.enq(pendingWR);
 
@@ -119,16 +115,9 @@ module mkTestWorkCompGenSQ#(Bool isNormalCase)(Empty);
             //     $time, fshow(pendingWR)
             // );
         end
-        else if (cntrl.isERR) begin
-            pendingWorkReqPipeOut4Ref.enq(pendingWR);
-            // $display(
-            //     "time=%0d: for reference pendingWR=",
-            //     $time, fshow(pendingWR)
-            // );
-        end
     endrule
 
-    rule compare;
+    rule compareWC;
         let pendingWR = pendingWorkReqPipeOut4Ref.first;
         pendingWorkReqPipeOut4Ref.deq;
 

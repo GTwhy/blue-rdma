@@ -72,7 +72,7 @@ module mkRetryHandleSQ#(
             RETRY_REASON_SEQ_ERR  ,
             RETRY_REASON_IMPLICIT ,
             RETRY_REASON_TIME_OUT : isZero(retryCntReg);
-            // RETRY_REASON_NOT_RETRY: False;
+            // RETRY_REASON_NOT_RETRY
             default               : False;
         endcase;
     endfunction

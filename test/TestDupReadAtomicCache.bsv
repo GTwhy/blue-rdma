@@ -16,12 +16,6 @@ module mkTestDupReadAtomicCache(Empty);
     let qpType = IBV_QPT_XRC_SEND;
     let pmtu = IBV_MTU_1024;
 
-    RdmaOpCode atomicOpCodeArray[2] = {
-        COMPARE_SWAP,
-        FETCH_ADD
-    };
-    Vector#(2, RdmaOpCode) atomicOpCodeVec = arrayToVector(atomicOpCodeArray);
-
     PipeOut#(ADDR) addr4ReadPipeOut <- mkGenericRandomPipeOut;
     PipeOut#(ADDR) addr4AtomicPipeOut <- mkGenericRandomPipeOut;
     PipeOut#(Length) lenPipeOut <- mkGenericRandomPipeOut;
@@ -30,7 +24,7 @@ module mkTestDupReadAtomicCache(Empty);
     PipeOut#(Long) compPipeOut <- mkGenericRandomPipeOut;
     PipeOut#(Long) swapPipeOut <- mkGenericRandomPipeOut;
     PipeOut#(Long) origPipeOut <- mkGenericRandomPipeOut;
-    PipeOut#(RdmaOpCode) atomicOpCodePipeOut <- mkRandomItemFromVec(atomicOpCodeVec);
+    PipeOut#(RdmaOpCode) atomicOpCodePipeOut <- mkRandomAtomicReqRdmaOpCode;
 
     FIFOF#(Tuple2#(RETH, DupReadReqStartState)) readSearchReqQ <- mkFIFOF;
     FIFOF#(DupReadReqStartState) readSearchRespQ <- mkFIFOF;

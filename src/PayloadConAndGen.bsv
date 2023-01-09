@@ -202,7 +202,8 @@ module mkPayloadConsumer#(
         endaction
     endfunction
 
-    rule recvReq if (cntrl.isNonErr);
+    // TODO: should receive discard request even when error state
+    rule recvReq; // if (cntrl.isNonErr);
         let consumeReq = payloadConReqPipeIn.first;
         payloadConReqPipeIn.deq;
 
@@ -244,8 +245,10 @@ module mkPayloadConsumer#(
         consumeReqQ.enq(consumeReq);
     endrule
 
-    rule processReq if (cntrl.isNonErr && !busyReg);
+    rule processReq if (!busyReg); // if (cntrl.isNonErr && !busyReg);
         let consumeReq = consumeReqQ.first;
+        // $display("time=%0d: consumeReq=", $time, fshow(consumeReq));
+
         case (consumeReq.consumeInfo) matches
             tagged DiscardPayload: begin
                 let payload = payloadPipeIn.first;
@@ -300,13 +303,11 @@ module mkPayloadConsumer#(
 
                 sendDmaWriteReq(consumeReq, payload);
             end
-            // tagged SendWriteReqInfo .sendWriteReqInfo: begin
-            // end
             default: begin end
         endcase
     endrule
 
-    rule consumePayload if (cntrl.isNonErr && busyReg);
+    rule consumePayload if (busyReg); // if (cntrl.isNonErr && busyReg);
         let consumeReq = consumeReqQ.first;
         let payload = payloadPipeIn.first;
         payloadPipeIn.deq;
@@ -329,7 +330,7 @@ module mkPayloadConsumer#(
 
             consumeReqQ.deq;
             if (consumeReq.consumeInfo matches tagged SendWriteReqReadRespInfo .info) begin
-                // Only read responses have multi-fragment payload data to consume
+                // Only non-atomic might have multi-fragment payload data to consume
                 pendingConReqQ.enq(consumeReq);
             end
             busyReg <= False;
@@ -398,6 +399,10 @@ module mkPayloadConsumer#(
         endcase
     endrule
 
+    rule flushPayloadConResp if (cntrl.isERR);
+        consumeRespQ.clear;
+    endrule
+/*
     // TODO: safe error flush that finish pending requests before flush
     rule flushPayload if (cntrl.isERR);
         // When error, continue send DMA write requests,
@@ -409,7 +414,7 @@ module mkPayloadConsumer#(
         consumeReqQ.clear;
         consumeRespQ.clear;
     endrule
-
+*/
     interface respPipeOut = convertFifo2PipeOut(consumeRespQ);
 endmodule
 

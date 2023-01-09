@@ -493,10 +493,8 @@ typedef struct {
 } WorkComp deriving(Bits, FShow);
 
 typedef enum {
-    WC_REQ_TYPE_SUC_FULL_ACK,
-    WC_REQ_TYPE_SUC_PARTIAL_ACK,
-    WC_REQ_TYPE_ERR_FULL_ACK,
-    WC_REQ_TYPE_ERR_PARTIAL_ACK,
+    WC_REQ_TYPE_FULL_ACK,
+    WC_REQ_TYPE_PARTIAL_ACK,
     WC_REQ_TYPE_NO_WC,
     WC_REQ_TYPE_UNKNOWN
 } WorkCompReqType deriving(Bits, Eq, FShow);

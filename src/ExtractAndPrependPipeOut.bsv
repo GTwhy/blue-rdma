@@ -17,10 +17,11 @@ endinterface
 module mkHeader2DataStream#(
     PipeOut#(RdmaHeader) headerPipeIn
 )(HeaderDataStreamAndMetaDataPipeOut);
-    FIFOF#(DataStream) headerDataStreamOutQ <- mkFIFOF;
+    FIFOF#(DataStream)   headerDataStreamOutQ <- mkFIFOF;
     FIFOF#(HeaderMetaData) headerMetaDataOutQ <- mkFIFOF;
+
     Reg#(RdmaHeader) rdmaHeaderReg <- mkRegU;
-    Reg#(Bool) headerValidReg <- mkReg(False);
+    Reg#(Bool)      headerValidReg <- mkReg(False);
 
     rule outputHeader;
         let curHeader = headerValidReg ? rdmaHeaderReg : headerPipeIn.first;

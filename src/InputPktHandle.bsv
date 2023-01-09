@@ -155,6 +155,7 @@ typedef enum {
 } RdmaPktBufState deriving(Bits, Eq);
 // This module will discard:
 // - invalid packet that header is without payload but packet has payload;
+// TODO: seperate requests, responses and CNP
 // TODO: add PD to RdmaPktMetaData
 // TODO: receive packet when init state
 // TODO: check unsupported TransType

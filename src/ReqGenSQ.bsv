@@ -672,7 +672,7 @@ module mkReqGenSQ#(
         else begin
             let wcWaitDmaResp     = False;
             // Partial WR ACK because this WR has inserted into pending WR buffer.
-            let wcReqType         = WC_REQ_TYPE_ERR_PARTIAL_ACK;
+            let wcReqType         = WC_REQ_TYPE_PARTIAL_ACK;
             let wcStatus          = IBV_WC_LOC_QP_OP_ERR;
             let errWorkCompGenReq = WorkCompGenReqSQ {
                 pendingWR    : pendingWorkReq,
@@ -720,7 +720,7 @@ module mkReqGenSQ#(
         else begin
             let wcWaitDmaResp     = False;
             // Partial WR ACK because this WR has inserted into pending WR buffer.
-            let wcReqType         = WC_REQ_TYPE_ERR_PARTIAL_ACK;
+            let wcReqType         = WC_REQ_TYPE_PARTIAL_ACK;
             let wcStatus          = IBV_WC_LOC_QP_OP_ERR;
             let errWorkCompGenReq = WorkCompGenReqSQ {
                 pendingWR    : pendingWorkReq,

@@ -70,31 +70,6 @@ module mkSimGenRdmaReq#(
 
     interface pendingWorkReqPipeOut    = simReqGen.pendingWorkReqPipeOut;
     interface rdmaReqDataStreamPipeOut = simReqGen.rdmaReqDataStreamPipeOut;
-/*
-    let cntrl <- mkSimController(qpType, pmtu);
-    let simDmaReadSrv <- mkSimDmaReadSrv;
-    // Assume no pending WR
-    let pendingWorkReqBufNotEmpty = False;
-    let reqGenSQ <- mkReqGenSQ(
-        cntrl, simDmaReadSrv, pendingWorkReqPipeIn,
-        pendingWorkReqBufNotEmpty
-    );
-
-    rule noErrWC;
-        dynAssert(
-            !reqGenSQ.workCompGenReqPipeOut.notEmpty,
-            "No error WC assertion @ mkSimGenRdmaReq",
-            $format(
-                "reqGenSQ.workCompGenReqPipeOut.notEmpty=",
-                fshow(reqGenSQ.workCompGenReqPipeOut.notEmpty),
-                " should be false, since it should have no error WC"
-            )
-        );
-    endrule
-
-    interface pendingWorkReqPipeOut    = reqGenSQ.pendingWorkReqPipeOut;
-    interface rdmaReqDataStreamPipeOut = reqGenSQ.rdmaReqDataStreamPipeOut;
-*/
 endmodule
 
 function Bool isNonZeroReadWorkReq(WorkReq wr);
@@ -253,7 +228,7 @@ interface RdmaRespHeaderAndDataStreamPipeOut;
     interface DataStreamPipeOut rdmaResp;
 endinterface
 
-module mkSimGenRdmaResp#(
+module mkSimGenRdmaRespHeaderAndDataStream#(
     Controller cntrl,
     DmaReadSrv dmaReadSrv,
     PipeOut#(PendingWorkReq) pendingWorkReqPipeIn
@@ -292,7 +267,7 @@ module mkSimGenRdmaResp#(
 
         dynAssert(
             curPendingWR.wr.sqpn == cntrl.getSQPN,
-            "curPendingWR.wr.sqpn assertion @ mkSimGenRdmaResp",
+            "curPendingWR.wr.sqpn assertion @ mkSimGenRdmaRespHeaderAndDataStream",
             $format(
                 "curPendingWR.wr.sqpn=%h should == cntrl.getSQPN=%h",
                 curPendingWR.wr.sqpn, cntrl.getSQPN
@@ -303,7 +278,7 @@ module mkSimGenRdmaResp#(
             isValid(curPendingWR.endPSN) &&
             isValid(curPendingWR.pktNum) &&
             isValid(curPendingWR.isOnlyReqPkt),
-            "curPendingWR assertion @ mkSimGenRdmaResp",
+            "curPendingWR assertion @ mkSimGenRdmaRespHeaderAndDataStream",
             $format(
                 "curPendingWR should have valid PSN and PktNum, curPendingWR=",
                 fshow(curPendingWR)
@@ -325,7 +300,7 @@ module mkSimGenRdmaResp#(
         let maybeFirstOrOnlyHeader = genFirstOrOnlyRespHeader(curPendingWR, cntrl, hasOnlyRespPkt, msn);
         dynAssert(
             isValid(maybeFirstOrOnlyHeader),
-            "maybeFirstOrOnlyHeader assertion @ mkSimGenRdmaResp",
+            "maybeFirstOrOnlyHeader assertion @ mkSimGenRdmaRespHeaderAndDataStream",
             $format(
                 "maybeFirstOrOnlyHeader=", fshow(maybeFirstOrOnlyHeader),
                 " is not valid, and current WR=", fshow(curPendingWR)
@@ -376,7 +351,7 @@ module mkSimGenRdmaResp#(
         );
         dynAssert(
             isValid(maybeMiddleOrLastHeader),
-            "maybeMiddleOrLastHeader assertion @ mkSimGenRdmaResp",
+            "maybeMiddleOrLastHeader assertion @ mkSimGenRdmaRespHeaderAndDataStream",
             $format(
                 "maybeMiddleOrLastHeader=", fshow(maybeMiddleOrLastHeader),
                 " is not valid, and current WR=", fshow(curPendingWorkReqReg)
@@ -395,6 +370,103 @@ module mkSimGenRdmaResp#(
 
     interface respHeader = convertFifo2PipeOut(headerOutQ);
     interface rdmaResp = rdmaRespPipeOut;
+endmodule
+
+module mkSimGenRdmaRespDataStream#(
+    Controller cntrl,
+    DmaReadSrv dmaReadSrv,
+    PipeOut#(PendingWorkReq) pendingWorkReqPipeIn
+)(DataStreamPipeOut);
+    let simGenRdmaResp <- mkSimGenRdmaRespHeaderAndDataStream(
+        cntrl, dmaReadSrv, pendingWorkReqPipeIn
+    );
+    let sinkRespHeader <- mkSink(simGenRdmaResp.respHeader);
+    return simGenRdmaResp.rdmaResp;
+endmodule
+
+module mkGenErrOrRetryRdmaResp#(
+    Bool genErrOrRetryResp,
+    Controller cntrl,
+    PipeOut#(PendingWorkReq) pendingWorkReqPipeIn
+)(DataStreamPipeOut);
+    FIFOF#(RdmaHeader) headerQ <- mkFIFOF;
+
+    let headerDataStreamAndMetaDataPipeOut <- mkHeader2DataStream(
+        convertFifo2PipeOut(headerQ)
+    );
+    let sinkHeaderMetaData <- mkSink(
+        headerDataStreamAndMetaDataPipeOut.headerMetaData
+    );
+
+    rule genErrResp;
+        let maybeTrans  = qpType2TransType(cntrl.getQpType);
+        dynAssert(
+            isValid(maybeTrans),
+            "maybeTrans assertion @ mkGenErrRdmaResp",
+            $format(
+                "isValid(maybeTrans)=", fshow(maybeTrans),
+                " should be valid"
+            )
+        );
+        let transType = unwrapMaybe(maybeTrans);
+        dynAssert(
+            transType == TRANS_TYPE_RC || transType == TRANS_TYPE_XRC,
+            "transType assertion @ mkGenErrRdmaResp",
+            $format(
+                "transType=", fshow(transType),
+                " must be RC or XRC to generate responses"
+            )
+        );
+
+        let pendingWR = pendingWorkReqPipeIn.first;
+        pendingWorkReqPipeIn.deq;
+
+        dynAssert(
+            isValid(pendingWR.startPSN),
+            "pendingWR.startPSN assertion @ mkGenErrRdmaResp",
+            $format(
+                "isValid(pendingWR.startPSN)=", fshow(pendingWR.startPSN),
+                " should be valid"
+            )
+        );
+        let startPSN = unwrapMaybe(pendingWR.startPSN);
+
+        let bth = BTH {
+            trans    : transType,
+            opcode   : ACKNOWLEDGE,
+            solicited: False, // TODO: should response have solicited event?
+            migReq   : unpack(0),
+            padCnt   : 0,
+            tver     : unpack(0),
+            pkey     : cntrl.getPKEY,
+            fecn     : unpack(0),
+            becn     : unpack(0),
+            resv6    : unpack(0),
+            dqpn     : cntrl.getSQPN, // DQPN of response is SQPN
+            ackReq   : False,
+            resv7    : unpack(0),
+            psn      : startPSN
+        };
+        let aeth = genErrOrRetryResp ? AETH {
+            rsvd : unpack(0),
+            code : AETH_CODE_NAK,
+            value: zeroExtend(pack(AETH_NAK_RMT_OP)),
+            msn  : dontCareValue
+        } : AETH {
+            rsvd : unpack(0),
+            code : AETH_CODE_RNR,
+            value: cntrl.getMinRnrTimer,
+            msn  : dontCareValue
+        };
+        let respHeader = genRdmaHeader(
+            zeroExtendLSB({ pack(bth), pack(aeth) }),
+            fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(AETH_BYTE_WIDTH)),
+            False // Error or retry responses have no payload
+        );
+        headerQ.enq(respHeader);
+    endrule
+
+    return headerDataStreamAndMetaDataPipeOut.headerDataStream;
 endmodule
 
 (* synthesize *)
@@ -423,7 +495,7 @@ module mkTestSimGenRdmaResp(Empty);
     let segDataStreamPipeOut4Ref <- mkBufferN(4, segDataStreamPipeOut);
 
     // Generate RDMA responses
-    let rdmaRespAndHeaderPipeOut <- mkSimGenRdmaResp(
+    let rdmaRespAndHeaderPipeOut <- mkSimGenRdmaRespHeaderAndDataStream(
         cntrl, simDmaReadSrv.dmaReadSrv, pendingWorkReqPipeOut4RespGen
     );
     let rdmaRespHeaderPipeOut4Ref <- mkBufferN(2, rdmaRespAndHeaderPipeOut.respHeader);

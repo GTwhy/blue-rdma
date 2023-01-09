@@ -41,19 +41,29 @@ make -j8 TESTFILE=TestMetaData.bsv TOP=mkTestPermCheckMR 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=TestReqGenSQ.bsv TOP=mkTestReqGenNormalCase 2>&1 | tee -a $RUN_LOG
 
 make -j8 TESTFILE=TestRespHandleSQ.bsv TOP=mkTestRespHandleNormalCase 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestRespHandleSQ.bsv TOP=mkTestRespHandleRespErrCase 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestRespHandleSQ.bsv TOP=mkTestRespHandleRetryErrCase 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestRespHandleSQ.bsv TOP=mkTestRespHandlePermCheckFailCase 2>&1 | tee -a $RUN_LOG
 
 make -j8 TESTFILE=TestReqHandleRQ.bsv TOP=mkTestReqHandleNormalCase 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestReqHandleRQ.bsv TOP=mkTestReqHandleReqErrCase 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestReqHandleRQ.bsv TOP=mkTestReqHandlePermCheckFailCase 2>&1 | tee -a $RUN_LOG
 
 make -j8 TESTFILE=TestSpecialFIFOF.bsv TOP=mkTestCacheFIFO 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=TestSpecialFIFOF.bsv TOP=mkTestScanFIFOF 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=TestSpecialFIFOF.bsv TOP=mkTestSearchFIFOF 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=TestSpecialFIFOF.bsv TOP=mkTestVectorSearch 2>&1 | tee -a $RUN_LOG
 
-make -j8 TESTFILE=TestWorkCompGenRQ.bsv TOP=mkTestWorkCompGenErrFlushCaseRQ 2>&1 | tee -a $RUN_LOG
-make -j8 TESTFILE=TestWorkCompGenRQ.bsv TOP=mkTestWorkCompGenNormalCaseRQ 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestWorkCompGen.bsv TOP=mkTestWorkCompGenErrFlushCaseRQ 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestWorkCompGen.bsv TOP=mkTestWorkCompGenNormalCaseRQ 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestWorkCompGen.bsv TOP=mkTestWorkCompGenErrFlushCaseSQ 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestWorkCompGen.bsv TOP=mkTestWorkCompGenNormalCaseSQ 2>&1 | tee -a $RUN_LOG
 
-make -j8 TESTFILE=TestWorkCompGenSQ.bsv TOP=mkTestWorkCompGenErrFlushCaseSQ 2>&1 | tee -a $RUN_LOG
-make -j8 TESTFILE=TestWorkCompGenSQ.bsv TOP=mkTestWorkCompGenNormalCaseSQ 2>&1 | tee -a $RUN_LOG
+# make -j8 TESTFILE=TestWorkCompGenRQ.bsv TOP=mkTestWorkCompGenErrFlushCaseRQ 2>&1 | tee -a $RUN_LOG
+# make -j8 TESTFILE=TestWorkCompGenRQ.bsv TOP=mkTestWorkCompGenNormalCaseRQ 2>&1 | tee -a $RUN_LOG
+
+# make -j8 TESTFILE=TestWorkCompGenSQ.bsv TOP=mkTestWorkCompGenErrFlushCaseSQ 2>&1 | tee -a $RUN_LOG
+# make -j8 TESTFILE=TestWorkCompGenSQ.bsv TOP=mkTestWorkCompGenNormalCaseSQ 2>&1 | tee -a $RUN_LOG
 
 make -j8 TESTFILE=TestUtils.bsv TOP=mkTestSegmentDataStream 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=TestUtils.bsv TOP=mkTestPsnFunc 2>&1 | tee -a $RUN_LOG

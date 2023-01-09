@@ -31,7 +31,7 @@ module mkSQ#(
     let retryHandler <- mkRetryHandleSQ(cntrl, pendingWorkReqBuf.scanIfc);
     let notRetrying = retryHandler.isRetryDone;
 
-    let pendingWorkReqPipeOut <- mkMuxPipeOut(
+    let pendingWorkReqPipeOut = muxPipeOut(
         notRetrying,
         newPendingWorkReqPipeOut,
         retryHandler.retryWorkReqPipeOut
@@ -79,5 +79,13 @@ interface QP;
 endinterface
 
 module mkQP#()(QP);
-
+    // TODO: if WR queue is empty, then error flush is done
+    if (!workReqPipeIn.notEmpty) begin
+        // Notify controller when flush done
+        cntrl.errFlushDone;
+        $display(
+            "time=%0d: error flush done, pendingWorkCompQ4SQ.notEmpty=",
+            $time, fshow(pendingWorkCompQ4SQ.notEmpty)
+        );
+    end
 endmodule
