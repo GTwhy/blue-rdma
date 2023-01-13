@@ -1414,7 +1414,7 @@ module mkReqHandleRQ#(
                 rkey2Inv    : hasIETH  ? (tagged Valid ieth.rkey)  : (tagged Invalid)
             };
 
-            // Normal send/write requests must wait for DMA write responses
+            // Wait for send/write request DMA write responses and generate WC if needed
             workCompGenReqOutQ.enq(workCompReq);
         end
         // $display(

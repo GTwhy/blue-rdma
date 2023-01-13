@@ -156,7 +156,6 @@ typedef enum {
 // This module will discard:
 // - invalid packet that header is without payload but packet has payload;
 // TODO: seperate requests, responses and CNP
-// TODO: add PD to RdmaPktMetaData
 // TODO: receive packet when init state
 // TODO: check unsupported TransType
 // TODO: check QKEY match for UD, otherwise drop
@@ -166,7 +165,7 @@ typedef enum {
 // TODO: check PKEY match
 // TODO: discard BTH or AETH with reserved value, and packet validation
 // TODO: check read/atomic response AETH code abnormal, not RNR or NAK code
-// TODO: reset mkInputRdmaPktBufAndHeaderValidation when error or retry
+// TODO: reset mkInputRdmaPktBufAndHeaderValidation when error or retry?
 module mkInputRdmaPktBufAndHeaderValidation#(
     // Only output payload when packet has non-zero payload,
     // otherwise output packet header/metadata only,

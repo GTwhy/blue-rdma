@@ -832,6 +832,7 @@ module mkRespHandleSQ#(
                 triggerPSN   : bth.psn,
                 wcStatus     : unwrapMaybeWithDefault(wcStatus, IBV_WC_SUCCESS)
             };
+            // Wait for read/atomic response DMA write and generate WC for WR if needed
             workCompGenReqOutQ.enq(wcGenReq);
             // $display(
             //     "time=%0d: wcGenReq=", $time, fshow(wcGenReq),
