@@ -440,7 +440,7 @@ module mkTestReqHandleAbnormalCase#(ReqHandleErrType errType)(Empty);
     // RecvReq
     Vector#(2, PipeOut#(RecvReq)) recvReqBufVec <- mkSimGenRecvReq(cntrl);
     let recvReqBuf = recvReqBufVec[0];
-    let recvReqBuf4Ref <- mkBufferN(8, recvReqBufVec[1]);
+    let recvReqBuf4Ref <- mkBufferN(32, recvReqBufVec[1]);
 
     // DUT
     let dut <- mkReqHandleRQ(
@@ -601,194 +601,353 @@ module mkTestReqHandleAbnormalCase#(ReqHandleErrType errType)(Empty);
         );
         // $display("time=%0d: WC status=", $time, fshow(workComp.status));
     endrule
-/*
-    rule compareResp;
-        let pendingWR = pendingWorkReqPipeOut4Resp.first;
-        let selectLegalWorkReq = selectPipeOut4Resp.first;
+endmodule
 
-        if (firstErrRdmaRespGenReg) begin
-            pendingWorkReqPipeOut4Resp.deq;
-            selectPipeOut4Resp.deq;
+typedef enum {
+    TEST_REQ_HANDLE_RETRY_REQ_GEN,
+    TEST_REQ_HANDLE_RETRY_RESP_CHECK,
+    TEST_REQ_HANDLE_RETRY_RNR_WAIT,
+    TEST_REQ_HANDLE_RETRY_REQ_AGAIN,
+    TEST_REQ_HANDLE_RETRY_CLEAR,
+    TEST_REQ_HANDLE_RETRY_DONE_CHECK
+} TestReqHandleRetryState deriving(Bits, Eq, FShow);
+
+(* synthesize *)
+module mkTestReqHandleRnrCase(Empty);
+    let rnrOrSeqErr = True;
+    let result <- mkTestReqHandleRetryCase(rnrOrSeqErr);
+endmodule
+
+(* synthesize *)
+module mkTestReqHandleSeqErrCase(Empty);
+    let rnrOrSeqErr = False;
+    let result <- mkTestReqHandleRetryCase(rnrOrSeqErr);
+endmodule
+
+module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
+    // Retry case need multi-packet requests, at least two packets
+    let minPayloadLen = 512;
+    let maxPayloadLen = 1024;
+    let qpType = IBV_QPT_XRC_SEND;
+    let pmtu = IBV_MTU_256;
+
+    let qpMetaData <- mkSimQPs(qpType, pmtu);
+    let qpn = dontCareValue;
+    let cntrl = qpMetaData.getCntrl(qpn);
+
+    // WorkReq generation
+    Vector#(1, PipeOut#(Bool)) selectPipeOutVec <- mkGenericRandomPipeOutVec;
+    let selectPipeOut4WorkReqGen = selectPipeOutVec[0];
+    Vector#(1, PipeOut#(WorkReq)) sendWorkReqPipeOutVec <- mkRandomSendWorkReq(
+        minPayloadLen, maxPayloadLen
+    );
+    let workReqPipeOut = sendWorkReqPipeOutVec[0];
+
+    // Pending WR generation
+    Vector#(1, PipeOut#(PendingWorkReq)) existingPendingWorkReqPipeOutVec <-
+        mkExistingPendingWorkReqPipeOut(cntrl, workReqPipeOut);
+    let pendingWorkReqPipeOut = existingPendingWorkReqPipeOutVec[0];
+    FIFOF#(PendingWorkReq)  origPendingWorkReqQ <- mkFIFOF;
+    FIFOF#(PendingWorkReq) retryPendingWorkReqQ <- mkFIFOF;
+
+    // Read response payload DataStream generation
+    let simDmaReadSrv <- mkSimDmaReadSrv;
+
+    // Generate RDMA requests
+    let simReqGen <- mkSimGenRdmaReq(
+        convertFifo2PipeOut(origPendingWorkReqQ), qpType, pmtu
+    );
+    let rdmaReqPipeOut = simReqGen.rdmaReqDataStreamPipeOut;
+    // Add rule to check no pending WR output
+    let addNoPendingWorkReqOutRule <- addRules(
+        genNoPendingWorkReqOutRule(simReqGen.pendingWorkReqPipeOut)
+    );
+    FIFOF#(DataStream) rdmaReqDataStreamQ <- mkFIFOF;
+
+    // Extract header DataStream, HeaderMetaData and payload DataStream
+    let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
+        convertFifo2PipeOut(rdmaReqDataStreamQ)
+    );
+
+    // Build RdmaPktMetaData and payload DataStream
+    let pktMetaDataAndPayloadPipeOut <- mkInputRdmaPktBufAndHeaderValidation(
+        headerAndMetaDataAndPayloadPipeOut, qpMetaData
+    );
+    let pktMetaDataPipeIn = pktMetaDataAndPayloadPipeOut.pktMetaData;
+
+    // MR permission check
+    let mrCheckPassOrFail = True;
+    let permCheckMR <- mkSimPermCheckMR(mrCheckPassOrFail);
+
+    // DupReadAtomicCache
+    let dupReadAtomicCache <- mkDupReadAtomicCache(cntrl);
+
+    // RecvReq
+    Vector#(1, PipeOut#(RecvReq)) recvReqPipeOutVec <- mkSimGenRecvReq(cntrl);
+    let recvReqPipeOut = recvReqPipeOutVec[0];
+    FIFOF#(RecvReq) recvReqQ4Retry <- mkFIFOF;
+    FIFOF#(RecvReq)   recvReqQ4Cmp <- mkFIFOF;
+
+    // DUT
+    let dut <- mkReqHandleRQ(
+        cntrl,
+        simDmaReadSrv,
+        permCheckMR,
+        dupReadAtomicCache,
+        convertFifo2PipeOut(recvReqQ4Retry),
+        pktMetaDataPipeIn
+    );
+
+    // PayloadConsumer
+    let simDmaWriteSrv <- mkSimDmaWriteSrv;
+    let payloadConsumer <- mkPayloadConsumer(
+        cntrl,
+        pktMetaDataAndPayloadPipeOut.payload,
+        simDmaWriteSrv,
+        dut.payloadConReqPipeOut
+    );
+
+    // WorkCompGenRQ
+    FIFOF#(WorkCompGenReqRQ) wcGenReqQ4ReqGenInRQ <- mkFIFOF;
+    let workCompGenRQ <- mkWorkCompGenRQ(
+        cntrl,
+        payloadConsumer.respPipeOut,
+        dut.workCompGenReqPipeOut
+    );
+    let workCompPipeOut4RecvReq = workCompGenRQ.workCompPipeOut;
+
+    Reg#(RnrWaitCycleCnt)      rnrTestWaitCntReg <- mkRegU;
+    Reg#(Bool)             discardFirstReqPktReg <- mkReg(False);
+    Reg#(TestReqHandleRetryState) retryTestState <- mkReg(TEST_REQ_HANDLE_RETRY_REQ_GEN);
+
+    // let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
+
+    // let sinkPendingWR4Resp <- mkSink(pendingWorkReqPipeOut4Resp);
+    // let sinkSelect4Resp <- mkSink(selectPipeOut4Resp);
+    // let sinkRdmaResp <- mkSink(dut.rdmaRespDataStreamPipeOut);
+    // let sinkPendingWR4WorkComp <- mkSink(pendingWorkReqPipeOut4WorkComp);
+    // let sinkSelect4WorkComp <- mkSink(selectPipeOut4WorkComp);
+    // let sinkWorkComp <- mkSink(workCompPipeOut4WorkReq);
+
+    rule noErrWorkComp;
+        let hasWorkCompErrStatusRQ = workCompGenRQ.workCompStatusPipeOutRQ.notEmpty;
+        // Check workCompGenRQ.wcStatusQ4SQ has no error WC status
+        dynAssert(
+            !hasWorkCompErrStatusRQ,
+            "hasWorkCompErrStatusRQ assertion @ mkTestReqHandleRetryCase",
+            $format(
+                "hasWorkCompErrStatusRQ=", fshow(hasWorkCompErrStatusRQ),
+                " should be false"
+            )
+        );
+    endrule
+
+    rule genWorkReq if (retryTestState == TEST_REQ_HANDLE_RETRY_REQ_GEN);
+        let pendingWR = pendingWorkReqPipeOut.first;
+        pendingWorkReqPipeOut.deq;
+
+        let startPSN = unwrapMaybe(pendingWR.startPSN);
+        let endPSN   = unwrapMaybe(pendingWR.endPSN);
+        dynAssert(
+            startPSN != endPSN,
+            "Pending WR PSN assertion @ mkTestReqHandleRetryCase",
+            $format(
+                "startPSN=%h should != endPSN=%h",
+                startPSN, endPSN
+            )
+        );
+
+        origPendingWorkReqQ.enq(pendingWR);
+        retryPendingWorkReqQ.enq(pendingWR);
+
+        discardFirstReqPktReg <= !rnrOrSeqErr;
+        retryTestState <= TEST_REQ_HANDLE_RETRY_RESP_CHECK;
+        // $display("time=%0d: retryTestState=", $time, fshow(retryTestState));
+    endrule
+
+    rule filterReqPkt4SeqErr if (retryTestState != TEST_REQ_HANDLE_RETRY_REQ_GEN);
+        let rdmaReqDataStream = rdmaReqPipeOut.first;
+        rdmaReqPipeOut.deq;
+
+        if (discardFirstReqPktReg) begin
+            discardFirstReqPktReg <= !rdmaReqDataStream.isLast;
+        end
+        else begin
+            rdmaReqDataStreamQ.enq(rdmaReqDataStream);
+        end
+    endrule
+
+    rule checkRetryResp if (retryTestState == TEST_REQ_HANDLE_RETRY_RESP_CHECK);
+        let pendingWR = retryPendingWorkReqQ.first;
+        let startPSN = unwrapMaybe(pendingWR.startPSN);
+
+        let rdmaRespDataStream = dut.rdmaRespDataStreamPipeOut.first;
+        dut.rdmaRespDataStreamPipeOut.deq;
+
+        let bth = extractBTH(zeroExtendLSB(rdmaRespDataStream.data));
+        dynAssert(
+            bth.psn == startPSN,
+            "bth.psn assertion @ mkTestReqHandleRetryCase",
+            $format(
+                "bth.psn=%h should == startPSN=%h",
+                bth.psn, startPSN
+            )
+        );
+
+        dynAssert(
+            rdmaRespDataStream.isFirst && rdmaRespDataStream.isLast,
+            "rdmaRespDataStream assertion @ mkTestReqHandleRetryCase",
+            $format(
+                "rdmaRespDataStream.isFirst=", fshow(rdmaRespDataStream.isFirst),
+                ", rdmaRespDataStream.isLast=", fshow(rdmaRespDataStream.isLast),
+                " should both be true, when bth.opcode=", fshow(bth.opcode)
+            )
+        );
+
+        let hasAETH = rdmaRespHasAETH(bth.opcode);
+        dynAssert(
+            hasAETH,
+            "hasAETH assertion @ mkTestReqHandleRetryCase",
+            $format(
+                "hasAETH=", fshow(hasAETH),
+                " should be true, when retryTestState=", fshow(retryTestState),
+                " and bth.opcode=", fshow(bth.opcode)
+            )
+        );
+
+        let aeth = extractAETH(zeroExtendLSB(rdmaRespDataStream.data));
+        if (rnrOrSeqErr) begin
+            rnrTestWaitCntReg <= fromInteger(getRnrTimeOutValue(aeth.value));
+            retryTestState      <= TEST_REQ_HANDLE_RETRY_RNR_WAIT;
 
             dynAssert(
-                !dut.rdmaRespDataStreamPipeOut.notEmpty,
-                "dut.rdmaRespDataStreamPipeOut.notEmpty assertion @ mkTestReqHandleFatalErrCase",
+                aeth.code == AETH_CODE_RNR,
+                "aeth.code assertion @ mkTestReqHandleRetryCase",
                 $format(
-                    "dut.rdmaRespDataStreamPipeOut.notEmpty=",
-                    fshow(dut.rdmaRespDataStreamPipeOut.notEmpty),
-                    " should be false, when firstErrRdmaRespGenReg=",
-                    fshow(firstErrRdmaRespGenReg)
+                    "aeth.code=", fshow(aeth.code),
+                    " should be AETH_CODE_RNR"
                 )
             );
         end
         else begin
-            let rdmaRespDataStream = dut.rdmaRespDataStreamPipeOut.first;
-            dut.rdmaRespDataStreamPipeOut.deq;
+            retryTestState <= TEST_REQ_HANDLE_RETRY_REQ_AGAIN;
 
-            if (rdmaRespDataStream.isFirst) begin
-                let bth = extractBTH(zeroExtendLSB(rdmaRespDataStream.data));
-                let endPSN = unwrapMaybe(pendingWR.endPSN);
-
-                // Each WR set AckReq
-                if (bth.psn == endPSN) begin
-                    pendingWorkReqPipeOut4Resp.deq;
-                    selectPipeOut4Resp.deq;
-                end
-
-                let hasErrResp = selectLegalWorkReq;
-                if (errType == REQ_HANDLE_PERM_CHECK_FAIL) begin
-                    if (rdmaRespHasAETH(bth.opcode)) begin
-                        let aeth = extractAETH(zeroExtendLSB(rdmaRespDataStream.data));
-                        if (aeth.code != AETH_CODE_ACK) begin
-                            hasErrResp = True;
-
-                            dynAssert(
-                                aeth.code == AETH_CODE_NAK && aeth.value == zeroExtend(pack(AETH_NAK_RMT_ACC)),
-                                "aeth.code assertion @ mkTestReqHandleFatalErrCase",
-                                $format(
-                                    "aeth.code=", fshow(aeth.code),
-                                    " and aeth.value=", fshow(aeth.value),
-                                    " should be AETH_NAK_RMT_ACC"
-                                )
-                            );
-                        end
-                        // $display(
-                        //     "time=%0d: response bth=", $time, fshow(bth),
-                        //     ", aeth=", fshow(aeth)
-                        // );
-                    end
-                end
-                else if (selectLegalWorkReq) begin
-                    if (rdmaRespHasAETH(bth.opcode)) begin
-                        let aeth = extractAETH(zeroExtendLSB(rdmaRespDataStream.data));
-                        dynAssert(
-                            aeth.code == AETH_CODE_ACK,
-                            "aeth.code assertion @ mkTestReqHandleFatalErrCase",
-                            $format(
-                                "aeth.code=", fshow(aeth.code),
-                                " should be normal ACK"
-                            )
-                        );
-                        // $display(
-                        //     "time=%0d: response bth=", $time, fshow(bth),
-                        //     ", aeth=", fshow(aeth)
-                        // );
-                    end
-                end
-
-                if (hasErrResp) begin
-                    firstErrRdmaRespGenReg <= True;
-
-                    dynAssert(
-                        rdmaRespDataStream.isLast,
-                        "rdmaRespDataStream.isLast assertion @ mkTestReqHandleFatalErrCase",
-                        $format(
-                            "rdmaRespDataStream.isLast=", fshow(rdmaRespDataStream.isLast),
-                            " should be true, when selectLegalWorkReq=", fshow(selectLegalWorkReq),
-                            " and pendingWR.wr.opcode=", fshow(pendingWR.wr.opcode)
-                        )
-                    );
-
-                    let hasAETH = rdmaRespHasAETH(bth.opcode);
-                    dynAssert(
-                        hasAETH,
-                        "hasAETH assertion @ mkTestReqHandleFatalErrCase",
-                        $format(
-                            "hasAETH=", fshow(hasAETH),
-                            " should be true, when selectLegalWorkReq=",
-                            fshow(selectLegalWorkReq)
-                        )
-                    );
-
-                    let aeth = extractAETH(zeroExtendLSB(rdmaRespDataStream.data));
-                    dynAssert(
-                        isFatalErrAETH(aeth),
-                        "AETH assertion @ mkTestReqHandleFatalErrCase",
-                        $format(
-                            "AETH=", fshow(aeth), " should be fatal error"
-                        )
-                    );
-                    // $display("time=%0d: response bth=", $time, fshow(bth));
-                    // $display("time=%0d: pendingWR=", $time, fshow(pendingWR));
-                end
-            end
+            dynAssert(
+                aeth.code == AETH_CODE_NAK && aeth.value == zeroExtend(pack(AETH_NAK_SEQ_ERR)),
+                "aeth.code assertion @ mkTestReqHandleRetryCase",
+                $format(
+                    "aeth.code=", fshow(aeth.code),
+                    " should be AETH_NAK_SEQ_ERR"
+                )
+            );
         end
+
+        // $display(
+        //     "time=%0d:", $time,
+        //     " retryTestState=", fshow(retryTestState),
+        //     ", response bth=", fshow(bth),
+        //     ", aeth=", fshow(aeth)
+        // );
     endrule
 
-    rule compareWorkCompBeforeFatalErr if (!firstIllegalWorkReqReg);
-        let pendingWR = pendingWorkReqPipeOut4WorkComp.first;
-        pendingWorkReqPipeOut4WorkComp.deq;
-
-        let selectLegalWorkReq = selectPipeOut4WorkComp.first;
-        selectPipeOut4WorkComp.deq;
-
-        if (selectLegalWorkReq) begin
-            if (workReqNeedRecvReq(pendingWR.wr.opcode)) begin
-                let workComp = workCompPipeOut4WorkReq.first;
-                workCompPipeOut4WorkReq.deq;
-                let recvReq = recvReqBuf4Ref.first;
-                recvReqBuf4Ref.deq;
-
-                dynAssert(
-                    workComp.status == IBV_WC_SUCCESS,
-                    "WC status assertion @ mkTestReqHandleFatalErrCase",
-                    $format(
-                        "workComp.status=", fshow(workComp.status),
-                        " should be success, when firstIllegalWorkReqReg=",
-                        fshow(firstIllegalWorkReqReg)
-                    )
-                );
-                dynAssert(
-                    workComp.id == recvReq.id,
-                    "WC ID assertion @ mkTestReqHandleFatalErrCase",
-                    $format(
-                        "workComp.id=%h should == recvReq.id=%h, when firstIllegalWorkReqReg=",
-                        workComp.id, recvReq.id, fshow(firstIllegalWorkReqReg)
-                    )
-                );
-            end
+    rule waitRnrTimer if (retryTestState == TEST_REQ_HANDLE_RETRY_RNR_WAIT);
+        if (isZero(rnrTestWaitCntReg)) begin
+            retryTestState <= TEST_REQ_HANDLE_RETRY_REQ_AGAIN;
         end
         else begin
-            firstIllegalWorkReqReg <= True;
+            rnrTestWaitCntReg <= rnrTestWaitCntReg - 1;
         end
-        // $display("time=%0d: WC status=", $time, fshow(workComp.status));
+        // $display("time=%0d: retryTestState=", $time, fshow(retryTestState));
     endrule
 
-    // TODO: flush all RR
-    rule compareRecvReqAfterFatalErr if (firstIllegalWorkReqReg);
-        let workComp = workCompPipeOut4WorkReq.first;
-        workCompPipeOut4WorkReq.deq;
+    rule retryReq if (retryTestState == TEST_REQ_HANDLE_RETRY_REQ_AGAIN);
+        let pendingWR = retryPendingWorkReqQ.first;
+        origPendingWorkReqQ.enq(pendingWR);
 
-        let recvReq = recvReqBuf4Ref.first;
-        recvReqBuf4Ref.deq;
+        let recvReq = recvReqPipeOut.first;
+        recvReqPipeOut.deq;
+        recvReqQ4Retry.enq(recvReq);
+        recvReqQ4Cmp.enq(recvReq);
 
+        retryTestState <= TEST_REQ_HANDLE_RETRY_CLEAR;
+        // $display("time=%0d: retryTestState=", $time, fshow(retryTestState));
+    endrule
+
+    rule retryClear if (retryTestState == TEST_REQ_HANDLE_RETRY_CLEAR);
+        let pendingWR = retryPendingWorkReqQ.first;
+        retryPendingWorkReqQ.deq;
+        let endPSN = unwrapMaybe(pendingWR.endPSN);
+
+        let rdmaRespDataStream = dut.rdmaRespDataStreamPipeOut.first;
+        dut.rdmaRespDataStreamPipeOut.deq;
+
+        let bth = extractBTH(zeroExtendLSB(rdmaRespDataStream.data));
         dynAssert(
-            workComp.status == IBV_WC_WR_FLUSH_ERR,
-            "WC status assertion @ mkTestReqHandleFatalErrCase",
+            bth.psn == endPSN,
+            "bth.psn assertion @ mkTestReqHandleRetryCase",
             $format(
-                "WC status=", fshow(workComp.status),
-                " should be error flush, when firstIllegalWorkReqReg=",
-                fshow(firstIllegalWorkReqReg)
+                "bth.psn=%h should == endPSN=%h",
+                bth.psn, endPSN
             )
         );
+
+        dynAssert(
+            rdmaRespDataStream.isFirst && rdmaRespDataStream.isLast,
+            "rdmaRespDataStream assertion @ mkTestReqHandleRetryCase",
+            $format(
+                "rdmaRespDataStream.isFirst=", fshow(rdmaRespDataStream.isFirst),
+                ", rdmaRespDataStream.isLast=", fshow(rdmaRespDataStream.isLast),
+                " should both be true, when bth.opcode=", fshow(bth.opcode)
+            )
+        );
+
+        let hasAETH = rdmaRespHasAETH(bth.opcode);
+        dynAssert(
+            hasAETH,
+            "hasAETH assertion @ mkTestReqHandleRetryCase",
+            $format(
+                "hasAETH=", fshow(hasAETH),
+                " should be true, when retryTestState=", fshow(retryTestState),
+                " and bth.opcode=", fshow(bth.opcode)
+            )
+        );
+
+        let aeth = extractAETH(zeroExtendLSB(rdmaRespDataStream.data));
+        dynAssert(
+            aeth.code == AETH_CODE_ACK,
+            "aeth.code assertion @ mkTestReqHandleRetryCase",
+            $format(
+                "aeth.code=", fshow(aeth.code),
+                " should be AETH_CODE_ACK"
+            )
+        );
+
+        retryTestState <= TEST_REQ_HANDLE_RETRY_DONE_CHECK;
+        // $display(
+        //     "time=%0d:", $time,
+        //     " retryTestState=", fshow(retryTestState),
+        //     ", response bth=", fshow(bth),
+        //     ", aeth=", fshow(aeth)
+        // );
+    endrule
+
+    rule cmpWorkComp if (retryTestState == TEST_REQ_HANDLE_RETRY_DONE_CHECK);
+        let workComp = workCompPipeOut4RecvReq.first;
+        workCompPipeOut4RecvReq.deq;
+
+        let recvReq = recvReqQ4Cmp.first;
+        recvReqQ4Cmp.deq;
+
         dynAssert(
             workComp.id == recvReq.id,
-            "WC ID assertion @ mkTestReqHandleFatalErrCase",
+            "WC ID assertion @ mkTestReqHandleRetryCase",
             $format(
-                "workComp.id=%h should == recvReq.id=%h, when firstIllegalWorkReqReg=",
-                workComp.id, recvReq.id, fshow(firstIllegalWorkReqReg)
+                "workComp.id=%h should == recvReq.id=%h",
+                workComp.id, recvReq.id
             )
         );
 
-        // countDown.decr;
+        retryTestState <= TEST_REQ_HANDLE_RETRY_REQ_GEN;
+        // $display("time=%0d: retryTestState=", $time, fshow(retryTestState));
     endrule
-
-    rule sinkPendingWorkReqAfterFatalErr if (firstIllegalWorkReqReg);
-        let pendingWR = pendingWorkReqPipeOut4WorkComp.first;
-        pendingWorkReqPipeOut4WorkComp.deq;
-
-        let selectLegalWorkReq = selectPipeOut4WorkComp.first;
-        selectPipeOut4WorkComp.deq;
-    endrule
-*/
 endmodule

@@ -384,9 +384,16 @@ module mkSimGenRdmaRespDataStream#(
     return simGenRdmaResp.rdmaResp;
 endmodule
 
-module mkGenErrOrRetryRdmaResp#(
-    Bool genErrOrRetryResp,
+typedef enum {
+    RDMA_RESP_ACK_NORMAL,
+    RDMA_RESP_ACK_ERROR,
+    RDMA_RESP_ACK_RNR,
+    RDMA_RESP_ACK_SEQ_ERR
+} RdmaRespAckGenType deriving(Bits, Eq);
+
+module mkGenNormalOrErrOrRetryRdmaRespAck#(
     Controller cntrl,
+    RdmaRespAckGenType genAckType,
     PipeOut#(PendingWorkReq) pendingWorkReqPipeIn
 )(DataStreamPipeOut);
     FIFOF#(RdmaHeader) headerQ <- mkFIFOF;
@@ -398,7 +405,7 @@ module mkGenErrOrRetryRdmaResp#(
         headerDataStreamAndMetaDataPipeOut.headerMetaData
     );
 
-    rule genErrResp;
+    rule genRespAck;
         let maybeTrans  = qpType2TransType(cntrl.getQpType);
         dynAssert(
             isValid(maybeTrans),
@@ -430,6 +437,14 @@ module mkGenErrOrRetryRdmaResp#(
             )
         );
         let startPSN = unwrapMaybe(pendingWR.startPSN);
+        let endPSN   = unwrapMaybe(pendingWR.endPSN);
+        let bthPSN   = case (genAckType)
+            RDMA_RESP_ACK_ERROR  ,
+            RDMA_RESP_ACK_RNR    : startPSN;
+            // RDMA_RESP_ACK_NORMAL,
+            // RDMA_RESP_ACK_SEQ_ERR,
+            default              : endPSN;
+        endcase;
 
         let bth = BTH {
             trans    : transType,
@@ -445,25 +460,45 @@ module mkGenErrOrRetryRdmaResp#(
             dqpn     : cntrl.getSQPN, // DQPN of response is SQPN
             ackReq   : False,
             resv7    : unpack(0),
-            psn      : startPSN
+            psn      : bthPSN
         };
-        let aeth = genErrOrRetryResp ? AETH {
-            rsvd : unpack(0),
-            code : AETH_CODE_NAK,
-            value: zeroExtend(pack(AETH_NAK_RMT_OP)),
-            msn  : dontCareValue
-        } : AETH {
-            rsvd : unpack(0),
-            code : AETH_CODE_RNR,
-            value: cntrl.getMinRnrTimer,
-            msn  : dontCareValue
-        };
+        let aeth = case (genAckType)
+            RDMA_RESP_ACK_ERROR: AETH {
+                rsvd : unpack(0),
+                code : AETH_CODE_NAK,
+                value: zeroExtend(pack(AETH_NAK_RMT_OP)),
+                msn  : dontCareValue
+            };
+            RDMA_RESP_ACK_RNR: AETH {
+                rsvd : unpack(0),
+                code : AETH_CODE_RNR,
+                value: cntrl.getMinRnrTimer,
+                msn  : dontCareValue
+            };
+            RDMA_RESP_ACK_SEQ_ERR: AETH {
+                rsvd : unpack(0),
+                code : AETH_CODE_NAK,
+                value: zeroExtend(pack(AETH_NAK_SEQ_ERR)),
+                msn  : dontCareValue
+            };
+            default: AETH {
+                rsvd : unpack(0),
+                code : AETH_CODE_ACK,
+                value: pack(AETH_ACK_VALUE_INVALID_CREDIT_CNT),
+                msn  : dontCareValue
+            };
+        endcase;
         let respHeader = genRdmaHeader(
             zeroExtendLSB({ pack(bth), pack(aeth) }),
             fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(AETH_BYTE_WIDTH)),
             False // Error or retry responses have no payload
         );
         headerQ.enq(respHeader);
+        // $display(
+        //     "time=%0d: genRespAck", $time,
+        //     ", BTH=", fshow(bth), ", AETH=", fshow(aeth),
+        //     ", pendingWR.wr.id=%h", pendingWR.wr.id
+        // );
     endrule
 
     return headerDataStreamAndMetaDataPipeOut.headerDataStream;

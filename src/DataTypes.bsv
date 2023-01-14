@@ -118,7 +118,7 @@ typedef enum {
     RETRY_REASON_RNR,
     RETRY_REASON_SEQ_ERR,
     RETRY_REASON_IMPLICIT,
-    RETRY_REASON_TIME_OUT
+    RETRY_REASON_TIMEOUT
 } RetryReason deriving(Bits, Eq, FShow);
 
 // DATA and ByteEn are left algined

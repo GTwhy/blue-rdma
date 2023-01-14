@@ -1260,7 +1260,8 @@ module mkConnectPendingWorkReqPipeOut2PendingWorkReqQ#(
         pipeIn.deq;
 
         // $display(
-        //     "time=%0d: fill pendingWR=", $time, fshow(pendingWR)
+        //     // "time=%0d: fill pendingWR=", $time, fshow(pendingWR)
+        //     "time=%0d: fill pendingWR.wr.id=%h", $time, pendingWR.wr.id
         // );
     endrule
 endmodule

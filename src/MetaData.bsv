@@ -49,6 +49,7 @@ module mkTagVector(TagVector#(vSz, anytype)) provisos(
         endaction
     endfunction
 
+    // TODO: find out what implicit condition?
     // (* no_implicit_conditions, fire_when_enabled *)
     (* fire_when_enabled *)
     rule canonicalize;

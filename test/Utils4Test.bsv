@@ -22,17 +22,17 @@ endinterface
 
 module mkCountDown#(Integer maxValue)(CountDown);
     Reg#(Long) cycleNumReg <- mkReg(0);
-    let cnt <- mkCount(0);
+    Count#(int) cnt <- mkCount(fromInteger(maxValue));
 
     rule countCycles;
         cycleNumReg <= cycleNumReg + 1;
     endrule
 
     method Action decr();
-        cnt.incr(1);
+        cnt.decr(1);
         // $display("time=%0d: cycles=%0d, cmp cnt=%0d", $time, cycleNumReg, cnt);
 
-        if (cnt == fromInteger(maxValue)) begin
+        if (isZero(pack(cnt))) begin
             $info("time=%0d: finished after %0d cycles", $time, cycleNumReg);
             $finish(0);
         end
@@ -540,21 +540,19 @@ module mkRandomWorkReq#(
     return resultPipeOutVec;
 endmodule
 
-module mkRandomSendOrWriteWorkReq#(
+module mkRandomSendWorkReq#(
     Length minLength, Length maxLength
-)(PipeOut#(WorkReq));
-    WorkReqOpCode workReqOpCodeArray[5] = {
-        IBV_WR_RDMA_WRITE,
-        IBV_WR_RDMA_WRITE_WITH_IMM,
+)(Vector#(vSz, PipeOut#(WorkReq)));
+    WorkReqOpCode workReqOpCodeArray[3] = {
         IBV_WR_SEND,
         IBV_WR_SEND_WITH_IMM,
         IBV_WR_SEND_WITH_INV
     };
-    Vector#(5, WorkReqOpCode) workReqOpCodeVec = arrayToVector(workReqOpCodeArray);
-    Vector#(1, PipeOut#(WorkReq)) resultPipeOutVec <- mkRandomWorkReqInRange(
+    Vector#(3, WorkReqOpCode) workReqOpCodeVec = arrayToVector(workReqOpCodeArray);
+    let resultPipeOutVec <- mkRandomWorkReqInRange(
         workReqOpCodeVec, minLength, maxLength
     );
-    return resultPipeOutVec[0];
+    return resultPipeOutVec;
 endmodule
 
 module mkRandomReadOrAtomicWorkReq#(
@@ -651,7 +649,7 @@ module mkSimController#(QpType qpType, PMTU pmtu)(Controller);
             qpType,
             3, // maxRnrCnt
             3, // maxRetryCnt
-            0, // maxTimeOut 0 - infinite, 1 - 8.192 usec (0.000008 sec)
+            1, // maxTimeOut 0 - infinite, 1 - 8.192 usec (0.000008 sec)
             1, // minRnrTimer 1 - 0.01 milliseconds delay
             fromInteger(valueOf(MAX_QP_WR)), // pendingWorkReqNum
             fromInteger(valueOf(MAX_QP_WR)), // pendingRecvReqNum
@@ -752,7 +750,7 @@ module mkSimRetryHandlerWithLimitExcErr(RetryHandleSQ);
     FIFOF#(PendingWorkReq) emptyQ <- mkFIFOF;
     method Bool hasRetryErr() = True;
     method Bool isRetryDone() = False;
-    method Bool retryBegin() = False;
+    method Bool isRetrying() = False;
     method Action resetRetryCntBySQ();
         noAction;
     endmethod

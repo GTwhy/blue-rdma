@@ -127,7 +127,8 @@ module mkExtractHeaderFromRdmaPktPipeOut#(
             let headerMetaData = genHeaderMetaData(headerLen, headerHasPayload);
             headerMetaDataInQ.enq(headerMetaData);
             // $display(
-            //     "time=%0d: headerLen=%0d, transType=", $time, headerLen, fshow(transType),
+            //     "time=%0d: extractHeader", $time,
+            //     ", headerLen=%0d, transType=", headerLen, fshow(transType),
             //     ", rdmaOpCode=", fshow(rdmaOpCode),
             //     ", rdmaPktDataStream=", fshow(rdmaPktDataStream),
             //     ", headerHasPayload=", fshow(headerHasPayload),

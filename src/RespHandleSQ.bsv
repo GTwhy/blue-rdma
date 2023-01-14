@@ -29,7 +29,7 @@ typedef enum {
     SQ_RETRY_FLUSH,
     SQ_ERROR_FLUSH
     // SQ_RETRY_FLUSH_AND_WAIT
-} RespHandleState deriving(Bits, Eq);
+} RespHandleState deriving(Bits, Eq, FShow);
 
 typedef enum {
     WR_ACK_EXPLICIT_WHOLE,
@@ -328,9 +328,28 @@ module mkRespHandleSQ#(
             retryHandler.resetRetryCntBySQ;
         end
 
+        $display(
+            "time=%0d: 1st stage, bth.psn=%h, nextPSN=%h",
+            $time, bth.psn, nextPSN,
+            ", bth.opcode=", fshow(bth.opcode),
+            ", aeth.code=", fshow(aeth.code),
+            ", curPendingWR=", fshow(curPendingWR),
+            ", isIllegalResp=", fshow(isIllegalResp),
+            ", isMatchEndPSN=", fshow(isMatchEndPSN),
+            ", isCoalesceResp=", fshow(isCoalesceResp),
+            ", isMatchStartPSN=", fshow(isMatchStartPSN),
+            ", isPartialResp=", fshow(isPartialResp),
+            ", rdmaRespType=", fshow(rdmaRespType),
+            ", retryReason=", fshow(retryReason),
+            ", wrAckType=", fshow(wrAckType),
+            ", wcReqType=", fshow(wcReqType)
+        );
         if (
-            (rdmaRespType == RDMA_RESP_NORMAL && isLastOrOnlyRdmaOpCode(bth.opcode)) ||
-            (rdmaRespType == RDMA_RESP_ERROR)
+            wrAckType != WR_ACK_DUPLICATE &&
+            (
+                (rdmaRespType == RDMA_RESP_NORMAL && isLastOrOnlyRdmaOpCode(bth.opcode)) ||
+                rdmaRespType == RDMA_RESP_ERROR
+            )
         ) begin
             dynAssert(
                 deqPendingWorkReq,
@@ -361,22 +380,6 @@ module mkRespHandleSQ#(
             curPendingWR, curPktMetaData, respPktInfo,
             rdmaRespType, retryReason, wrAckType, wcReqType
         ));
-        // $display(
-        //     "time=%0d: 1st stage, bth.psn=%h, nextPSN=%h",
-        //     $time, bth.psn, nextPSN,
-        //     ", bth.opcode=", fshow(bth.opcode),
-        //     ", aeth.code=", fshow(aeth.code),
-        //     ", curPendingWR=", fshow(curPendingWR),
-        //     ", isIllegalResp=", fshow(isIllegalResp),
-        //     ", isMatchEndPSN=", fshow(isMatchEndPSN),
-        //     ", isCoalesceResp=", fshow(isCoalesceResp),
-        //     ", isMatchStartPSN=", fshow(isMatchStartPSN),
-        //     ", isPartialResp=", fshow(isPartialResp),
-        //     ", rdmaRespType=", fshow(rdmaRespType),
-        //     ", retryReason=", fshow(retryReason),
-        //     ", wrAckType=", fshow(wrAckType),
-        //     ", wcReqType=", fshow(wcReqType)
-        // );
     endrule
 
     // Response handle pipeline second stage
@@ -855,7 +858,11 @@ module mkRespHandleSQ#(
     rule errFlushPktMetaDataAndPayload if (
         cntrl.isERR || hasErrOccuredReg      ||
         respHandleStateReg == SQ_ERROR_FLUSH || // Error flush
-        !pendingWorkReqPipeIn.notEmpty          // Ghost responses
+        (
+            cntrl.isRTS && !hasErrOccuredReg            &&
+            respHandleStateReg == SQ_HANDLE_RESP_HEADER &&
+            !pendingWorkReqPipeIn.notEmpty
+        ) // Ghost responses
     );
         if (pendingWorkReqPipeIn.notEmpty) begin
             let pendingWR = pendingWorkReqPipeIn.first;
@@ -940,18 +947,41 @@ module mkRespHandleSQ#(
         end
     endrule
 
+    (* no_implicit_conditions, fire_when_enabled *)
+    rule retryFlushDone if (
+        cntrl.isRTS && !hasErrOccuredReg &&
+        respHandleStateReg == SQ_RETRY_FLUSH
+    );
+        dynAssert(
+            pendingWorkReqPipeIn.notEmpty,
+            "pendingWR notEmpty assertion @ mkRespHandleSQ",
+            $format(
+                "pendingWorkReqPipeIn.notEmpty=", fshow(pendingWorkReqPipeIn.notEmpty),
+                " should be true, when cntrl.isRTS=", fshow(cntrl.isRTS),
+                ", respHandleStateReg=", fshow(respHandleStateReg),
+                ", hasErrOccuredReg=", fshow(hasErrOccuredReg)
+            )
+        );
+
+        if (retryHandler.isRetrying) begin
+            respHandleStateReg <= SQ_HANDLE_RESP_HEADER;
+            $display(
+                "time=%0d:", $time,
+                " retry flush done, pendingWorkReqPipeIn.notEmpty=",
+                fshow(pendingWorkReqPipeIn.notEmpty)
+            );
+        end
+    endrule
+
     // (* no_implicit_conditions, fire_when_enabled *)
     (* fire_when_enabled *)
     rule retryFlushPktMetaDataAndPayload if (
-        cntrl.isRTS && !hasErrOccuredReg     &&
-        respHandleStateReg == SQ_RETRY_FLUSH &&
-        pendingWorkReqPipeIn.notEmpty
+        cntrl.isRTS && !hasErrOccuredReg &&
+        respHandleStateReg == SQ_RETRY_FLUSH
     );
         if (pktMetaDataPipeIn.notEmpty) begin
             let pktMetaData = pktMetaDataPipeIn.first;
             pktMetaDataPipeIn.deq;
-
-            PendingWorkReq emptyPendingWR = dontCareValue;
 
             let rdmaHeader  = pktMetaData.pktHeader;
             let bth         = extractBTH(rdmaHeader.headerData);
@@ -972,29 +1002,22 @@ module mkRespHandleSQ#(
             let retryReason = RETRY_REASON_NOT_RETRY;
             let wrAckType = WR_ACK_DISCARD;
             let wcReqType = WC_REQ_TYPE_NO_WC;
+            PendingWorkReq pendingWR = dontCareValue;
             pendingRespQ.enq(tuple7(
-                emptyPendingWR, pktMetaData, respPktInfo, rdmaRespType,
+                pendingWR, pktMetaData, respPktInfo, rdmaRespType,
                 retryReason, wrAckType, wcReqType
             ));
             $display(
                 "time=%0d: 1st retry flush stage, bth.psn=%h", $time, bth.psn,
                 ", bth.opcode=", fshow(bth.opcode),
+                // ", WR ID=%h", pendingWR.wr.id,
                 ", rdmaRespType=", fshow(rdmaRespType),
                 ", retryReason=", fshow(retryReason),
                 ", wrAckType=", fshow(wrAckType),
                 ", wcReqType=", fshow(wcReqType)
             );
         end
-
-        if (
-            cntrl.isRTS && !hasErrOccuredReg &&
-            respHandleStateReg == SQ_RETRY_FLUSH
-        ) begin
-            // Retry WR begin, change state to normal handling
-            if (retryHandler.retryBegin) begin
-                respHandleStateReg <= SQ_HANDLE_RESP_HEADER;
-            end
-        end
+        // $display("time=%0d: retryFlushPktMetaDataAndPayload", $time);
     endrule
 
     interface payloadConReqPipeOut = convertFifo2PipeOut(payloadConReqOutQ);

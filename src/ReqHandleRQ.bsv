@@ -428,6 +428,8 @@ module mkReqHandleRQ#(
 
     Count#(Bit#(TLog#(MAX_QP_WR))) maxUnackedWorkReqCnt <- mkCount(fromInteger(valueOf(TSub#(MAX_QP_WR, 1))));
 
+    Wire#(Bool) retryDoneWire <- mkDWire(False);
+
     // TODO: remove duplicate function definition
     function Action discardPktPayload(PmtuFragNum fragNum);
         action
@@ -553,8 +555,8 @@ module mkReqHandleRQ#(
 
         if (epoch == cntrl.contextRQ.getEpoch) begin
             if (reqStatus == RDMA_REQ_ST_SEQ_ERR) begin
-                // Update bth.psn to the lastest received PSN when SEQ ERR
-                reqPktInfo.bth.psn = cntrl.contextRQ.getEPSN - 1;
+                // Update bth.psn to ePSN when SEQ ERR
+                reqPktInfo.bth.psn = cntrl.contextRQ.getEPSN;
             end
             else if (!isSupportedReqOpCode) begin
                 if (reqStatus == RDMA_REQ_ST_NORMAL) begin
@@ -1556,6 +1558,38 @@ module mkReqHandleRQ#(
 
     // (* no_implicit_conditions, fire_when_enabled *)
     (* fire_when_enabled *)
+    rule retryStateChange if (
+        cntrl.isNonErr && retryFlushStateReg != RQ_NOT_RETRY && !isErrFlushStateReg
+    );
+        // let shouldDeq = True;
+        // let psnMatch  = False;
+        if (retryFlushStateReg == RQ_RNR_RETRY_FLUSH) begin
+            rnrWaitCntReg <= fromInteger(getRnrTimeOutValue(cntrl.getMinRnrTimer));
+            retryFlushStateReg <= RQ_RNR_WAIT;
+        end
+        else if (retryFlushStateReg == RQ_RNR_WAIT) begin
+            if (isZero(rnrWaitCntReg)) begin
+                retryFlushStateReg <= RQ_RNR_WAIT_DONE;
+            end
+            else begin
+                rnrWaitCntReg <= rnrWaitCntReg - 1;
+            end
+        end
+        else if (
+            retryFlushStateReg == RQ_RNR_WAIT_DONE ||
+            retryFlushStateReg == RQ_SEQ_RETRY_FLUSH
+        ) begin
+            if (retryDoneWire) begin
+                retryFlushStateReg <= RQ_NOT_RETRY;
+            end
+            // $display(
+            //     "time=%0d:", $time, " retryDoneWire=", fshow(retryDoneWire)
+            // );
+        end
+    endrule
+
+    // (* no_implicit_conditions, fire_when_enabled *)
+    (* fire_when_enabled *)
     rule retryFlush if (
         cntrl.isNonErr && retryFlushStateReg != RQ_NOT_RETRY && !isErrFlushStateReg
     );
@@ -1567,34 +1601,22 @@ module mkReqHandleRQ#(
             let curPktMetaData = pktMetaDataPipeIn.first;
             let curRdmaHeader  = curPktMetaData.pktHeader;
 
-            let bth      = extractBTH(curRdmaHeader.headerData);
-            let psnMatch = bth.psn == cntrl.contextRQ.getEPSN;
-
-            let shouldDeq = True;
-            if (retryFlushStateReg == RQ_RNR_RETRY_FLUSH) begin
-                rnrWaitCntReg <= fromInteger(getRnrTimeOutValue(cntrl.getMinRnrTimer));
-                retryFlushStateReg <= RQ_RNR_WAIT;
-            end
-            else if (retryFlushStateReg == RQ_RNR_WAIT) begin
-                if (isZero(rnrWaitCntReg)) begin
-                    retryFlushStateReg <= RQ_RNR_WAIT_DONE;
-                end
-                else begin
-                    rnrWaitCntReg <= rnrWaitCntReg - 1;
-                end
-            end
-            else if (
+            let bth       = extractBTH(curRdmaHeader.headerData);
+            let psnMatch  = bth.psn == cntrl.contextRQ.getEPSN;
+            let retryDone = psnMatch && (
                 retryFlushStateReg == RQ_RNR_WAIT_DONE ||
                 retryFlushStateReg == RQ_SEQ_RETRY_FLUSH
-            ) begin
-                if (psnMatch) begin
-                    shouldDeq = False;
-                    retryFlushStateReg <= RQ_NOT_RETRY;
-                end
-            end
+            );
+            retryDoneWire <= retryDone;
+            // $display(
+            //     "time=%0d:", $time,
+            //     " retryDone=", fshow(retryDone),
+            //     ", bth.psn=%h", bth.psn,
+            //     ", ePSN=%h", cntrl.contextRQ.getEPSN
+            // );
 
             let reqStatus = RDMA_REQ_ST_DISCARD;
-            if (shouldDeq) begin
+            if (!retryDone) begin
                 pktMetaDataPipeIn.deq;
 
                 PermCheckInfo curPermCheckInfo = dontCareValue;
