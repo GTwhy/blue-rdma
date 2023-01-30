@@ -39,7 +39,7 @@ function Rules genNoPendingWorkReqOutRule(PipeOut#(PendingWorkReq) pendingWorkRe
         endrules
     );
 endfunction
-
+/*
 (* synthesize *)
 module mkTestReqHandleNormalCase(Empty);
     let minPayloadLen = 1;
@@ -76,7 +76,7 @@ module mkTestReqHandleNormalCase(Empty);
     // Segment send/write payload DMA read DataStream
     let sendWriteReqPayloadPipeOutBuf <- mkBufferN(32, simReqGen.sendWriteReqPayloadPipeOut);
     let pmtuPipeOut <- mkConstantPipeOut(pmtu);
-    let sendWritePayloadPipeOut4Ref <- mkSegmentDataStreamByPmtuAndAddPadCnt(
+    let sendWriteReqPayloadPipeOut4Ref <- mkSegmentDataStreamByPmtuAndAddPadCnt(
         sendWriteReqPayloadPipeOutBuf, pmtuPipeOut
     );
 
@@ -115,7 +115,7 @@ module mkTestReqHandleNormalCase(Empty);
 
     // PayloadConsumer
     let simDmaWriteSrv <- mkSimDmaWriteSrvAndDataStreamPipeOut;
-    let sendWritePayloadPipeOut = simDmaWriteSrv.dataStream;
+    let sendWriteReqPayloadPipeOut = simDmaWriteSrv.dataStream;
     let payloadConsumer <- mkPayloadConsumer(
         cntrl,
         pktMetaDataAndPayloadPipeOut.payload,
@@ -138,8 +138,8 @@ module mkTestReqHandleNormalCase(Empty);
     // let workCompPipeOut4WorkReq = workCompPipeOutVec[1];
 
     // PipeOut need to handle:
-    // - sendWritePayloadPipeOut
-    // - sendWritePayloadPipeOut4Ref
+    // - sendWriteReqPayloadPipeOut
+    // - sendWriteReqPayloadPipeOut4Ref
     // - pktMetaDataAndPayloadPipeOut.payload
     // - dut.payloadConReqPipeOut
     // - payloadConsumer.respPipeOut
@@ -148,8 +148,8 @@ module mkTestReqHandleNormalCase(Empty);
     // - dut.rdmaRespDataStreamPipeOut
     // - workCompGenRQ.workCompPipeOut
 
-    // let sinkSendWritePayload4Ref <- mkSink(sendWritePayloadPipeOut4Ref);
-    // let sinkSendWritePayload <- mkSink(sendWritePayloadPipeOut);
+    // let sinkSendWritePayload4Ref <- mkSink(sendWriteReqPayloadPipeOut4Ref);
+    // let sinkSendWritePayload <- mkSink(sendWriteReqPayloadPipeOut);
     // let sinkPendingWR4WorkComp <- mkSink(pendingWorkReqPipeOut4WorkComp);
     // let sinkWorkComp <- mkSink(workCompPipeOut4WorkReq);
     // let sinkPayloadConResp <- mkSink(payloadConsumer.respPipeOut);
@@ -158,11 +158,11 @@ module mkTestReqHandleNormalCase(Empty);
     // let sinkRdmaResp <- mkSink(dut.rdmaRespDataStreamPipeOut);
 
     rule compareSendWriteReqPayload;
-        let sendWritePayloadDataStreamRef = sendWritePayloadPipeOut4Ref.first;
-        sendWritePayloadPipeOut4Ref.deq;
+        let sendWritePayloadDataStreamRef = sendWriteReqPayloadPipeOut4Ref.first;
+        sendWriteReqPayloadPipeOut4Ref.deq;
 
-        let sendWritePayloadDataStream = sendWritePayloadPipeOut.first;
-        sendWritePayloadPipeOut.deq;
+        let sendWritePayloadDataStream = sendWriteReqPayloadPipeOut.first;
+        sendWriteReqPayloadPipeOut.deq;
 
         dynAssert(
             sendWritePayloadDataStream == sendWritePayloadDataStreamRef,
@@ -181,47 +181,47 @@ module mkTestReqHandleNormalCase(Empty);
         //     fshow(sendWritePayloadDataStreamRef)
         // );
     endrule
-/*
-    rule show;
-        let sendWritePayloadDataStreamRef = sendWritePayloadPipeOut.first;
-        sendWritePayloadPipeOut.deq;
 
-        $display(
-            "time=%0d: sendWritePayloadDataStreamRef.isFirst=",
-            $time, fshow(sendWritePayloadDataStreamRef.isFirst),
-            ", sendWritePayloadDataStreamRef.isLast=",
-            fshow(sendWritePayloadDataStreamRef.isLast),
-            ", sendWritePayloadDataStreamRef.byteEn=%h",
-            sendWritePayloadDataStreamRef.byteEn
-        );
-    endrule
+    // rule show;
+    //     let sendWritePayloadDataStreamRef = sendWriteReqPayloadPipeOut.first;
+    //     sendWriteReqPayloadPipeOut.deq;
 
-    rule compareWorkCompWithRecvReq;
-        let rr = recvReqBuf4Ref.first;
-        recvReqBuf4Ref.deq;
+    //     $display(
+    //         "time=%0d: sendWritePayloadDataStreamRef.isFirst=",
+    //         $time, fshow(sendWritePayloadDataStreamRef.isFirst),
+    //         ", sendWritePayloadDataStreamRef.isLast=",
+    //         fshow(sendWritePayloadDataStreamRef.isLast),
+    //         ", sendWritePayloadDataStreamRef.byteEn=%h",
+    //         sendWritePayloadDataStreamRef.byteEn
+    //     );
+    // endrule
 
-        let wc = workCompPipeOut4RecvReq.first;
-        workCompPipeOut4RecvReq.deq;
+    // rule compareWorkCompWithRecvReq;
+    //     let rr = recvReqBuf4Ref.first;
+    //     recvReqBuf4Ref.deq;
 
-        dynAssert(
-            wc.id == rr.id,
-            "WC ID assertion @ mkTestReqHandleNormalCase",
-            $format(
-                "wc.id=%h should == rr.id=%h",
-                wc.id, rr.id
-            )
-        );
+    //     let wc = workCompPipeOut4RecvReq.first;
+    //     workCompPipeOut4RecvReq.deq;
 
-        dynAssert(
-            wc.status == IBV_WC_SUCCESS,
-            "WC status assertion @ mkTestReqHandleNormalCase",
-            $format(
-                "wc.status=", fshow(wc.status),
-                " should be success"
-            )
-        );
-    endrule
-*/
+    //     dynAssert(
+    //         wc.id == rr.id,
+    //         "WC ID assertion @ mkTestReqHandleNormalCase",
+    //         $format(
+    //             "wc.id=%h should == rr.id=%h",
+    //             wc.id, rr.id
+    //         )
+    //     );
+
+    //     dynAssert(
+    //         wc.status == IBV_WC_SUCCESS,
+    //         "WC status assertion @ mkTestReqHandleNormalCase",
+    //         $format(
+    //             "wc.status=", fshow(wc.status),
+    //             " should be success"
+    //         )
+    //     );
+    // endrule
+
     rule compareWorkCompWithPendingWorkReq;
         let pendingWR = pendingWorkReqPipeOut4WorkComp.first;
         pendingWorkReqPipeOut4WorkComp.deq;
@@ -250,14 +250,16 @@ module mkTestReqHandleNormalCase(Empty);
                         fshow(wc.rkey2Inv), " should be invalid"
                     )
                 );
-                // TODO: fix this assertion
+
+                let wrImmDt = unwrapMaybe(pendingWR.wr.immDt);
+                let wcImmDt = unwrapMaybe(wc.immDt);
                 dynAssert(
-                    unwrapMaybe(pendingWR.wr.immDt) == unwrapMaybe(wc.immDt),
+                    wrImmDt == wcImmDt,
                     "wc.immDt equal assertion @ mkTestReqHandleNormalCase",
                     $format(
-                        "wc.immDt=", fshow(unwrapMaybe(wc.immDt)),
+                        "wc.immDt=", fshow(wcImmDt),
                         " should == pendingWR.wr.immDt=",
-                        fshow(unwrapMaybe(pendingWR.wr.immDt))
+                        fshow(wrImmDt)
                     )
                 );
             end
@@ -334,18 +336,397 @@ module mkTestReqHandleNormalCase(Empty);
             end
         end
     endrule
+endmodule
+*/
+(* synthesize *)
+module mkTestReqHandleNormalReqCase(Empty);
+    let normalOrDupReq = True;
+    let result <- mkTestReqHandleNormalAndDupReqCase(normalOrDupReq);
+endmodule
 
-    // rule noPendingWorkReqOutFromReqGenSQ;
+(* synthesize *)
+module mkTestReqHandleDupReqCase(Empty);
+    let normalOrDupReq = False;
+    let result <- mkTestReqHandleNormalAndDupReqCase(normalOrDupReq);
+endmodule
+
+module mkNonZeroSendWriteReqPayloadPipeOut#(
+    PipeOut#(Bool) filterPipeIn,
+    PipeOut#(PendingWorkReq) pendingWorkReqPipeOut,
+    DataStreamPipeOut dataStreamPipeIn
+)(DataStreamPipeOut);
+    FIFOF#(DataStream) dataStreamOutQ <- mkFIFOF;
+
+    rule filterDataStream;
+        let select = filterPipeIn.first;
+        let pendingWR = pendingWorkReqPipeOut.first;
+        let isNonZeroSendWriteWR = workReqNeedDmaReadSQ(pendingWR.wr);
+
+        if (isNonZeroSendWriteWR) begin
+            let dataStream = dataStreamPipeIn.first;
+            dataStreamPipeIn.deq;
+
+            if (select) begin
+                dataStreamOutQ.enq(dataStream);
+            end
+
+            if (dataStream.isLast) begin
+                filterPipeIn.deq;
+                pendingWorkReqPipeOut.deq;
+            end
+        end
+        else begin
+            filterPipeIn.deq;
+            pendingWorkReqPipeOut.deq;
+        end
+    endrule
+
+    return convertFifo2PipeOut(dataStreamOutQ);
+endmodule
+
+module mkTestReqHandleNormalAndDupReqCase#(Bool normalOrDupReq)(Empty);
+    let minPayloadLen = 1;
+    let maxPayloadLen = 2048;
+    let qpType = IBV_QPT_XRC_SEND;
+    let pmtu = IBV_MTU_256;
+
+    let qpMetaData <- mkSimQPs(qpType, pmtu);
+    let qpn = dontCareValue;
+    let cntrl = qpMetaData.getCntrl(qpn);
+
+    // WorkReq generation
+    Vector#(1, PipeOut#(WorkReq)) workReqPipeOutVec <- mkRandomWorkReq(
+        minPayloadLen, maxPayloadLen
+    );
+    let workReqPipeOut = workReqPipeOutVec[0];
+    Vector#(1, PipeOut#(PendingWorkReq)) existingPendingWorkReqPipeOutVec <-
+        mkExistingPendingWorkReqPipeOut(cntrl, workReqPipeOut);
+    let { normalOrDupReqSelPipeOut, normalOrDupPendingWorkReqPipeOut } <- mkGenNormalOrDupWorkReq(
+        normalOrDupReq, existingPendingWorkReqPipeOutVec[0]
+    );
+    Vector#(3, PipeOut#(Bool)) normalOrDupReqSelPipeOutVec <-
+        mkForkVector(normalOrDupReqSelPipeOut);
+    let normalOrDupReqSelPipeOut4WorkComp <- mkBufferN(8, normalOrDupReqSelPipeOutVec[0]);
+    let normalOrDupReqSelPipeOut4Resp <- mkBufferN(8, normalOrDupReqSelPipeOutVec[1]);
+    let normalOrDupReqSelPipeOut4SendWriteReq <- mkBufferN(8, normalOrDupReqSelPipeOutVec[2]);
+    Vector#(4, PipeOut#(PendingWorkReq)) normalOrDupPendingWorkReqPipeOutVec <-
+        mkForkVector(normalOrDupPendingWorkReqPipeOut);
+    let normalOrDupPendingWorkReqPipeOut4ReqGen = normalOrDupPendingWorkReqPipeOutVec[0];
+    let normalOrDupPendingWorkReqPipeOut4WorkComp <- mkBufferN(8, normalOrDupPendingWorkReqPipeOutVec[1]);
+    let normalOrDupPendingWorkReqPipeOut4Resp <- mkBufferN(8, normalOrDupPendingWorkReqPipeOutVec[2]);
+    let normalOrDupPendingWorkReqPipeOut4SendWriteReq <- mkBufferN(8, normalOrDupPendingWorkReqPipeOutVec[3]);
+
+    // Read response payload DataStream generation
+    let simDmaReadSrv <- mkSimDmaReadSrv;
+    // TODO: check read response payload
+    // let simDmaReadSrv <- mkSimDmaReadSrvAndDataStreamPipeOut;
+    // let readRespPayloadPipeOutBuf <- mkBufferN(32, simDmaReadSrv.dataStream);
+    // let pmtuPipeOut4ReadResp <- mkConstantPipeOut(pmtu);
+    // let readRespPayloadPipeOut4Ref <- mkSegmentDataStreamByPmtuAndAddPadCnt(
+    //     readRespPayloadPipeOutBuf, pmtuPipeOut4ReadResp
+    // );
+
+    // Generate RDMA requests
+    let simReqGen <- mkSimGenRdmaReqAndSendWritePayloadPipeOut(
+        normalOrDupPendingWorkReqPipeOut4ReqGen, qpType, pmtu
+    );
+    let rdmaReqPipeOut = simReqGen.rdmaReqDataStreamPipeOut;
+    // Add rule to check no pending WR output
+    let addNoPendingWorkReqOutRule <- addRules(
+        genNoPendingWorkReqOutRule(simReqGen.pendingWorkReqPipeOut)
+    );
+    // Segment send/write payload DMA read DataStream
+    let normalSendWriteReqPayloadPipeOut <- mkNonZeroSendWriteReqPayloadPipeOut(
+        normalOrDupReqSelPipeOut4SendWriteReq,
+        normalOrDupPendingWorkReqPipeOut4SendWriteReq,
+        simReqGen.sendWriteReqPayloadPipeOut
+    );
+    let sendWriteReqPayloadPipeOutBuf <- mkBufferN(32, normalSendWriteReqPayloadPipeOut);
+    let pmtuPipeOut4SendWriteReq <- mkConstantPipeOut(pmtu);
+    let sendWriteReqPayloadPipeOut4Ref <- mkSegmentDataStreamByPmtuAndAddPadCnt(
+        sendWriteReqPayloadPipeOutBuf, pmtuPipeOut4SendWriteReq
+    );
+
+    // Extract header DataStream, HeaderMetaData and payload DataStream
+    let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
+        rdmaReqPipeOut
+    );
+
+    // Build RdmaPktMetaData and payload DataStream
+    let pktMetaDataAndPayloadPipeOut <- mkInputRdmaPktBufAndHeaderValidation(
+        headerAndMetaDataAndPayloadPipeOut, qpMetaData
+    );
+    let pktMetaDataPipeIn = pktMetaDataAndPayloadPipeOut.pktMetaData;
+
+    // MR permission check
+    let mrCheckPassOrFail = True;
+    let permCheckMR <- mkSimPermCheckMR(mrCheckPassOrFail);
+
+    // DupReadAtomicCache
+    let dupReadAtomicCache <- mkDupReadAtomicCache(cntrl);
+
+    // RecvReq
+    Vector#(1, PipeOut#(RecvReq)) recvReqBufVec <- mkSimGenRecvReq(cntrl);
+    let recvReqBuf = recvReqBufVec[0];
+    // let recvReqBuf4Ref <- mkBufferN(1024, recvReqBufVec[1]);
+
+    // DUT
+    let dut <- mkReqHandleRQ(
+        cntrl,
+        simDmaReadSrv,
+        permCheckMR,
+        dupReadAtomicCache,
+        recvReqBuf,
+        pktMetaDataPipeIn
+    );
+
+    // PayloadConsumer
+    let simDmaWriteSrv <- mkSimDmaWriteSrvAndDataStreamPipeOut;
+    let sendWriteReqPayloadPipeOut = simDmaWriteSrv.dataStream;
+    let payloadConsumer <- mkPayloadConsumer(
+        cntrl,
+        pktMetaDataAndPayloadPipeOut.payload,
+        simDmaWriteSrv.dmaWriteSrv,
+        dut.payloadConReqPipeOut
+    );
+
+    // WorkCompGenRQ
+    FIFOF#(WorkCompGenReqRQ) wcGenReqQ4ReqGenInRQ <- mkFIFOF;
+    let workCompGenRQ <- mkWorkCompGenRQ(
+        cntrl,
+        payloadConsumer.respPipeOut,
+        dut.workCompGenReqPipeOut
+    );
+    let workCompPipeOut4WorkReq = workCompGenRQ.workCompPipeOut;
+
+    // Vector#(2, PipeOut#(WorkComp)) workCompPipeOutVec <-
+    //     mkForkVector(workCompGenRQ.workCompPipeOut);
+    // let workCompPipeOut4RecvReq = workCompPipeOutVec[0];
+    // let workCompPipeOut4WorkReq = workCompPipeOutVec[1];
+
+    Reg#(Long) normalAtomicRespOrigReg <- mkRegU;
+
+    // PipeOut need to handle:
+    // let sinkNormalOrDupReqSel4SendWriteReq <- mkSink(normalOrDupReqSelPipeOut4SendWriteReq);
+    // let sinkNormalOrDupPendingWorkReq4SendWriteReq <- mkSink(normalOrDupPendingWorkReqPipeOut4SendWriteReq);
+    // let sinkSendWritePayloadOrig <- mkSink(simReqGen.sendWriteReqPayloadPipeOut);
+    // let sinkSendWritePayload4Ref <- mkSink(sendWriteReqPayloadPipeOut4Ref);
+    // let sinkSendWritePayload <- mkSink(sendWriteReqPayloadPipeOut);
+    // let sinkNormalOrDupReqSel4WorkComp <- mkSink(normalOrDupReqSelPipeOut4WorkComp)
+    // let sinkPendingWR4WorkComp <- mkSink(normalOrDupPendingWorkReqPipeOut4WorkComp);
+    // let sinkWorkComp <- mkSink(workCompPipeOut4WorkReq);
+    // let sinkPayloadConResp <- mkSink(payloadConsumer.respPipeOut);
+    // let sinkWorkCompGenReq <- mkSink(dut.workCompGenReqPipeOut);
+    // let sinkPendingWR4Resp <- mkSink(normalOrDupPendingWorkReqPipeOut4Resp);
+    // let sinkRdmaResp <- mkSink(dut.rdmaRespDataStreamPipeOut);
+    // let sink <- mkSink(normalOrDupReqSelPipeOut4Resp);
+
+    // rule show;
+    //     let sendWritePayloadDataStreamRef = sendWriteReqPayloadPipeOut.first;
+    //     sendWriteReqPayloadPipeOut.deq;
+
+    //     $display(
+    //         "time=%0d: sendWritePayloadDataStreamRef.isFirst=",
+    //         $time, fshow(sendWritePayloadDataStreamRef.isFirst),
+    //         ", sendWritePayloadDataStreamRef.isLast=",
+    //         fshow(sendWritePayloadDataStreamRef.isLast),
+    //         ", sendWritePayloadDataStreamRef.byteEn=%h",
+    //         sendWritePayloadDataStreamRef.byteEn
+    //     );
+    // endrule
+
+    // TODO: compare RR and WC
+    // rule compareWorkCompWithRecvReq;
+    //     let rr = recvReqBuf4Ref.first;
+    //     recvReqBuf4Ref.deq;
+
+    //     let wc = workCompPipeOut4RecvReq.first;
+    //     workCompPipeOut4RecvReq.deq;
+
     //     dynAssert(
-    //         !simReqGen.pendingWorkReqPipeOut.notEmpty,
-    //         "simReqGen.pendingWorkReqPipeOut empty assertion @ mkTestReqHandleNormalCase",
+    //         wc.id == rr.id,
+    //         "WC ID assertion @ mkTestReqHandleNormalCase",
     //         $format(
-    //             "simReqGen.pendingWorkReqPipeOut.notEmpty=",
-    //             fshow(simReqGen.pendingWorkReqPipeOut.notEmpty),
-    //             " should be empty"
+    //             "wc.id=%h should == rr.id=%h",
+    //             wc.id, rr.id
+    //         )
+    //     );
+
+    //     dynAssert(
+    //         wc.status == IBV_WC_SUCCESS,
+    //         "WC status assertion @ mkTestReqHandleNormalCase",
+    //         $format(
+    //             "wc.status=", fshow(wc.status),
+    //             " should be success"
     //         )
     //     );
     // endrule
+
+    rule compareSendWriteReqPayload;
+        let sendWritePayloadDataStreamRef = sendWriteReqPayloadPipeOut4Ref.first;
+        sendWriteReqPayloadPipeOut4Ref.deq;
+
+        let sendWritePayloadDataStream = sendWriteReqPayloadPipeOut.first;
+        sendWriteReqPayloadPipeOut.deq;
+
+        dynAssert(
+            sendWritePayloadDataStream == sendWritePayloadDataStreamRef,
+            "sendWritePayloadDataStream assertion @ mkTestReqHandleNormalCase",
+            $format(
+                "sendWritePayloadDataStream=",
+                fshow(sendWritePayloadDataStream),
+                " should == sendWritePayloadDataStreamRef=",
+                fshow(sendWritePayloadDataStreamRef)
+            )
+        );
+        // $display(
+        //     "time=%0d: sendWritePayloadDataStream=", $time,
+        //     fshow(sendWritePayloadDataStream),
+        //     " should == sendWritePayloadDataStreamRef=",
+        //     fshow(sendWritePayloadDataStreamRef)
+        // );
+    endrule
+
+    rule compareWorkCompWithPendingWorkReq;
+        let pendingWR = normalOrDupPendingWorkReqPipeOut4WorkComp.first;
+        normalOrDupPendingWorkReqPipeOut4WorkComp.deq;
+        let isNormalReq = normalOrDupReqSelPipeOut4WorkComp.first;
+        normalOrDupReqSelPipeOut4WorkComp.deq;
+
+        // $display("time=%0d: pendingWR=", $time, fshow(pendingWR));
+
+        if (isNormalReq && workReqNeedRecvReq(pendingWR.wr.opcode)) begin
+            let wc = workCompPipeOut4WorkReq.first;
+            workCompPipeOut4WorkReq.deq;
+
+            dynAssert(
+                workCompMatchWorkReqInRQ(wc, pendingWR.wr),
+                "workCompMatchWorkReqInRQ assertion @ mkTestReqHandleNormalCase",
+                $format("WC=", fshow(wc), " not match WR=", fshow(pendingWR.wr))
+            );
+            // $display("time=%0d: WC=", $time, fshow(wc));
+
+            if (workReqHasImmDt(pendingWR.wr.opcode)) begin
+                dynAssert(
+                    isValid(wc.immDt) && isValid(pendingWR.wr.immDt) &&
+                    !isValid(wc.rkey2Inv) && !isValid(pendingWR.wr.rkey2Inv),
+                    "WC has ImmDT assertion @ mkTestReqHandleNormalCase",
+                    $format(
+                        "wc.immDt=", fshow(wc.immDt),
+                        " should be valid, and wc.rkey2Inv=",
+                        fshow(wc.rkey2Inv), " should be invalid"
+                    )
+                );
+
+                let wrImmDt = unwrapMaybe(pendingWR.wr.immDt);
+                let wcImmDt = unwrapMaybe(wc.immDt);
+                dynAssert(
+                    wrImmDt == wcImmDt,
+                    "wc.immDt equal assertion @ mkTestReqHandleNormalCase",
+                    $format(
+                        "wc.immDt=", fshow(wcImmDt),
+                        " should == pendingWR.wr.immDt=",
+                        fshow(wrImmDt)
+                    )
+                );
+            end
+            else if (workReqHasInv(pendingWR.wr.opcode)) begin
+                dynAssert(
+                    !isValid(wc.immDt) && !isValid(pendingWR.wr.immDt) &&
+                    isValid(wc.rkey2Inv) && isValid(pendingWR.wr.rkey2Inv),
+                    "WC has IETH assertion @ mkTestReqHandleNormalCase",
+                    $format(
+                        "wc.rkey2Inv=", fshow(wc.rkey2Inv),
+                        " should be valid, and wc.immDt=",
+                        fshow(wc.immDt), " should be invalid"
+                    )
+                );
+                dynAssert(
+                    unwrapMaybe(pendingWR.wr.rkey2Inv) == unwrapMaybe(wc.rkey2Inv),
+                    "wc.rkey2Inv equal assertion @ mkTestReqHandleNormalCase",
+                    $format(
+                        "wc.rkey2Inv=", fshow(unwrapMaybe(wc.rkey2Inv)),
+                        " should == pendingWR.wr.rkey2Inv=",
+                        fshow(unwrapMaybe(pendingWR.wr.rkey2Inv))
+                    )
+                );
+            end
+            else begin
+                dynAssert(
+                    !isValid(wc.immDt) &&
+                    !isValid(wc.rkey2Inv),
+                    "WC has no ImmDT or IETH assertion @ mkTestReqHandleNormalCase",
+                    $format(
+                        "both wc.immDt=", fshow(wc.immDt),
+                        " and wc.rkey2Inv=", fshow(wc.rkey2Inv),
+                        " should be invalid"
+                    )
+                );
+            end
+        end
+    endrule
+
+    rule compareRespAETH;
+        let rdmaRespDataStream = dut.rdmaRespDataStreamPipeOut.first;
+        dut.rdmaRespDataStreamPipeOut.deq;
+
+        let pendingWR = normalOrDupPendingWorkReqPipeOut4Resp.first;
+        let isNormalReq = normalOrDupReqSelPipeOut4Resp.first;
+        let isAtomicWR = isAtomicWorkReq(pendingWR.wr.opcode);
+
+        if (rdmaRespDataStream.isFirst) begin
+            let bth = extractBTH(zeroExtendLSB(rdmaRespDataStream.data));
+            let endPSN = unwrapMaybe(pendingWR.endPSN);
+
+            if (bth.psn == endPSN) begin
+                normalOrDupPendingWorkReqPipeOut4Resp.deq;
+                normalOrDupReqSelPipeOut4Resp.deq;
+            end
+
+            if (rdmaRespHasAETH(bth.opcode)) begin
+                let aeth = extractAETH(zeroExtendLSB(rdmaRespDataStream.data));
+                dynAssert(
+                    aeth.code == AETH_CODE_ACK,
+                    "aeth.code assertion @ mkTestReqHandleNormalCase",
+                    $format(
+                        "aeth.code=", fshow(aeth.code),
+                        " should be normal ACK"
+                    )
+                );
+
+                // $display(
+                //     "time=%0d: response bth=", $time, fshow(bth),
+                //     ", aeth=", fshow(aeth)
+                // );
+            end
+            else begin
+                // $display("time=%0d: response bth=", $time, fshow(bth));
+                // $display("time=%0d: pendingWR=", $time, fshow(pendingWR));
+            end
+
+            if (isAtomicWR) begin
+                let atomicAckEth = extractAtomicAckEth(zeroExtendLSB(rdmaRespDataStream.data));
+                if (isNormalReq) begin
+                    normalAtomicRespOrigReg <= atomicAckEth.orig;
+                end
+                else begin
+                    dynAssert(
+                        atomicAckEth.orig == normalAtomicRespOrigReg,
+                        "atomicAckEth.orig assertion @ mkTestReqHandleNormalCase",
+                        $format(
+                            "atomicAckEth.orig=%h", atomicAckEth.orig,
+                            " should == normalAtomicRespOrigReg=%h", normalAtomicRespOrigReg
+                        )
+                    );
+                    // $display(
+                    //     "time=%0d:", $time,
+                    //     " atomicAckEth.orig=%h", atomicAckEth.orig,
+                    //     " should == normalAtomicRespOrigReg=%h", normalAtomicRespOrigReg
+                    // );
+                end
+            end
+        end
+    endrule
 endmodule
 
 typedef enum {
@@ -483,16 +864,7 @@ module mkTestReqHandleAbnormalCase#(ReqHandleErrType errType)(Empty);
     // let sinkWorkComp <- mkSink(workCompPipeOut4WorkReq);
 
     // TODO: check workCompGenRQ.wcStatusQ4SQ has exact one error WC status
-/*
-    rule show;
-        let wc = workCompPipeOut4WorkReq.first;
-        workCompPipeOut4WorkReq.deq;
 
-        $display(
-            "time=%0d: WC=", $time, fshow(wc)
-        );
-    endrule
-*/
     rule compareRespBeforeFatalErr;
         let pendingWR = pendingWorkReqPipeOut4Resp.first;
 

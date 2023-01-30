@@ -636,7 +636,7 @@ module mkReqGenSQ#(
             // Check WR length cannot be larger than PMTU for UD
             let isValidRdmaReq = qpType == IBV_QPT_UD ? isOnlyReqPkt : True;
             if (isValidRdmaReq) begin
-                if (workReqNeedDmaRead(pendingWorkReq.wr)) begin
+                if (workReqNeedDmaReadSQ(pendingWorkReq.wr)) begin
                     let payloadGenReq = PayloadGenReq {
                         initiator    : OP_INIT_SQ_RD,
                         addPadding   : True,

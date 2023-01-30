@@ -40,8 +40,10 @@ module mkTestWorkCompGenSQ#(Bool isNormalCase)(Empty);
     // WorkReq generation
     Vector#(1, PipeOut#(WorkReq)) workReqPipeOutVec <-
         mkRandomWorkReq(minDmaLength, maxDmaLength);
+    // TODO: change mkPendingWorkReqPipeOut to mkExistingPendingWorkReqPipeOut
     Vector#(2, PipeOut#(PendingWorkReq)) existingPendingWorkReqPipeOutVec <-
         mkPendingWorkReqPipeOut(workReqPipeOutVec[0], pmtu);
+        // mkExistingPendingWorkReqPipeOut(cntrl, workReqPipeOutVec[0]);
     let pendingWorkReqPipeOut4WorkCompReq = existingPendingWorkReqPipeOutVec[0];
     let pendingWorkReqPipeOut4DmaResp = existingPendingWorkReqPipeOutVec[1];
     FIFOF#(PendingWorkReq) pendingWorkReqPipeOut4Ref <- mkFIFOF;

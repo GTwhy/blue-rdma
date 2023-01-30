@@ -326,24 +326,11 @@ module mkRespHandleSQ#(
         if (deqPendingWorkReq) begin
             pendingWorkReqPipeIn.deq;
             retryHandler.resetRetryCntBySQ;
+            // $display(
+            //     "time=%0d:", $time, " dequeue WR ID=%h", curPendingWR.wr.id
+            // );
         end
 
-        $display(
-            "time=%0d: 1st stage, bth.psn=%h, nextPSN=%h",
-            $time, bth.psn, nextPSN,
-            ", bth.opcode=", fshow(bth.opcode),
-            ", aeth.code=", fshow(aeth.code),
-            ", curPendingWR=", fshow(curPendingWR),
-            ", isIllegalResp=", fshow(isIllegalResp),
-            ", isMatchEndPSN=", fshow(isMatchEndPSN),
-            ", isCoalesceResp=", fshow(isCoalesceResp),
-            ", isMatchStartPSN=", fshow(isMatchStartPSN),
-            ", isPartialResp=", fshow(isPartialResp),
-            ", rdmaRespType=", fshow(rdmaRespType),
-            ", retryReason=", fshow(retryReason),
-            ", wrAckType=", fshow(wrAckType),
-            ", wcReqType=", fshow(wcReqType)
-        );
         if (
             wrAckType != WR_ACK_DUPLICATE &&
             (
@@ -380,6 +367,22 @@ module mkRespHandleSQ#(
             curPendingWR, curPktMetaData, respPktInfo,
             rdmaRespType, retryReason, wrAckType, wcReqType
         ));
+        // $display(
+        //     "time=%0d: 1st stage, bth.psn=%h, nextPSN=%h",
+        //     $time, bth.psn, nextPSN,
+        //     ", bth.opcode=", fshow(bth.opcode),
+        //     ", aeth.code=", fshow(aeth.code),
+        //     ", curPendingWR=", fshow(curPendingWR),
+        //     ", isIllegalResp=", fshow(isIllegalResp),
+        //     ", isMatchEndPSN=", fshow(isMatchEndPSN),
+        //     ", isCoalesceResp=", fshow(isCoalesceResp),
+        //     ", isMatchStartPSN=", fshow(isMatchStartPSN),
+        //     ", isPartialResp=", fshow(isPartialResp),
+        //     ", rdmaRespType=", fshow(rdmaRespType),
+        //     ", retryReason=", fshow(retryReason),
+        //     ", wrAckType=", fshow(wrAckType),
+        //     ", wcReqType=", fshow(wcReqType)
+        // );
     endrule
 
     // Response handle pipeline second stage

@@ -238,10 +238,10 @@ module mkSimGenRdmaRespHeaderAndDataStream#(
     FIFOF#(RdmaHeader)        headerOutQ <- mkFIFOF;
 
     Reg#(PendingWorkReq) curPendingWorkReqReg <- mkRegU;
-    Reg#(PktNum) pktNumReg <- mkRegU;
-    Reg#(PSN)    curPsnReg <- mkRegU;
-    Reg#(MSN)       msnReg <- mkReg(0);
-    Reg#(Bool)     busyReg <- mkReg(False);
+    Reg#(PktNum)                    pktNumReg <- mkRegU;
+    Reg#(PSN)                       curPsnReg <- mkRegU;
+    Reg#(MSN)                          msnReg <- mkReg(0);
+    Reg#(Bool)                        busyReg <- mkReg(False);
 
     let payloadGenerator <- mkPayloadGenerator(
         cntrl, dmaReadSrv, convertFifo2PipeOut(payloadGenReqQ)
@@ -259,7 +259,7 @@ module mkSimGenRdmaRespHeaderAndDataStream#(
         payloadDataStreamPipeOut
     );
 
-    (* fire_when_enabled *)
+    // (* fire_when_enabled *)
     rule deqWorkReqPipeOut if (!busyReg);
         let curPendingWR = pendingWorkReqPipeIn.first;
         pendingWorkReqPipeIn.deq;
@@ -385,10 +385,10 @@ module mkSimGenRdmaRespDataStream#(
 endmodule
 
 typedef enum {
-    RDMA_RESP_ACK_NORMAL,
-    RDMA_RESP_ACK_ERROR,
-    RDMA_RESP_ACK_RNR,
-    RDMA_RESP_ACK_SEQ_ERR
+    GEN_RDMA_RESP_ACK_NORMAL,
+    GEN_RDMA_RESP_ACK_ERROR,
+    GEN_RDMA_RESP_ACK_RNR,
+    GEN_RDMA_RESP_ACK_SEQ_ERR
 } RdmaRespAckGenType deriving(Bits, Eq);
 
 module mkGenNormalOrErrOrRetryRdmaRespAck#(
@@ -439,10 +439,10 @@ module mkGenNormalOrErrOrRetryRdmaRespAck#(
         let startPSN = unwrapMaybe(pendingWR.startPSN);
         let endPSN   = unwrapMaybe(pendingWR.endPSN);
         let bthPSN   = case (genAckType)
-            RDMA_RESP_ACK_ERROR  ,
-            RDMA_RESP_ACK_RNR    : startPSN;
-            // RDMA_RESP_ACK_NORMAL,
-            // RDMA_RESP_ACK_SEQ_ERR,
+            GEN_RDMA_RESP_ACK_ERROR  ,
+            GEN_RDMA_RESP_ACK_RNR    : startPSN;
+            // GEN_RDMA_RESP_ACK_NORMAL,
+            // GEN_RDMA_RESP_ACK_SEQ_ERR,
             default              : endPSN;
         endcase;
 
@@ -463,19 +463,19 @@ module mkGenNormalOrErrOrRetryRdmaRespAck#(
             psn      : bthPSN
         };
         let aeth = case (genAckType)
-            RDMA_RESP_ACK_ERROR: AETH {
+            GEN_RDMA_RESP_ACK_ERROR: AETH {
                 rsvd : unpack(0),
                 code : AETH_CODE_NAK,
                 value: zeroExtend(pack(AETH_NAK_RMT_OP)),
                 msn  : dontCareValue
             };
-            RDMA_RESP_ACK_RNR: AETH {
+            GEN_RDMA_RESP_ACK_RNR: AETH {
                 rsvd : unpack(0),
                 code : AETH_CODE_RNR,
                 value: cntrl.getMinRnrTimer,
                 msn  : dontCareValue
             };
-            RDMA_RESP_ACK_SEQ_ERR: AETH {
+            GEN_RDMA_RESP_ACK_SEQ_ERR: AETH {
                 rsvd : unpack(0),
                 code : AETH_CODE_NAK,
                 value: zeroExtend(pack(AETH_NAK_SEQ_ERR)),

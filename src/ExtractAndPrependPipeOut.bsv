@@ -79,12 +79,12 @@ endmodule
 module mkDataStream2Header#(
     DataStreamPipeOut dataPipeIn, PipeOut#(HeaderMetaData) headerMetaDataPipeIn
 )(PipeOut#(RdmaHeader));
-    FIFOF#(RdmaHeader) headerOutQ <- mkFIFOF;
-    Reg#(RdmaHeader) rdmaHeaderReg <- mkRegU;
-    Reg#(HeaderMetaData) headerMetaDataReg <- mkRegU;
+    FIFOF#(RdmaHeader)                   headerOutQ <- mkFIFOF;
+    Reg#(RdmaHeader)                  rdmaHeaderReg <- mkRegU;
+    Reg#(HeaderMetaData)          headerMetaDataReg <- mkRegU;
     Reg#(HeaderByteNum) headerInvalidFragByteNumReg <- mkRegU;
-    Reg#(HeaderBitNum) headerInvalidFragBitNumReg <- mkRegU;
-    Reg#(Bool) busyReg <- mkReg(False);
+    Reg#(HeaderBitNum)   headerInvalidFragBitNumReg <- mkRegU;
+    Reg#(Bool)                              busyReg <- mkReg(False);
 
     rule headerMetaDataPop if (!busyReg);
         busyReg <= True;
@@ -105,10 +105,10 @@ module mkDataStream2Header#(
         let { headerInvalidFragByteNum, headerInvalidFragBitNum } =
             calcHeaderInvalidFragByteAndBitNum(headerMetaData.headerFragNum);
         headerInvalidFragByteNumReg <= headerInvalidFragByteNum;
-        headerInvalidFragBitNumReg <= headerInvalidFragBitNum;
+        headerInvalidFragBitNumReg  <= headerInvalidFragBitNum;
     endrule
 
-    rule cumulate if (busyReg);
+    rule accumulate if (busyReg);
         let curDataStreamFrag = dataPipeIn.first;
         dataPipeIn.deq;
         // $display(
@@ -119,21 +119,21 @@ module mkDataStream2Header#(
         let rdmaHeader = rdmaHeaderReg;
         let headerFragNum = rdmaHeaderReg.headerMetaData.headerFragNum;
         if (curDataStreamFrag.isFirst) begin
-            rdmaHeader.headerData = zeroExtend(curDataStreamFrag.data);
-            rdmaHeader.headerByteEn = zeroExtend(curDataStreamFrag.byteEn);
+            rdmaHeader.headerData     = zeroExtend(curDataStreamFrag.data);
+            rdmaHeader.headerByteEn   = zeroExtend(curDataStreamFrag.byteEn);
             rdmaHeader.headerMetaData = headerMetaDataReg;
             rdmaHeader.headerMetaData.headerFragNum = 1;
         end
         else begin
-            rdmaHeader.headerData = truncate({ rdmaHeader.headerData, curDataStreamFrag.data });
+            rdmaHeader.headerData   = truncate({ rdmaHeader.headerData, curDataStreamFrag.data });
             rdmaHeader.headerByteEn = truncate({ rdmaHeader.headerByteEn, curDataStreamFrag.byteEn });
             rdmaHeader.headerMetaData.headerFragNum = rdmaHeaderReg.headerMetaData.headerFragNum + 1;
         end
 
         if (curDataStreamFrag.isLast) begin
-            rdmaHeader.headerData = rdmaHeader.headerData << headerInvalidFragBitNumReg;
-            rdmaHeader.headerByteEn = rdmaHeader.headerByteEn << headerInvalidFragByteNumReg;
-            ByteEn headerLastFragByteEn = genByteEn(rdmaHeader.headerMetaData.lastFragValidByteNum);
+            rdmaHeader.headerData    = rdmaHeader.headerData << headerInvalidFragBitNumReg;
+            rdmaHeader.headerByteEn  = rdmaHeader.headerByteEn << headerInvalidFragByteNumReg;
+            let headerLastFragByteEn = genByteEn(rdmaHeader.headerMetaData.lastFragValidByteNum);
             headerOutQ.enq(rdmaHeader);
             busyReg <= False;
             // $display("time=%0d: rdmaHeader=", $time, fshow(rdmaHeader));

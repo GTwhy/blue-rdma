@@ -1155,7 +1155,7 @@ function Bool workReqRequireAck(WorkReq wr);
     return workReqHasAckReq(wr) || isReadOrAtomicWorkReq(wr.opcode);
 endfunction
 
-function Bool workReqNeedDmaRead(WorkReq wr);
+function Bool workReqNeedDmaReadSQ(WorkReq wr);
     return case (wr.opcode)
         IBV_WR_RDMA_WRITE         ,
         IBV_WR_RDMA_WRITE_WITH_IMM,
@@ -1163,6 +1163,15 @@ function Bool workReqNeedDmaRead(WorkReq wr);
         IBV_WR_SEND_WITH_IMM      ,
         IBV_WR_SEND_WITH_INV      : !isZero(wr.len);
         default                   : False;
+    endcase;
+endfunction
+
+function Bool workReqNeedDmaWriteSQ(WorkReq wr);
+    return case (wr.opcode)
+        IBV_WR_RDMA_READ           : !isZero(wr.len);
+        IBV_WR_ATOMIC_CMP_AND_SWP  ,
+        IBV_WR_ATOMIC_FETCH_AND_ADD: True;
+        default                    : False;
     endcase;
 endfunction
 
@@ -1182,7 +1191,7 @@ endfunction
 
 function Bool workReqHasSwap(WorkReqOpCode opcode);
     return case (opcode)
-        IBV_WR_ATOMIC_CMP_AND_SWP,
+        IBV_WR_ATOMIC_CMP_AND_SWP  ,
         IBV_WR_ATOMIC_FETCH_AND_ADD: True;
         default: False;
     endcase;
@@ -1190,10 +1199,10 @@ endfunction
 
 function Bool isSendWorkReq(WorkReqOpCode opcode);
     return case (opcode)
-        IBV_WR_SEND               ,
-        IBV_WR_SEND_WITH_IMM      ,
-        IBV_WR_SEND_WITH_INV      : True;
-        default                   : False;
+        IBV_WR_SEND         ,
+        IBV_WR_SEND_WITH_IMM,
+        IBV_WR_SEND_WITH_INV: True;
+        default             : False;
     endcase;
 endfunction
 
@@ -1567,4 +1576,8 @@ function Tuple2#(PipeOut#(anytype), PipeOut#(anytype)) deMuxPipeOut2(
     endinterface;
 
     return tuple2(p1, p2);
+endfunction
+
+function anytype identityFunc(anytype inputVal);
+    return inputVal;
 endfunction

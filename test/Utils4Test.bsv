@@ -459,6 +459,10 @@ module mkSimGenWorkReqByOpCode#(
 )(Vector#(vSz, PipeOut#(WorkReq)));
     FIFOF#(WorkReq) workReqOutQ <- mkFIFOF;
     PipeOut#(WorkReqID) workReqIdPipeOut <- mkGenericRandomPipeOut;
+    PipeOut#(Long) compPipeOut <- mkGenericRandomPipeOut;
+    PipeOut#(Long) swapPipeOut <- mkGenericRandomPipeOut;
+    PipeOut#(IMM) immDtPipeOut <- mkGenericRandomPipeOut;
+    PipeOut#(RKEY) rkey2InvPipeOut <- mkGenericRandomPipeOut;
     let dmaLenPipeOut <- mkRandomLenPipeOut(minLength, maxLength);
     Vector#(vSz, PipeOut#(WorkReq)) resultPipeOutVec <-
         mkForkVector(convertFifo2PipeOut(workReqOutQ));
@@ -475,10 +479,18 @@ module mkSimGenWorkReqByOpCode#(
 
         let isAtomicWR = isAtomicWorkReq(wrOpCode);
 
-        Long comp = dontCareValue;
-        Long swap = dontCareValue;
-        IMM immDt = dontCareValue;
-        RKEY rkey2Inv = dontCareValue;
+        let comp = compPipeOut.first;
+        compPipeOut.deq;
+
+        let swap = swapPipeOut.first;
+        swapPipeOut.deq;
+
+        let immDt = immDtPipeOut.first;
+        immDtPipeOut.deq;
+
+        let rkey2Inv = rkey2InvPipeOut.first;
+        rkey2InvPipeOut.deq;
+
         QPN srqn = dontCareValue;
         QPN dqpn = dontCareValue;
         QKEY qkey = dontCareValue;
@@ -619,6 +631,52 @@ module mkGenIllegalAtomicWorkReq(PipeOut#(WorkReq));
     endrule
 
     return convertFifo2PipeOut(workReqOutQ);
+endmodule
+
+module mkGenNormalOrDupWorkReq#(
+    Bool normalOrDupReq,
+    PipeOut#(PendingWorkReq) pendingWorkReqPipeIn
+)(Tuple2#(PipeOut#(Bool), PipeOut#(PendingWorkReq)));
+    Reg#(Bool) normalOrDupReqReg <- mkReg(True);
+    Reg#(PendingWorkReq) dupWorkReqReg <- mkRegU;
+
+    PipeOut#(Tuple2#(Bool, PendingWorkReq)) normalOrDupWorkReqPipeOut = interface PipeOut;
+        method Tuple2#(Bool, PendingWorkReq) first();
+            return tuple2(
+                normalOrDupReqReg,
+                normalOrDupReqReg ?
+                    pendingWorkReqPipeIn.first : dupWorkReqReg
+            );
+        endmethod
+
+        method Action deq();
+            if (normalOrDupReqReg) begin
+                pendingWorkReqPipeIn.deq;
+                dupWorkReqReg <= pendingWorkReqPipeIn.first;
+                // $display(
+                //     "time=%0d:", $time,
+                //     " normal pendingWR=", fshow(pendingWorkReqPipeIn.first)
+                // );
+            end
+            else begin
+                // $display(
+                //     "time=%0d:", $time,
+                //     " duplicate pendingWR=", fshow(dupWorkReqReg)
+                // );
+            end
+
+            if (!normalOrDupReq) begin
+                normalOrDupReqReg <= !normalOrDupReqReg;
+            end
+        endmethod
+
+        method Bool notEmpty();
+            return normalOrDupReqReg ? pendingWorkReqPipeIn.notEmpty : True;
+        endmethod
+    endinterface;
+
+    let resultPipeOut <- mkFork(identityFunc, normalOrDupWorkReqPipeOut);
+    return resultPipeOut;
 endmodule
 
 module mkSimController#(QpType qpType, PMTU pmtu)(Controller);

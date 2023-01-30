@@ -22,7 +22,7 @@ import SimGenRdmaReqAndResp :: *;
 import Utils :: *;
 import Utils4Test :: *;
 import WorkCompGen :: *;
-
+/*
 (* synthesize *)
 module mkTestRespHandleNormalCase(Empty);
     let minDmaLength = 1;
@@ -175,63 +175,68 @@ module mkTestRespHandleNormalCase(Empty);
         // $display("time=%0d: respHeader=", $time, fshow(respHeader));
     endrule
 endmodule
-
-function DataStreamPipeOut muxDataStreamPipeOut(
-    PipeOut#(Bool) selectPipeIn,
-    DataStreamPipeOut pipeIn1,
-    DataStreamPipeOut pipeIn2
-);
-    DataStreamPipeOut resultPipeOut = interface PipeOut;
-        method DataStream first();
-            return selectPipeIn.first ? pipeIn1.first : pipeIn2.first;
-        endmethod
-
-        method Action deq();
-            let sel = selectPipeIn.first;
-            if (sel) begin
-                if (pipeIn1.first.isLast) begin
-                    selectPipeIn.deq;
-                end
-            end
-            else begin
-                if (pipeIn2.first.isLast) begin
-                    selectPipeIn.deq;
-                end
-            end
-
-            if (sel) begin
-                pipeIn1.deq;
-            end
-            else begin
-                pipeIn2.deq;
-            end
-            // $display("time=%0d: sel=", $time, fshow(sel));
-        endmethod
-
-        method Bool notEmpty();
-            return selectPipeIn.first ? pipeIn1.notEmpty : pipeIn2.notEmpty;
-        endmethod
-    endinterface;
-
-    return resultPipeOut;
-endfunction
-
+*/
 typedef enum {
-    RESP_HANDLE_ERROR_RESP,
-    RESP_HANDLE_RETRY_LIMIT_EXC,
-    RESP_HANDLE_PERM_CHECK_FAIL
-} RespHandleErrType deriving(Bits, Eq);
+    TEST_RESP_HANDLE_NORMAL_RESP,
+    TEST_RESP_HANDLE_DUP_RESP,
+    TEST_RESP_HANDLE_GHOST_RESP,
+    TEST_RESP_HANDLE_ERROR_RESP,
+    TEST_RESP_HANDLE_RETRY_LIMIT_EXC,
+    TEST_RESP_HANDLE_PERM_CHECK_FAIL
+} TestRespHandleRespType deriving(Bits, Eq);
 
 module mkSimGenNormalOrErrOrRetryRdmaResp#(
-    RespHandleErrType errType,
+    TestRespHandleRespType respType,
     Controller cntrl,
     DmaReadSrv dmaReadSrv,
     PipeOut#(PendingWorkReq) pendingWorkReqPipeIn
 )(DataStreamPipeOut);
+    function DataStreamPipeOut muxDataStreamPipeOut(
+        PipeOut#(Bool) selectPipeIn,
+        DataStreamPipeOut pipeIn1,
+        DataStreamPipeOut pipeIn2
+    );
+        DataStreamPipeOut resultPipeOut = interface PipeOut;
+            method DataStream first();
+                return selectPipeIn.first ? pipeIn1.first : pipeIn2.first;
+            endmethod
+
+            method Action deq();
+                let sel = selectPipeIn.first;
+                if (sel) begin
+                    if (pipeIn1.first.isLast) begin
+                        selectPipeIn.deq;
+                    end
+                end
+                else begin
+                    if (pipeIn2.first.isLast) begin
+                        selectPipeIn.deq;
+                    end
+                end
+
+                if (sel) begin
+                    pipeIn1.deq;
+                end
+                else begin
+                    pipeIn2.deq;
+                end
+                // $display("time=%0d: sel=", $time, fshow(sel));
+            endmethod
+
+            method Bool notEmpty();
+                return selectPipeIn.first ? pipeIn1.notEmpty : pipeIn2.notEmpty;
+            endmethod
+        endinterface;
+
+        return resultPipeOut;
+    endfunction
+
     Vector#(2, PipeOut#(Bool)) selectPipeOutVec <- mkGenericRandomPipeOutVec;
-    case (errType)
-        // If RESP_HANDLE_PERM_CHECK_FAIL, then just generate normal responses
-        RESP_HANDLE_PERM_CHECK_FAIL: begin
+    case (respType)
+        TEST_RESP_HANDLE_NORMAL_RESP    ,
+        TEST_RESP_HANDLE_DUP_RESP       ,
+        TEST_RESP_HANDLE_GHOST_RESP     ,
+        TEST_RESP_HANDLE_PERM_CHECK_FAIL: begin
             let rdmaNormalRespPipeOut <- mkSimGenRdmaRespDataStream(
                 cntrl, dmaReadSrv, pendingWorkReqPipeIn
             );
@@ -251,17 +256,19 @@ module mkSimGenNormalOrErrOrRetryRdmaResp#(
             let rdmaNormalRespPipeOut <- mkSimGenRdmaRespDataStream(
                 cntrl, dmaReadSrv, pendingWorkReqPipeOut4NormalRespGen
             );
-            let genAckType = case (errType)
-                RESP_HANDLE_ERROR_RESP     : RDMA_RESP_ACK_ERROR;
-                RESP_HANDLE_RETRY_LIMIT_EXC: RDMA_RESP_ACK_RNR;
-                RESP_HANDLE_PERM_CHECK_FAIL: RDMA_RESP_ACK_NORMAL;
+            let genAckType = case (respType)
+                TEST_RESP_HANDLE_ERROR_RESP     : GEN_RDMA_RESP_ACK_ERROR;
+                TEST_RESP_HANDLE_RETRY_LIMIT_EXC: GEN_RDMA_RESP_ACK_RNR;
+                TEST_RESP_HANDLE_PERM_CHECK_FAIL: GEN_RDMA_RESP_ACK_NORMAL;
             endcase;
-            let rdmaRespAckPipeOut <- mkGenNormalOrErrOrRetryRdmaRespAck(
+            let rdmaAbnormalRespAckPipeOut <- mkGenNormalOrErrOrRetryRdmaRespAck(
                 cntrl, genAckType, pendingWorkReqPipeOut4ErrRespGen
             );
-
+            // muxPipeOut2 cannot used here since EOP handle needed
             let rdmaRespDataStreamPipeOut = muxDataStreamPipeOut(
-                selectPipeOut4RdmaRespSel, rdmaNormalRespPipeOut, rdmaRespAckPipeOut
+                selectPipeOut4RdmaRespSel,
+                rdmaNormalRespPipeOut,
+                rdmaAbnormalRespAckPipeOut
             );
 
             return rdmaRespDataStreamPipeOut;
@@ -270,24 +277,252 @@ module mkSimGenNormalOrErrOrRetryRdmaResp#(
 endmodule
 
 (* synthesize *)
+module mkTestRespHandleNormalRespCase(Empty);
+    let respType = TEST_RESP_HANDLE_NORMAL_RESP;
+    let result <- mkTestRespHandleNormalOrDupOrGhostRespCase(respType);
+endmodule
+
+(* synthesize *)
+module mkTestRespHandleDupRespCase(Empty);
+    let respType = TEST_RESP_HANDLE_DUP_RESP;
+    let result <- mkTestRespHandleNormalOrDupOrGhostRespCase(respType);
+endmodule
+
+(* synthesize *)
+module mkTestRespHandleGhostRespCase(Empty);
+    let respType = TEST_RESP_HANDLE_GHOST_RESP;
+    let result <- mkTestRespHandleNormalOrDupOrGhostRespCase(respType);
+endmodule
+
+module mkTestRespHandleNormalOrDupOrGhostRespCase#(
+    TestRespHandleRespType respType
+)(Empty);
+    let minDmaLength = 1;
+    let maxDmaLength = 2048;
+    let qpType = IBV_QPT_XRC_SEND;
+    let pmtu = IBV_MTU_256;
+
+    let qpMetaData <- mkSimQPs(qpType, pmtu);
+    let qpn = dontCareValue;
+    let cntrl = qpMetaData.getCntrl(qpn);
+
+    // WorkReq generation
+    PendingWorkReqBuf pendingWorkReqBuf <- mkScanFIFOF;
+    Vector#(1, PipeOut#(WorkReq)) workReqPipeOutVec <-
+        mkRandomWorkReq(minDmaLength, maxDmaLength);
+    Vector#(3, PipeOut#(PendingWorkReq)) existingPendingWorkReqPipeOutVec <-
+        mkExistingPendingWorkReqPipeOut(cntrl, workReqPipeOutVec[0]);
+    let pendingWorkReqPipeOut4PendingQ = existingPendingWorkReqPipeOutVec[0];
+    let pendingWorkReqPipeOut4WorkComp <- mkBufferN(8, existingPendingWorkReqPipeOutVec[1]);
+    if (respType == TEST_RESP_HANDLE_GHOST_RESP) begin
+        let sinkPendingWorkReq4PendingQ <- mkSink(pendingWorkReqPipeOut4PendingQ);
+    end
+    else begin
+        // Only put normal WR in pending WR buffer
+        let pendingWorkReq2Q <- mkConnectPendingWorkReqPipeOut2PendingWorkReqQ(
+            pendingWorkReqPipeOut4PendingQ, pendingWorkReqBuf
+        );
+    end
+    // Generate normal WR when TEST_RESP_HANDLE_NORMAL_RESP and TEST_RESP_HANDLE_GHOST_RESP
+    let normalOrDupReq = respType == TEST_RESP_HANDLE_DUP_RESP ? False : True;
+    let { normalOrDupReqSelPipeOut, normalOrDupPendingWorkReqPipeOut } <- mkGenNormalOrDupWorkReq(
+        normalOrDupReq, existingPendingWorkReqPipeOutVec[2]
+    );
+    let normalOrDupReqSelPipeOut4ReadResp <- mkBufferN(8, normalOrDupReqSelPipeOut);
+    Vector#(2, PipeOut#(PendingWorkReq)) normalOrDupPendingWorkReqPipeOutVec <-
+        mkForkVector(normalOrDupPendingWorkReqPipeOut);
+    let pendingWorkReqPipeOut4RespGen  = normalOrDupPendingWorkReqPipeOutVec[0];
+    let pendingWorkReqPipeOut4ReadResp <- mkBufferN(8, normalOrDupPendingWorkReqPipeOutVec[1]);
+
+    // Only select read response payload for normal WR
+    let simDmaReadSrv <- mkSimDmaReadSrvAndDataStreamPipeOut;
+    let readRespPayloadPipeOutBuf <- mkBufferN(32, simDmaReadSrv.dataStream);
+    let pmtuPipeOut <- mkConstantPipeOut(cntrl.getPMTU);
+    let readRespPayloadPipeOut4Ref <- mkSegmentDataStreamByPmtuAndAddPadCnt(
+        readRespPayloadPipeOutBuf, pmtuPipeOut
+    );
+    // Generate RDMA responses
+    let rdmaRespDataStreamPipeOut <- mkSimGenNormalOrErrOrRetryRdmaResp(
+        respType, cntrl, simDmaReadSrv.dmaReadSrv, pendingWorkReqPipeOut4RespGen
+    );
+    // Extract header DataStream, HeaderMetaData and payload DataStream
+    let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
+        rdmaRespDataStreamPipeOut // rdmaRespAndHeaderPipeOut.rdmaResp
+    );
+    // Build RdmaPktMetaData and payload DataStream
+    let pktMetaDataAndPayloadPipeOut <- mkInputRdmaPktBufAndHeaderValidation(
+        headerAndMetaDataAndPayloadPipeOut, qpMetaData
+    );
+    Vector#(2, PipeOut#(RdmaPktMetaData)) pktMetaDataPipeOutVec <-
+        mkForkVector(pktMetaDataAndPayloadPipeOut.pktMetaData);
+    let pktMetaDataPipeOut4RespHandle = pktMetaDataPipeOutVec[0];
+    let pktMetaDataPipeOut4ReadResp <- mkBufferN(8, pktMetaDataPipeOutVec[1]);
+    // Retry handler
+    let retryHandler <- mkRetryHandleSQ(cntrl, pendingWorkReqBuf.scanIfc);
+
+    // MR permission check
+    let mrCheckPassOrFail = True;
+    let permCheckMR <- mkSimPermCheckMR(mrCheckPassOrFail);
+
+    // DUT
+    let dut <- mkRespHandleSQ(
+        cntrl,
+        retryHandler,
+        permCheckMR,
+        convertFifo2PipeOut(pendingWorkReqBuf.fifoIfc),
+        pktMetaDataPipeOut4RespHandle // pktMetaDataAndPayloadPipeOut.pktMetaData
+    );
+    // PayloadConsumer
+    let simDmaWriteSrv <- mkSimDmaWriteSrvAndDataStreamPipeOut;
+    let readAtomicRespPayloadPipeOut = simDmaWriteSrv.dataStream;
+    let payloadConsumer <- mkPayloadConsumer(
+        cntrl,
+        pktMetaDataAndPayloadPipeOut.payload,
+        simDmaWriteSrv.dmaWriteSrv,
+        dut.payloadConReqPipeOut
+    );
+    // WorkCompGenSQ
+    FIFOF#(WorkCompGenReqSQ) wcGenReqQ4ReqGenInSQ <- mkFIFOF;
+    FIFOF#(WorkCompStatus) workCompStatusQFromRQ <- mkFIFOF;
+    let workCompPipeOut <- mkWorkCompGenSQ(
+        cntrl,
+        payloadConsumer.respPipeOut,
+        convertFifo2PipeOut(wcGenReqQ4ReqGenInSQ),
+        dut.workCompGenReqPipeOut,
+        convertFifo2PipeOut(workCompStatusQFromRQ)
+    );
+
+    // PipeOut need to handle:
+    // - pendingWorkReqPipeOut4WorkComp
+    // - pendingWorkReqPipeOut4RespGen
+    // - pendingWorkReqPipeOut4PendingQ
+    // - convertFifo2PipeOut(pendingWorkReqBuf.fifoIfc)
+    // - readRespPayloadPipeOut4Ref
+    // - rdmaRespDataStreamPipeOut
+    // - normalOrDupReqSelPipeOut4ReadResp
+    // - headerAndMetaDataAndPayloadPipeOut.headerAndMetaData.headerDataStream
+    // - headerAndMetaDataAndPayloadPipeOut.headerAndMetaData.headerMetaData
+    // - headerAndMetaDataAndPayloadPipeOut.payload
+    // - pktMetaDataPipeOut4RespHandle // pktMetaDataAndPayloadPipeOut.pktMetaData
+    // - pktMetaDataPipeOut4ReadResp
+    // - pendingWorkReqPipeOut4ReadResp
+    // - pktMetaDataAndPayloadPipeOut.payload
+    // - dut.payloadConReqPipeOut
+    // - dut.workCompGenReqPipeOut
+    // - readAtomicRespPayloadPipeOut
+    // - payloadConsumer.respPipeOut
+    // - workCompPipeOut
+
+    // mkSink(pendingWorkReqPipeOut4WorkComp);
+    // mkSink(workCompPipeOut);
+    rule compareWorkReqAndWorkComp;
+        let pendingWR = pendingWorkReqPipeOut4WorkComp.first;
+        pendingWorkReqPipeOut4WorkComp.deq;
+
+        if (
+            respType != TEST_RESP_HANDLE_GHOST_RESP &&
+            workReqNeedWorkCompSQ(pendingWR.wr)
+        ) begin
+            let workComp = workCompPipeOut.first;
+            workCompPipeOut.deq;
+
+            dynAssert(
+                workCompMatchWorkReqInSQ(workComp, pendingWR.wr),
+                "workCompMatchWorkReqInSQ assertion @ mkTestRespHandleSQ",
+                $format("WC=", fshow(workComp), " not match WR=", fshow(pendingWR.wr))
+            );
+            // $display(
+            //     "time=%0d: WC=", $time, fshow(workComp), " match WR=", fshow(pendingWR.wr)
+            // );
+        end
+        // $display(
+        //     "time=%0d:", $time, ", pendingWR ID=%h", pendingWR.wr.id
+        // );
+    endrule
+
+    // mkSink(pktMetaDataPipeOut4ReadResp);
+    // mkSink(pendingWorkReqPipeOut4ReadResp);
+    // mkSink(normalOrDupReqSelPipeOut4ReadResp);
+    // mkSink(readAtomicRespPayloadPipeOut);
+    // mkSink(readRespPayloadPipeOut4Ref);
+    rule compareReadRespPayloadDataStream;
+        let pktMetaData = pktMetaDataPipeOut4ReadResp.first;
+        let bth = extractBTH(pktMetaData.pktHeader.headerData);
+
+        let pendingWR = pendingWorkReqPipeOut4ReadResp.first;
+        let endPSN = unwrapMaybe(pendingWR.endPSN);
+        let isNormalWorkReq =
+            normalOrDupReqSelPipeOut4ReadResp.first &&
+            respType != TEST_RESP_HANDLE_GHOST_RESP;
+
+        let isRespPktEnd = False;
+        if (workReqNeedDmaWriteSQ(pendingWR.wr)) begin
+            if (isReadRespRdmaOpCode(bth.opcode)) begin // Read responses with non-zero payload
+                let refDataStream = readRespPayloadPipeOut4Ref.first;
+                readRespPayloadPipeOut4Ref.deq;
+
+                if (isNormalWorkReq) begin
+                    let payloadDataStream = readAtomicRespPayloadPipeOut.first;
+                    readAtomicRespPayloadPipeOut.deq;
+
+                    dynAssert(
+                        payloadDataStream == refDataStream,
+                        "payloadDataStream assertion @ mkTestRespHandleNormalCase",
+                        $format(
+                            "payloadDataStream=", fshow(payloadDataStream),
+                            " should == refDataStream=", fshow(refDataStream)
+                        )
+                    );
+                end
+
+                if (refDataStream.isLast) begin
+                    isRespPktEnd = True;
+                end
+            end
+            else begin // Atomic responses
+                isRespPktEnd = True;
+
+                if (isNormalWorkReq) begin
+                    // One fragment DMA write when handle atomic responses
+                    readAtomicRespPayloadPipeOut.deq;
+                end
+            end
+        end
+        else begin
+            // No DMA read or write when handle send/write/zero-length read responses
+            isRespPktEnd = True;
+        end
+
+        if (isRespPktEnd) begin
+            pktMetaDataPipeOut4ReadResp.deq;
+            if (bth.psn == endPSN) begin
+                pendingWorkReqPipeOut4ReadResp.deq;
+                normalOrDupReqSelPipeOut4ReadResp.deq;
+            end
+        end
+        // $display("time=%0d: respHeader=", $time, fshow(respHeader));
+    endrule
+endmodule
+
+(* synthesize *)
 module mkTestRespHandleRespErrCase(Empty);
-    let errType = RESP_HANDLE_ERROR_RESP;
-    let result <- mkTestRespHandleAbnormalCase(errType);
+    let respType = TEST_RESP_HANDLE_ERROR_RESP;
+    let result <- mkTestRespHandleAbnormalCase(respType);
 endmodule
 
 (* synthesize *)
 module mkTestRespHandleRetryErrCase(Empty);
-    let errType = RESP_HANDLE_RETRY_LIMIT_EXC;
-    let result <- mkTestRespHandleAbnormalCase(errType);
+    let respType = TEST_RESP_HANDLE_RETRY_LIMIT_EXC;
+    let result <- mkTestRespHandleAbnormalCase(respType);
 endmodule
 
 (* synthesize *)
 module mkTestRespHandlePermCheckFailCase(Empty);
-    let errType = RESP_HANDLE_PERM_CHECK_FAIL;
-    let result <- mkTestRespHandleAbnormalCase(errType);
+    let respType = TEST_RESP_HANDLE_PERM_CHECK_FAIL;
+    let result <- mkTestRespHandleAbnormalCase(respType);
 endmodule
 
-module mkTestRespHandleAbnormalCase#(RespHandleErrType errType)(Empty);
+module mkTestRespHandleAbnormalCase#(TestRespHandleRespType respType)(Empty);
     let minDmaLength = 1;
     let maxDmaLength = 31;
     let qpType = IBV_QPT_XRC_SEND;
@@ -315,7 +550,7 @@ module mkTestRespHandleAbnormalCase#(RespHandleErrType errType)(Empty);
     let simDmaReadSrv <- mkSimDmaReadSrv;
     // Generate RDMA responses
     let rdmaRespDataStreamPipeOut <- mkSimGenNormalOrErrOrRetryRdmaResp(
-        errType, cntrl, simDmaReadSrv, pendingWorkReqPipeOut4RespGen
+        respType, cntrl, simDmaReadSrv, pendingWorkReqPipeOut4RespGen
     );
 
     // Extract header DataStream, HeaderMetaData and payload DataStream
@@ -330,7 +565,7 @@ module mkTestRespHandleAbnormalCase#(RespHandleErrType errType)(Empty);
     let retryHandler <- mkSimRetryHandlerWithLimitExcErr;
 
     // MR permission check
-    let mrCheckPassOrFail = !(errType == RESP_HANDLE_PERM_CHECK_FAIL);
+    let mrCheckPassOrFail = !(respType == TEST_RESP_HANDLE_PERM_CHECK_FAIL);
     let permCheckMR <- mkSimPermCheckMR(mrCheckPassOrFail);
 
     // DUT
@@ -466,12 +701,12 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
 
     // Generate RDMA responses
     FIFOF#(PendingWorkReq) pendingWorkReqQ4NormalResp <- mkFIFOF;
-    let normalAckType = RDMA_RESP_ACK_NORMAL;
+    let normalAckType = GEN_RDMA_RESP_ACK_NORMAL;
     let rdmaRespNormalAckPipeOut <- mkGenNormalOrErrOrRetryRdmaRespAck(
         cntrl, normalAckType, convertFifo2PipeOut(pendingWorkReqQ4NormalResp)
     );
     FIFOF#(PendingWorkReq) pendingWorkReqQ4RetryResp <- mkFIFOF;
-    let retryAckType = rnrOrSeqErr ? RDMA_RESP_ACK_RNR : RDMA_RESP_ACK_SEQ_ERR;
+    let retryAckType = rnrOrSeqErr ? GEN_RDMA_RESP_ACK_RNR : GEN_RDMA_RESP_ACK_SEQ_ERR;
     let rdmaRespRetryAckPipeOut <- mkGenNormalOrErrOrRetryRdmaRespAck(
         cntrl, retryAckType, convertFifo2PipeOut(pendingWorkReqQ4RetryResp)
     );
