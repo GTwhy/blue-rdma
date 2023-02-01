@@ -1,7 +1,6 @@
 import PAClib :: *;
 import Vector :: *;
 
-import Assertions :: *;
 import DataTypes :: *;
 import ExtractAndPrependPipeOut :: *;
 import InputPktHandle :: *;

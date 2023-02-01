@@ -4,7 +4,6 @@ import GetPut :: *;
 import PAClib :: *;
 import Vector :: *;
 
-import Assertions :: *;
 import DataTypes :: *;
 import Headers :: *;
 import InputPktHandle :: *;
@@ -40,7 +39,7 @@ module mkTestCalculatePktLen#(
     );
 
     // QP metadata
-    let qpMetaData <- mkSimQPs(qpType, pmtu);
+    let qpMetaData <- mkSimMetaDataQPs(qpType, pmtu);
 
     // DUT
     let dut <- mkInputRdmaPktBufAndHeaderValidation(

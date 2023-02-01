@@ -2,7 +2,6 @@ import FIFOF :: *;
 import PAClib :: *;
 import Cntrs :: *;
 
-import Assertions :: *;
 import Controller :: *;
 import DataTypes :: *;
 import DupReadAtomicCache :: *;
@@ -27,18 +26,9 @@ typedef enum {
     RDMA_REQ_ST_RMT_OP,
     RDMA_REQ_ST_DUP,
     RDMA_REQ_ST_ERR_FLUSH_RR,
-    // RDMA_REQ_ST_RETRY_FLUSH,
     RDMA_REQ_ST_DISCARD,
     RDMA_REQ_ST_UNKNOWN
 } RdmaReqStatus deriving(Bits, Eq, FShow);
-
-// function Bool isRetryRdmaReqStatus(RdmaReqStatus reqStatus);
-//     return case (reqStatus)
-//         RDMA_REQ_ST_SEQ_ERR,
-//         RDMA_REQ_ST_RNR    : True;
-//         default            : False;
-//     endcase;
-// endfunction
 
 function Bool isErrReqStatus(RdmaReqStatus reqStatus);
     return case (reqStatus)
@@ -50,9 +40,10 @@ function Bool isErrReqStatus(RdmaReqStatus reqStatus);
     endcase;
 endfunction
 
-function Maybe#(QPN) getMaybeDQPN(Controller cntrl);
+function Maybe#(QPN) getMaybeDestQpnRQ(Controller cntrl);
     return case (cntrl.getQpType)
         IBV_QPT_RC      ,
+        IBV_QPT_UC      ,
         IBV_QPT_XRC_SEND, // TODO: XRC RQ should have its own controller
         IBV_QPT_XRC_RECV: tagged Valid cntrl.getDQPN;
         // IBV_QPT_UD
@@ -188,7 +179,7 @@ function Maybe#(RdmaHeader) genFirstOrOnlyRespHeader(
 );
     let maybeTrans  = qpType2TransType(cntrl.getQpType);
     let maybeOpCode = genFirstOrOnlyRespRdmaOpCode(reqOpCode, reqStatus, isOnlyRespPkt);
-    let maybeDQPN   = getMaybeDQPN(cntrl);
+    let maybeDQPN   = getMaybeDestQpnRQ(cntrl);
     let maybeAETH   = genAethByReqStatus(reqStatus, cntrl, msn);
 
     let maybeAtomicAckEth = case (atomicOrigData) matches
@@ -257,7 +248,7 @@ function Maybe#(RdmaHeader) genMiddleOrLastRespHeader(
 );
     let maybeTrans  = qpType2TransType(cntrl.getQpType);
     let maybeOpCode = genMiddleOrLastRespRdmaOpCode(reqOpCode, isLastRespPkt);
-    let maybeDQPN   = getMaybeDQPN(cntrl);
+    let maybeDQPN   = getMaybeDestQpnRQ(cntrl);
     let maybeAETH   = genAethByReqStatus(reqStatus, cntrl, msn);
 
     if (

@@ -3,7 +3,6 @@ import FIFOF :: *;
 import PAClib :: *;
 import Vector :: *;
 
-import Assertions :: *;
 import SpecialFIFOF :: *;
 import Settings :: *;
 import PrimUtils :: *;
@@ -326,8 +325,8 @@ module mkTestVectorSearch(Empty);
         qElemPipeOut4SearchRef.deq;
 
         let zipVec = zip(readVReg(tagVec), readVReg(searchVec));
-        let maybeFindData = findIndex(searchFunc(refSearchData), zipVec);
-        // let maybeFindData = findElem(tuple2(True, refSearchData), zipVec);
+        // let maybeFindData = findIndex(searchFunc(refSearchData), zipVec);
+        let maybeFindData = findElem(tuple2(True, refSearchData), zipVec);
         // let maybeFindData = find(searchFunc(refSearchData), zipVec);
         dynAssert(
             isValid(maybeFindData),

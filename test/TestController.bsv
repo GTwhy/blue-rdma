@@ -2,7 +2,6 @@ import Cntrs :: *;
 import List :: * ;
 import Vector :: *;
 
-import Assertions :: *;
 import Controller :: *;
 import DataTypes :: *;
 import Settings :: *;

@@ -5,7 +5,6 @@ import PAClib :: *;
 import Randomizable :: *;
 import Vector :: *;
 
-import Assertions :: *;
 import DataTypes :: *;
 import Headers :: *;
 import PrimUtils :: *;

@@ -252,8 +252,6 @@ typedef struct {
 typedef union tagged {
     void DiscardPayload;
     Tuple2#(DmaWriteMetaData, Long) AtomicRespInfoAndPayload;
-    // DmaWriteMetaData ReadRespInfo;
-    // DmaWriteMetaData SendWriteReqInfo;
     DmaWriteMetaData SendWriteReqReadRespInfo;
 } PayloadConInfo deriving(Bits, Eq, FShow);
 

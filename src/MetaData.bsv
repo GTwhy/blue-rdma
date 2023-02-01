@@ -2,7 +2,6 @@ import Cntrs :: * ;
 import FIFOF :: *;
 import Vector :: *;
 
-import Assertions :: *;
 import Controller :: *;
 import DataTypes :: *;
 import Headers :: *;
@@ -152,9 +151,9 @@ typedef struct {
     PdHandler pdHandler;
     MrKeyPart lkeyPart;
     Maybe#(MrKeyPart) rkeyPart;
-} MR deriving(Bits, FShow);
+} MemRegion deriving(Bits, FShow);
 
-interface MRs;
+interface MetaDataMRs;
     method Action allocMR(
         ADDR               laddr,
         Length             len,
@@ -166,25 +165,25 @@ interface MRs;
     method ActionValue#(Tuple3#(MrIndex, LKEY, Maybe#(RKEY))) allocResp();
     method Action deAllocMR(MrIndex mrIndex);
     method ActionValue#(Bool) deAllocResp();
-    method Maybe#(MR) getMR(MrIndex mrIndex);
+    method Maybe#(MemRegion) getMR(MrIndex mrIndex);
     method Action clear();
     method Bool notEmpty();
     method Bool notFull();
 endinterface
 
-function Maybe#(MR) getMemRegionByLKey(MRs mrMetaData, LKEY lkey);
+function Maybe#(MemRegion) getMemRegionByLKey(MetaDataMRs mrMetaData, LKEY lkey);
     MrIndex mrIndex = unpack(truncateLSB(lkey));
     return mrMetaData.getMR(mrIndex);
 endfunction
 
-function Maybe#(MR) getMemRegionByRKey(MRs mrMetaData, RKEY rkey);
+function Maybe#(MemRegion) getMemRegionByRKey(MetaDataMRs mrMetaData, RKEY rkey);
     MrIndex mrIndex = unpack(truncateLSB(rkey));
     return mrMetaData.getMR(mrIndex);
 endfunction
 
-module mkMRs(MRs);
-    TagVector#(MAX_MR_PER_PD, MR) mrTagVec <- mkTagVector;
-    FIFOF#(MR) mrOutQ <- mkFIFOF;
+module mkMetaDataMRs(MetaDataMRs);
+    TagVector#(MAX_MR_PER_PD, MemRegion) mrTagVec <- mkTagVector;
+    FIFOF#(MemRegion) mrOutQ <- mkFIFOF;
 
     method Action allocMR(
         ADDR               laddr,
@@ -194,7 +193,7 @@ module mkMRs(MRs);
         MrKeyPart          lkeyPart,
         Maybe#(MrKeyPart)  rkeyPart
     );
-        let mr = MR {
+        let mr = MemRegion {
             laddr    : laddr,
             len      : len,
             accType  : accType,
@@ -224,7 +223,7 @@ module mkMRs(MRs);
 
     method Action deAllocMR(MrIndex mrIndex) = mrTagVec.removeReq(mrIndex);
     method ActionValue#(Bool) deAllocResp() = mrTagVec.removeResp;
-    method Maybe#(MR) getMR(MrIndex mrIndex) = mrTagVec.getItem(mrIndex);
+    method Maybe#(MemRegion) getMR(MrIndex mrIndex) = mrTagVec.getItem(mrIndex);
 
     method Action clear();
         mrTagVec.clear;
@@ -243,25 +242,25 @@ typedef TSub#(PD_HANDLE_WIDTH, PD_INDEX_WIDTH) PD_KEY_WIDTH;
 typedef Bit#(PD_KEY_WIDTH)    PdKey;
 typedef UInt#(PD_INDEX_WIDTH) PdIndex;
 
-interface PDs;
+interface MetaDataPDs;
     method Action allocPD(PdKey pdKey);
     method ActionValue#(PdHandler) allocResp();
     method Action deAllocPD(PdHandler pdHandler);
     method ActionValue#(Bool) deAllocResp();
     method Bool isValidPD(PdHandler pdHandler);
-    method Maybe#(MRs) getMRs(PdHandler pdHandler);
+    method Maybe#(MetaDataMRs) getMRs4PD(PdHandler pdHandler);
     method Action clear();
     method Bool notEmpty();
     method Bool notFull();
 endinterface
 
-module mkPDs(PDs);
+module mkMetaDataPDs(MetaDataPDs);
     TagVector#(MAX_PD, PdKey) pdTagVec <- mkTagVector;
-    Vector#(MAX_PD, MRs) pdMrVec <- replicateM(mkMRs);
+    Vector#(MAX_PD, MetaDataMRs) pdMrVec <- replicateM(mkMetaDataMRs);
     FIFOF#(PdKey) pdKeyOutQ <- mkFIFOF;
 
     function PdIndex getPdIndex(PdHandler pdHandler) = unpack(truncateLSB(pdHandler));
-    function Action clearMRs(MRs mrMetaData);
+    function Action clearAllMRs(MetaDataMRs mrMetaData);
         action
             mrMetaData.clear;
         endaction
@@ -290,7 +289,7 @@ module mkPDs(PDs);
         return isValid(pdTagVec.getItem(pdIndex));
     endmethod
 
-    method Maybe#(MRs) getMRs(PdHandler pdHandler);
+    method Maybe#(MetaDataMRs) getMRs4PD(PdHandler pdHandler);
         let pdIndex = getPdIndex(pdHandler);
         return isValid(pdTagVec.getItem(pdIndex)) ?
             (tagged Valid pdMrVec[pdIndex]) : (tagged Invalid);
@@ -299,7 +298,7 @@ module mkPDs(PDs);
     method Action clear();
         pdTagVec.clear;
         pdKeyOutQ.clear;
-        mapM_(clearMRs, pdMrVec);
+        mapM_(clearAllMRs, pdMrVec);
     endmethod
 
     method Bool notEmpty() = pdTagVec.notEmpty;
@@ -311,7 +310,7 @@ endmodule
 typedef TLog#(MAX_QP) QP_INDEX_WIDTH;
 typedef UInt#(QP_INDEX_WIDTH) QpIndex;
 
-interface QPs;
+interface MetaDataQPs;
     method Action createQP(QKEY qkey);
     method ActionValue#(QPN) createResp();
     method Action destroyQP(QPN qpn);
@@ -325,7 +324,7 @@ interface QPs;
     method Bool notFull();
 endinterface
 
-module mkQPs(QPs);
+module mkMetaDataQPs(MetaDataQPs);
     TagVector#(MAX_QP, PdHandler) qpTagVec <- mkTagVector;
     Vector#(MAX_QP, Controller) qpCntrlVec <- replicateM(mkController);
     FIFOF#(PdHandler) pdHandlerOutQ <- mkFIFOF;
@@ -388,10 +387,10 @@ interface PermCheckMR;
     method ActionValue#(Bool) checkResp();
 endinterface
 
-module mkPermCheckMR#(PDs pdMetaData)(PermCheckMR);
-    FIFOF#(Tuple3#(PermCheckInfo, Bool, Maybe#(MR))) checkReqQ <- mkFIFOF;
+module mkPermCheckMR#(MetaDataPDs pdMetaData)(PermCheckMR);
+    FIFOF#(Tuple3#(PermCheckInfo, Bool, Maybe#(MemRegion))) checkReqQ <- mkFIFOF;
 
-    function Bool checkPermByMR(PermCheckInfo permCheckInfo, MR mr);
+    function Bool checkPermByMR(PermCheckInfo permCheckInfo, MemRegion mr);
         let keyMatch = case (permCheckInfo.localOrRmtKey)
             True   : (truncate(permCheckInfo.lkey) == mr.lkeyPart);
             default: (isValid(mr.rkeyPart) ?
@@ -406,13 +405,13 @@ module mkPermCheckMR#(PDs pdMetaData)(PermCheckMR);
         return keyMatch && accTypeMatch && addrLenMatch;
     endfunction
 
-    function Maybe#(MR) mrSearchByLKey(
-        PDs pdMetaData, PdHandler pdHandler, LKEY lkey
+    function Maybe#(MemRegion) mrSearchByLKey(
+        MetaDataPDs pdMetaData, PdHandler pdHandler, LKEY lkey
     );
         let maybeMR = tagged Invalid;
         // let maybePD = qpMetaData.getPD(qpn);
         // if (maybePD matches tagged Valid .pdHandler) begin
-        let maybeMRs = pdMetaData.getMRs(pdHandler);
+        let maybeMRs = pdMetaData.getMRs4PD(pdHandler);
         if (maybeMRs matches tagged Valid .mrMetaData) begin
             maybeMR = getMemRegionByLKey(mrMetaData, lkey);
         end
@@ -420,13 +419,13 @@ module mkPermCheckMR#(PDs pdMetaData)(PermCheckMR);
         return maybeMR;
     endfunction
 
-    function Maybe#(MR) mrSearchByRKey(
-        PDs pdMetaData, PdHandler pdHandler, RKEY rkey
+    function Maybe#(MemRegion) mrSearchByRKey(
+        MetaDataPDs pdMetaData, PdHandler pdHandler, RKEY rkey
     );
         let maybeMR = tagged Invalid;
         // let maybePD = qpMetaData.getPD(qpn);
         // if (maybePD matches tagged Valid .pdHandler) begin
-        let maybeMRs = pdMetaData.getMRs(pdHandler);
+        let maybeMRs = pdMetaData.getMRs4PD(pdHandler);
         if (maybeMRs matches tagged Valid .mrMetaData) begin
             maybeMR = getMemRegionByRKey(mrMetaData, rkey);
         end

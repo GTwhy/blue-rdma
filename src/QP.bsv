@@ -21,7 +21,8 @@ module mkSQ#(
     PipeOut#(WorkReq) workReqPipeIn,
     DmaReadSrv dmaReadSrv,
     DmaWriteSrv dmaWriteSrv,
-    DataStreamPipeOut rdmaRespPipeIn
+    DataStreamPipeOut rdmaRespPipeIn,
+    PipeOut#(WorkCompStatus) workCompStatusPipeInFromRQ
 )(SQ);
     PendingWorkReqBuf pendingWorkReqBuf <- mkScanFIFOF;
 
@@ -64,9 +65,9 @@ module mkSQ#(
     let wcPipeOut <- mkWorkCompGenSQ(
         cntrl,
         payloadConsumer.respPipeOut,
-        convertFifo2PipeOut(pendingWorkReqBuf.fifoIfc),
         reqGenSQ.workCompGenReqPipeOut,
-        respHandleSQ.workCompGenReqPipeOut
+        respHandleSQ.workCompGenReqPipeOut,
+        workCompStatusPipeInFromRQ
     );
 
     interface rdmaReqDataStreamPipeOut = reqGenSQ.rdmaReqDataStreamPipeOut;

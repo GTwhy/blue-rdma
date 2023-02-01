@@ -33,9 +33,9 @@ make -j8 TESTFILE=TestInputPktHandle.bsv TOP=mkTestCalculateZeroPktLen 2>&1 | te
 
 make -j8 TESTFILE=TestPayloadConAndGen.bsv TOP=mkTestPayloadConAndGenNormalCase 2>&1 | tee -a $RUN_LOG
 
-make -j8 TESTFILE=TestMetaData.bsv TOP=mkTestMRs 2>&1 | tee -a $RUN_LOG
-make -j8 TESTFILE=TestMetaData.bsv TOP=mkTestPDs 2>&1 | tee -a $RUN_LOG
-make -j8 TESTFILE=TestMetaData.bsv TOP=mkTestQPs 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestMetaData.bsv TOP=mkTestMetaDataMRs 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestMetaData.bsv TOP=mkTestMetaDataPDs 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestMetaData.bsv TOP=mkTestMetaDataQPs 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=TestMetaData.bsv TOP=mkTestPermCheckMR 2>&1 | tee -a $RUN_LOG
 
 make -j8 TESTFILE=TestReqGenSQ.bsv TOP=mkTestReqGenNormalCase 2>&1 | tee -a $RUN_LOG

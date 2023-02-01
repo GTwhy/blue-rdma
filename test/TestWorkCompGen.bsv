@@ -2,7 +2,6 @@ import FIFOF :: *;
 import PAClib :: *;
 import Vector :: *;
 
-import Assertions :: *;
 import Headers :: *;
 import Controller :: *;
 import DataTypes :: *;

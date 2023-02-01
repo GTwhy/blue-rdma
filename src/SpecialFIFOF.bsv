@@ -3,7 +3,6 @@ import FIFOF :: *;
 import PAClib :: *;
 import Vector :: *;
 
-import Assertions :: *;
 import PrimUtils :: *;
 
 // function PipeOut#(anytype) scanQ2PipeOut(ScanIfc scanQ);

@@ -2,7 +2,6 @@ import FIFOF :: *;
 import PAClib :: *;
 import Vector :: *;
 
-import Assertions :: *;
 import Controller :: *;
 import DataTypes :: *;
 import DupReadAtomicCache :: *;

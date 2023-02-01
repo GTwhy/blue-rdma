@@ -3,7 +3,6 @@ import FIFOF :: *;
 import PAClib :: *;
 import Vector :: *;
 
-import Assertions :: *;
 import Controller :: *;
 import DataTypes :: *;
 import ExtractAndPrependPipeOut :: *;
@@ -173,7 +172,7 @@ module mkInputRdmaPktBufAndHeaderValidation#(
     // namely header and payload are not one-to-one mapping,
     // and packet header/metadata is aligned to the last fragment of payload.
     HeaderAndMetaDataAndPayloadSeperateDataStreamPipeOut pipeIn,
-    QPs qpMetaData
+    MetaDataQPs qpMetaData
 )(RdmaPktMetaDataAndPayloadPipeOut);
     // TODO: check payloadOutQ buffer size is enough for DMA write delay?
     FIFOF#(DataStream)          payloadOutQ <- mkSizedBRAMFIFOF(valueOf(DATA_STREAM_FRAG_BUF_SIZE));

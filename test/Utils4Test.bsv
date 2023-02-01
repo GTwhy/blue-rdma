@@ -103,6 +103,7 @@ function Bool transTypeMatchQpType(TransType tt, QpType qpt);
     return case (tt)
         TRANS_TYPE_CNP: True;
         TRANS_TYPE_RC : (qpt == IBV_QPT_RC);
+        TRANS_TYPE_UC : (qpt == IBV_QPT_UC);
         TRANS_TYPE_UD : (qpt == IBV_QPT_UD);
         TRANS_TYPE_XRC: (qpt == IBV_QPT_XRC_RECV || qpt == IBV_QPT_XRC_SEND);
         default: False;
@@ -749,7 +750,7 @@ module mkSimPermCheckMR#(Bool mrCheckPassOrFail)(PermCheckMR);
     endmethod
 endmodule
 
-module mkSimQPs#(QpType qpType, PMTU pmtu)(QPs);
+module mkSimMetaDataQPs#(QpType qpType, PMTU pmtu)(MetaDataQPs);
     let cntrl <- mkSimController(qpType, pmtu);
 
     method Action createQP(QKEY qkey);

@@ -2,7 +2,6 @@ import FIFOF :: *;
 import GetPut :: *;
 import PAClib :: *;
 
-import Assertions :: *;
 import DataTypes :: *;
 import Headers :: *;
 import PrimUtils :: *;
@@ -633,8 +632,8 @@ function Bool isSupportedReqOpCodeRQ(QpType qpt, RdmaOpCode opcode);
             SEND_ONLY_WITH_IMMEDIATE: True;
             default                 : False;
         endcase;
-        IBV_QPT_XRC_SEND, // TODO: XRC RQ should have its own controller
-        IBV_QPT_XRC_RECV,
+        IBV_QPT_XRC_RECV, // TODO: XRC RQ should have its own controller
+        IBV_QPT_XRC_SEND,
         IBV_QPT_RC      : return case (opcode)
             SEND_FIRST                    ,
             SEND_MIDDLE                   ,

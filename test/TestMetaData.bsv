@@ -3,7 +3,6 @@ import FIFOF :: *;
 import PAClib :: *;
 import Vector :: *;
 
-import Assertions :: *;
 import Controller :: *;
 import DataTypes :: *;
 import Headers :: *;
@@ -20,8 +19,8 @@ typedef enum {
 } SeqTestState deriving(Bits, Eq);
 
 (* synthesize *)
-module mkTestPDs(Empty);
-    let pdDut <- mkPDs;
+module mkTestMetaDataPDs(Empty);
+    let pdMetaDataDUT <- mkMetaDataPDs;
     Count#(Bit#(TLog#(MAX_PD))) pdCnt <- mkCount(0);
 
     PipeOut#(PdKey) pdKeyPipeOut <- mkGenericRandomPipeOut;
@@ -37,11 +36,11 @@ module mkTestPDs(Empty);
     let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
 
     rule allocPDs if (pdTestStateReg == TEST_ST_FILL);
-        if (pdDut.notFull) begin
+        if (pdMetaDataDUT.notFull) begin
             let curPdKey = pdKeyPipeOut4InsertReq.first;
             pdKeyPipeOut4InsertReq.deq;
 
-            pdDut.allocPD(curPdKey);
+            pdMetaDataDUT.allocPD(curPdKey);
         end
     endrule
 
@@ -54,7 +53,7 @@ module mkTestPDs(Empty);
             pdCnt.incr(1);
         end
 
-        let pdHandler <- pdDut.allocResp;
+        let pdHandler <- pdMetaDataDUT.allocResp;
         pdHandlerQ4Search.enq(pdHandler);
         pdHandlerQ4Pop.enq(pdHandler);
 
@@ -63,15 +62,15 @@ module mkTestPDs(Empty);
 
         dynAssert(
             pdKey == truncate(pdHandler),
-            "pdKey assertion @ mkTestPDs",
+            "pdKey assertion @ mkTestMetaDataPDs",
             $format(
                 "pdKey=%h should match pdHandler=%h",
                 pdKey, pdHandler
             )
         );
         // $display(
-        //     "time=%0d: pdKey=%h, pdHandler=%h, pdCnt=%b when allocate PDs, pdDut.notFull=",
-        //     $time, pdKey, pdHandler, pdCnt, fshow(pdDut.notFull)
+        //     "time=%0d: pdKey=%h, pdHandler=%h, pdCnt=%b when allocate MetaDataPDs, pdMetaDataDUT.notFull=",
+        //     $time, pdKey, pdHandler, pdCnt, fshow(pdMetaDataDUT.notFull)
         // );
     endrule
 
@@ -87,10 +86,10 @@ module mkTestPDs(Empty);
         let pdHandler2Search = pdHandlerQ4Search.first;
         pdHandlerQ4Search.deq;
 
-        let isValidPD = pdDut.isValidPD(pdHandler2Search);
+        let isValidPD = pdMetaDataDUT.isValidPD(pdHandler2Search);
         dynAssert(
             isValidPD,
-            "isValidPD assertion @ mkTestPDs",
+            "isValidPD assertion @ mkTestMetaDataPDs",
             $format(
                 "isValidPD=", fshow(isValidPD),
                 " should be valid when pdHandler2Search=%h and pdCnt=%0d",
@@ -98,10 +97,10 @@ module mkTestPDs(Empty);
             )
         );
 
-        let maybeMRs = pdDut.getMRs(pdHandler2Search);
+        let maybeMRs = pdMetaDataDUT.getMRs4PD(pdHandler2Search);
         dynAssert(
             isValid(maybeMRs),
-            "maybeMRs assertion @ mkTestPDs",
+            "maybeMRs assertion @ mkTestMetaDataPDs",
             $format(
                 "isValid(maybeMRs)=", fshow(isValid(maybeMRs)),
                 " should be valid when pdHandler2Search=%h and pdCnt=%0d",
@@ -116,11 +115,11 @@ module mkTestPDs(Empty);
     endrule
 
     rule deAllocPDs if (pdTestStateReg == TEST_ST_POP);
-        if (pdDut.notEmpty) begin
+        if (pdMetaDataDUT.notEmpty) begin
             let pdHandler2Remove = pdHandlerQ4Pop.first;
             pdHandlerQ4Pop.deq;
 
-            pdDut.deAllocPD(pdHandler2Remove);
+            pdMetaDataDUT.deAllocPD(pdHandler2Remove);
         end
     endrule
 
@@ -135,11 +134,11 @@ module mkTestPDs(Empty);
             pdCnt.incr(1);
         end
 
-        let removeResp <- pdDut.deAllocResp;
+        let removeResp <- pdMetaDataDUT.deAllocResp;
 
         dynAssert(
             removeResp,
-            "removeResp assertion @ mkTestPDs",
+            "removeResp assertion @ mkTestMetaDataPDs",
             $format(
                 "removeResp=", fshow(removeResp),
                 " should be true when pdCnt=%0d",
@@ -155,8 +154,8 @@ module mkTestPDs(Empty);
 endmodule
 
 (* synthesize *)
-module mkTestMRs(Empty);
-    let mrDut <- mkMRs;
+module mkTestMetaDataMRs(Empty);
+    let mrMetaDataDUT <- mkMetaDataMRs;
     Count#(Bit#(TLog#(MAX_MR_PER_PD))) mrCnt <- mkCount(0);
 
     PipeOut#(MrKeyPart) mrKeyPipeOut <- mkGenericRandomPipeOut;
@@ -172,11 +171,11 @@ module mkTestMRs(Empty);
     let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
 
     rule allocMRs if (mrTestStateReg == TEST_ST_FILL);
-        if (mrDut.notFull) begin
+        if (mrMetaDataDUT.notFull) begin
             let curMrKey = mrKeyPipeOut4InsertReq.first;
             mrKeyPipeOut4InsertReq.deq;
 
-            mrDut.allocMR(
+            mrMetaDataDUT.allocMR(
                 dontCareValue,        // laddr
                 dontCareValue,        // len
                 dontCareValue,        // accType
@@ -196,7 +195,7 @@ module mkTestMRs(Empty);
             mrCnt.incr(1);
         end
 
-        let { mrIndex, lkey, rkey } <- mrDut.allocResp;
+        let { mrIndex, lkey, rkey } <- mrMetaDataDUT.allocResp;
         mrIndexQ4Search.enq(mrIndex);
         mrIndexQ4Pop.enq(mrIndex);
 
@@ -205,7 +204,7 @@ module mkTestMRs(Empty);
 
         dynAssert(
             mrKeyPart == truncate(lkey),
-            "lkey assertion @ mkTestMRs",
+            "lkey assertion @ mkTestMetaDataMRs",
             $format(
                 "lkey=%h should match mrKeyPart=%h",
                 lkey, mrKeyPart
@@ -214,7 +213,7 @@ module mkTestMRs(Empty);
         let rkeyValue = unwrapMaybe(rkey);
         dynAssert(
             isValid(rkey) && mrKeyPart == truncate(rkeyValue),
-            "rkey assertion @ mkTestMRs",
+            "rkey assertion @ mkTestMetaDataMRs",
             $format(
                 "rkey=%h should match mrKeyPart=%h",
                 rkeyValue, mrKeyPart
@@ -222,8 +221,8 @@ module mkTestMRs(Empty);
         );
 
         // $display(
-        //     "time=%0d: mrIndex=%h, lkey=%h, rkey=%h, mrCnt=%b when allocate MRs, mrDut.notFull=",
-        //     $time, mrIndex, lkey, rkey, mrCnt, fshow(mrDut.notFull)
+        //     "time=%0d: mrIndex=%h, lkey=%h, rkey=%h, mrCnt=%b when allocate MetaDataMRs, mrMetaDataDUT.notFull=",
+        //     $time, mrIndex, lkey, rkey, mrCnt, fshow(mrMetaDataDUT.notFull)
         // );
     endrule
 
@@ -239,10 +238,10 @@ module mkTestMRs(Empty);
         let mrIndex2Search = mrIndexQ4Search.first;
         mrIndexQ4Search.deq;
 
-        let maybeMR = mrDut.getMR(mrIndex2Search);
+        let maybeMR = mrMetaDataDUT.getMR(mrIndex2Search);
         dynAssert(
             isValid(maybeMR),
-            "maybeMR assertion @ mkTestMRs",
+            "maybeMR assertion @ mkTestMetaDataMRs",
             $format(
                 "maybeMR=", fshow(maybeMR),
                 " should be valid when mrIndex2Search=%h and mrCnt=%0d",
@@ -257,11 +256,11 @@ module mkTestMRs(Empty);
     endrule
 
     rule deAllocMRs if (mrTestStateReg == TEST_ST_POP);
-        if (mrDut.notEmpty) begin
+        if (mrMetaDataDUT.notEmpty) begin
             let mrIndex2Remove = mrIndexQ4Pop.first;
             mrIndexQ4Pop.deq;
 
-            mrDut.deAllocMR(mrIndex2Remove);
+            mrMetaDataDUT.deAllocMR(mrIndex2Remove);
         end
     endrule
 
@@ -276,11 +275,11 @@ module mkTestMRs(Empty);
             mrCnt.incr(1);
         end
 
-        let removeResp <- mrDut.deAllocResp;
+        let removeResp <- mrMetaDataDUT.deAllocResp;
 
         dynAssert(
             removeResp,
-            "removeResp assertion @ mkTestMRs",
+            "removeResp assertion @ mkTestMetaDataMRs",
             $format(
                 "removeResp=", fshow(removeResp),
                 " should be true when mrCnt=%0d",
@@ -296,8 +295,8 @@ module mkTestMRs(Empty);
 endmodule
 
 (* synthesize *)
-module mkTestQPs(Empty);
-    let qpDut <- mkQPs;
+module mkTestMetaDataQPs(Empty);
+    let qpMetaDataDUT <- mkMetaDataQPs;
     Count#(Bit#(TLog#(MAX_QP))) qpCnt <- mkCount(0);
 
     PipeOut#(PdHandler) pdHandlerPipeOut <- mkGenericRandomPipeOut;
@@ -314,11 +313,11 @@ module mkTestQPs(Empty);
     let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
 
     rule createQPs if (qpTestStateReg == TEST_ST_FILL);
-        if (qpDut.notFull) begin
+        if (qpMetaDataDUT.notFull) begin
             let curPdHandler = pdHandlerPipeOut4InsertReq.first;
             pdHandlerPipeOut4InsertReq.deq;
 
-            qpDut.createQP(curPdHandler);
+            qpMetaDataDUT.createQP(curPdHandler);
         end
     endrule
 
@@ -331,7 +330,7 @@ module mkTestQPs(Empty);
             qpCnt.incr(1);
         end
 
-        let qpn <- qpDut.createResp;
+        let qpn <- qpMetaDataDUT.createResp;
         qpnQ4Search.enq(qpn);
         qpnQ4Pop.enq(qpn);
 
@@ -342,7 +341,7 @@ module mkTestQPs(Empty);
         Bit#(TSub#(QPN_WIDTH, QP_INDEX_WIDTH)) qpnPart = truncate(qpn);
         dynAssert(
             qpnPart == refPart,
-            "qpnPart assertion @ mkTestQPs",
+            "qpnPart assertion @ mkTestMetaDataQPs",
             $format(
                 "qpnPart=%h should match refPart=%h",
                 qpnPart, refPart
@@ -367,10 +366,10 @@ module mkTestQPs(Empty);
         let qpn2Search = qpnQ4Search.first;
         qpnQ4Search.deq;
 
-        let isValidQP = qpDut.isValidQP(qpn2Search);
+        let isValidQP = qpMetaDataDUT.isValidQP(qpn2Search);
         dynAssert(
             isValidQP,
-            "isValidQP assertion @ mkTestQPs",
+            "isValidQP assertion @ mkTestMetaDataQPs",
             $format(
                 "isValidQP=", fshow(isValidQP),
                 " should be valid when qpn2Search=%h and qpCnt=%0d",
@@ -378,10 +377,10 @@ module mkTestQPs(Empty);
             )
         );
 
-        let maybePD = qpDut.getPD(qpn2Search);
+        let maybePD = qpMetaDataDUT.getPD(qpn2Search);
         dynAssert(
             isValid(maybePD),
-            "maybePD assertion @ mkTestQPs",
+            "maybePD assertion @ mkTestMetaDataQPs",
             $format(
                 "maybePD=", fshow(isValid(maybePD)),
                 " should be valid"
@@ -394,26 +393,26 @@ module mkTestQPs(Empty);
 
         dynAssert(
             pdHandler == refPdHandler,
-            "pdHandler assertion @ mkTestQPs",
+            "pdHandler assertion @ mkTestMetaDataQPs",
             $format(
                 "pdHandler=%h should match refPdHandler=%h",
                 pdHandler, refPdHandler
             )
         );
 
-        let qpCntrl = qpDut.getCntrl(qpn2Search);
+        let qpCntrl = qpMetaDataDUT.getCntrl(qpn2Search);
         dynAssert(
             qpCntrl.isReset,
-            "qpCntrl assertion @ mkTestQPs",
+            "qpCntrl assertion @ mkTestMetaDataQPs",
             $format(
                 "qpCntrl.isReset=", fshow(qpCntrl.isReset),
                 " should be true"
             )
         );
-        // let maybeQpCntrl = qpDut.getCntrl2(qpn2Search);
+        // let maybeQpCntrl = qpMetaDataDUT.getCntrl2(qpn2Search);
         // dynAssert(
         //     isValid(maybeQpCntrl),
-        //     "isValid(maybeQpCntrl) assertion @ mkTestQPs",
+        //     "isValid(maybeQpCntrl) assertion @ mkTestMetaDataQPs",
         //     $format(
         //         "isValid(maybeQpCntrl)=", fshow(isValid(maybeQpCntrl)),
         //         " should be true"
@@ -428,11 +427,11 @@ module mkTestQPs(Empty);
     endrule
 
     rule destroyQPs if (qpTestStateReg == TEST_ST_POP);
-        if (qpDut.notEmpty) begin
+        if (qpMetaDataDUT.notEmpty) begin
             let qpn2Remove = qpnQ4Pop.first;
             qpnQ4Pop.deq;
 
-            qpDut.destroyQP(qpn2Remove);
+            qpMetaDataDUT.destroyQP(qpn2Remove);
         end
     endrule
 
@@ -447,11 +446,11 @@ module mkTestQPs(Empty);
             qpCnt.incr(1);
         end
 
-        let removeResp <- qpDut.destroyResp;
+        let removeResp <- qpMetaDataDUT.destroyResp;
 
         dynAssert(
             removeResp,
-            "removeResp assertion @ mkTestQPs",
+            "removeResp assertion @ mkTestMetaDataQPs",
             $format(
                 "removeResp=", fshow(removeResp),
                 " should be true when qpCnt=%0d",
@@ -468,7 +467,7 @@ endmodule
 
 (* synthesize *)
 module mkTestPermCheckMR(Empty);
-    let pdMetaData  <- mkPDs;
+    let pdMetaData  <- mkMetaDataPDs;
     let permCheckMR <- mkPermCheckMR(pdMetaData);
 
     Count#(Bit#(TLog#(TAdd#(1, MAX_PD))))         pdCnt <- mkCount(0);
@@ -512,7 +511,7 @@ module mkTestPermCheckMR(Empty);
 
     rule allocMRs if (mrCheckStateReg == TEST_ST_FILL);
         let pdHandler = pdHandlerQ4FillMR.first;
-        let maybeMRs = pdMetaData.getMRs(pdHandler);
+        let maybeMRs = pdMetaData.getMRs4PD(pdHandler);
         dynAssert(
             isValid(maybeMRs),
             "maybeMRs assertion @ mkTestPermCheckMR",
@@ -546,7 +545,7 @@ module mkTestPermCheckMR(Empty);
                 mrCnt.incr(1);
 
                 let pdHandler = pdHandlerQ4FillMR.first;
-                let maybeMRs = pdMetaData.getMRs(pdHandler);
+                let maybeMRs = pdMetaData.getMRs4PD(pdHandler);
                 dynAssert(
                     isValid(maybeMRs),
                     "maybeMRs assertion @ mkTestPermCheckMR",

@@ -3,7 +3,6 @@ import FIFOF :: *;
 import GetPut :: *;
 import PAClib :: *;
 
-import Assertions :: *;
 import Controller :: *;
 import DataTypes :: *;
 import ExtractAndPrependPipeOut :: *;
@@ -12,20 +11,13 @@ import PayloadConAndGen :: *;
 import PrimUtils :: *;
 import Utils :: *;
 
-// function Maybe#(TransType) getTransTypeFromQpType(QpType qpType);
-//     return case (qpType)
-//         IBV_QPT_RC      : tagged Valid TRANS_TYPE_RC;
-//         IBV_QPT_UD      : tagged Valid TRANS_TYPE_UD;
-//         IBV_QPT_XRC_SEND: tagged Valid TRANS_TYPE_XRC;
-//         default         : tagged Invalid;
-//     endcase;
-// endfunction
-
-function Maybe#(QPN) getMaybeDQPN(WorkReq wr, Controller cntrl);
+function Maybe#(QPN) getMaybeDestQpnSQ(WorkReq wr, Controller cntrl);
     return case (cntrl.getQpType)
-        IBV_QPT_RC, IBV_QPT_XRC_SEND: tagged Valid cntrl.getDQPN;
-        IBV_QPT_UD: wr.dqpn;
-        default: tagged Invalid;
+        IBV_QPT_RC      ,
+        IBV_QPT_UC      ,
+        IBV_QPT_XRC_SEND: tagged Valid cntrl.getDQPN;
+        IBV_QPT_UD      : wr.dqpn;
+        default         : tagged Invalid;
     endcase;
 endfunction
 
@@ -121,10 +113,10 @@ function Maybe#(IETH) genIETH(WorkReq wr);
     endcase;
 endfunction
 
-function Maybe#(RdmaHeader) genFirstOrOnlyPktHeader(WorkReq wr, Controller cntrl, PSN psn, Bool isOnlyReqPkt);
+function Maybe#(RdmaHeader) genFirstOrOnlyReqHeader(WorkReq wr, Controller cntrl, PSN psn, Bool isOnlyReqPkt);
     let maybeTrans  = qpType2TransType(cntrl.getQpType);
     let maybeOpCode = genFirstOrOnlyReqRdmaOpCode(wr.opcode, isOnlyReqPkt);
-    let maybeDQPN   = getMaybeDQPN(wr, cntrl);
+    let maybeDQPN   = getMaybeDestQpnSQ(wr, cntrl);
 
     let isReadOrAtomicWR = isReadOrAtomicWorkReq(wr.opcode);
     if (
@@ -161,7 +153,8 @@ function Maybe#(RdmaHeader) genFirstOrOnlyPktHeader(WorkReq wr, Controller cntrl
         case (wr.opcode)
             IBV_WR_RDMA_WRITE: begin
                 return case (cntrl.getQpType)
-                    IBV_QPT_RC: tagged Valid genRdmaHeader(
+                    IBV_QPT_RC,
+                    IBV_QPT_UC: tagged Valid genRdmaHeader(
                         zeroExtendLSB({ pack(bth), pack(unwrapMaybe(reth)) }),
                         fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(RETH_BYTE_WIDTH)),
                         hasPayload
@@ -176,7 +169,8 @@ function Maybe#(RdmaHeader) genFirstOrOnlyPktHeader(WorkReq wr, Controller cntrl
             end
             IBV_WR_RDMA_WRITE_WITH_IMM: begin
                 return case (cntrl.getQpType)
-                    IBV_QPT_RC: tagged Valid genRdmaHeader(
+                    IBV_QPT_RC,
+                    IBV_QPT_UC: tagged Valid genRdmaHeader(
                         isOnlyReqPkt ?
                             zeroExtendLSB({ pack(bth), pack(unwrapMaybe(reth)), pack(unwrapMaybe(immDt))}) :
                             zeroExtendLSB({ pack(bth), pack(unwrapMaybe(reth))}),
@@ -199,7 +193,8 @@ function Maybe#(RdmaHeader) genFirstOrOnlyPktHeader(WorkReq wr, Controller cntrl
             end
             IBV_WR_SEND: begin
                 return case (cntrl.getQpType)
-                    IBV_QPT_RC: tagged Valid genRdmaHeader(
+                    IBV_QPT_RC,
+                    IBV_QPT_UC: tagged Valid genRdmaHeader(
                         zeroExtendLSB(pack(bth)),
                         fromInteger(valueOf(BTH_BYTE_WIDTH)),
                         hasPayload
@@ -219,7 +214,8 @@ function Maybe#(RdmaHeader) genFirstOrOnlyPktHeader(WorkReq wr, Controller cntrl
             end
             IBV_WR_SEND_WITH_IMM: begin
                 return case (cntrl.getQpType)
-                    IBV_QPT_RC: tagged Valid genRdmaHeader(
+                    IBV_QPT_RC,
+                    IBV_QPT_UC: tagged Valid genRdmaHeader(
                         isOnlyReqPkt ?
                             zeroExtendLSB({ pack(bth), pack(unwrapMaybe(immDt)) }) :
                             zeroExtendLSB(pack(bth)),
@@ -284,7 +280,8 @@ function Maybe#(RdmaHeader) genFirstOrOnlyPktHeader(WorkReq wr, Controller cntrl
                     default: tagged Invalid;
                 endcase;
             end
-            IBV_WR_ATOMIC_CMP_AND_SWP, IBV_WR_ATOMIC_FETCH_AND_ADD: begin
+            IBV_WR_ATOMIC_CMP_AND_SWP  ,
+            IBV_WR_ATOMIC_FETCH_AND_ADD: begin
                 return case (cntrl.getQpType)
                     IBV_QPT_RC: tagged Valid genRdmaHeader(
                         zeroExtendLSB({ pack(bth), pack(unwrapMaybe(atomicEth)) }),
@@ -307,10 +304,10 @@ function Maybe#(RdmaHeader) genFirstOrOnlyPktHeader(WorkReq wr, Controller cntrl
     end
 endfunction
 
-function Maybe#(RdmaHeader) genMiddleOrLastPktHeader(WorkReq wr, Controller cntrl, PSN psn, Bool isLastReqPkt);
+function Maybe#(RdmaHeader) genMiddleOrLastReqHeader(WorkReq wr, Controller cntrl, PSN psn, Bool isLastReqPkt);
     let maybeTrans  = qpType2TransType(cntrl.getQpType);
     let maybeOpCode = genMiddleOrLastReqRdmaOpCode(wr.opcode, isLastReqPkt);
-    let maybeDQPN   = getMaybeDQPN(wr, cntrl);
+    let maybeDQPN   = getMaybeDestQpnSQ(wr, cntrl);
 
     if (
         maybeTrans  matches tagged Valid .trans  &&&
@@ -492,7 +489,8 @@ module mkReqGenSQ#(
     rule deqWorkReqPipeOut if (cntrl.isRTS);
         let qpType = cntrl.getQpType;
         dynAssert(
-            qpType == IBV_QPT_RC || qpType == IBV_QPT_XRC_SEND || qpType == IBV_QPT_UD,
+            qpType == IBV_QPT_RC || qpType == IBV_QPT_UC ||
+            qpType == IBV_QPT_XRC_SEND || qpType == IBV_QPT_UD,
             "qpType assertion @ mkReqGenSQ",
             $format(
                 "qpType=", fshow(qpType), " unsupported"
@@ -619,7 +617,7 @@ module mkReqGenSQ#(
         end
 
         let qpType = cntrl.getQpType;
-        let maybeFirstOrOnlyHeader = genFirstOrOnlyPktHeader(
+        let maybeFirstOrOnlyHeader = genFirstOrOnlyReqHeader(
             pendingWorkReq.wr, cntrl, startPSN, isOnlyReqPkt
         );
         // TODO: remove this assertion, just report error by WC
@@ -690,7 +688,7 @@ module mkReqGenSQ#(
 
         let qpType = cntrl.getQpType;
         dynAssert(
-            qpType == IBV_QPT_RC || qpType == IBV_QPT_XRC_SEND,
+            qpType == IBV_QPT_RC || qpType == IBV_QPT_UC || qpType == IBV_QPT_XRC_SEND,
             "qpType assertion @ mkReqGenSQ",
             $format(
                 "qpType=", fshow(qpType), " cannot generate multi-packet requests"
@@ -703,7 +701,7 @@ module mkReqGenSQ#(
         pktNumReg <= remainingPktNum;
         let isLastReqPkt = isZero(pktNumReg);
 
-        let maybeMiddleOrLastHeader = genMiddleOrLastPktHeader(
+        let maybeMiddleOrLastHeader = genMiddleOrLastReqHeader(
             pendingWorkReq.wr, cntrl, curPsnReg, isLastReqPkt
         );
         dynAssert(

@@ -4,7 +4,6 @@ import GetPut :: *;
 import PAClib :: *;
 import Vector :: *;
 
-import Assertions :: *;
 import ExtractAndPrependPipeOut :: *;
 import Headers :: *;
 import DataTypes :: *;

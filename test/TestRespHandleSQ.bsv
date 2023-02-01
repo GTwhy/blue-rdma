@@ -4,7 +4,6 @@ import PAClib :: *;
 import Vector :: *;
 import Cntrs :: *;
 
-import Assertions :: *;
 import Headers :: *;
 import Controller :: *;
 import DataTypes :: *;
@@ -30,7 +29,7 @@ module mkTestRespHandleNormalCase(Empty);
     let qpType = IBV_QPT_XRC_SEND;
     let pmtu = IBV_MTU_256;
 
-    let qpMetaData <- mkSimQPs(qpType, pmtu);
+    let qpMetaData <- mkSimMetaDataQPs(qpType, pmtu);
     let qpn = dontCareValue;
     let cntrl = qpMetaData.getCntrl(qpn);
     // let cntrl <- mkSimController(qpType, pmtu);
@@ -302,7 +301,7 @@ module mkTestRespHandleNormalOrDupOrGhostRespCase#(
     let qpType = IBV_QPT_XRC_SEND;
     let pmtu = IBV_MTU_256;
 
-    let qpMetaData <- mkSimQPs(qpType, pmtu);
+    let qpMetaData <- mkSimMetaDataQPs(qpType, pmtu);
     let qpn = dontCareValue;
     let cntrl = qpMetaData.getCntrl(qpn);
 
@@ -528,7 +527,7 @@ module mkTestRespHandleAbnormalCase#(TestRespHandleRespType respType)(Empty);
     let qpType = IBV_QPT_XRC_SEND;
     let pmtu = IBV_MTU_256;
 
-    let qpMetaData <- mkSimQPs(qpType, pmtu);
+    let qpMetaData <- mkSimMetaDataQPs(qpType, pmtu);
     let qpn = dontCareValue;
     let cntrl = qpMetaData.getCntrl(qpn);
 
@@ -679,7 +678,7 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
     let qpType = IBV_QPT_RC;
     let pmtu = IBV_MTU_256;
 
-    let qpMetaData <- mkSimQPs(qpType, pmtu);
+    let qpMetaData <- mkSimMetaDataQPs(qpType, pmtu);
     let qpn = dontCareValue;
     let cntrl = qpMetaData.getCntrl(qpn);
 
