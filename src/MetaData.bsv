@@ -48,7 +48,6 @@ module mkTagVector(TagVector#(vSz, anytype)) provisos(
         endaction
     endfunction
 
-    // TODO: find out what implicit condition?
     // (* no_implicit_conditions, fire_when_enabled *)
     (* fire_when_enabled *)
     rule canonicalize;
@@ -109,7 +108,7 @@ module mkTagVector(TagVector#(vSz, anytype)) provisos(
         return (tagVec[index][0]) ? (tagged Valid dataVec[index]) : (tagged Invalid);
     endmethod
 
-    method Action insertReq(anytype inputVal) if (!fullReg);
+    method Action insertReq(anytype inputVal) if (!fullReg && !isValid(insertReqReg[0]));
         insertReqReg[0] <= tagged Valid inputVal;
     endmethod
     method ActionValue#(UInt#(TLog#(vSz))) insertResp();
@@ -117,7 +116,7 @@ module mkTagVector(TagVector#(vSz, anytype)) provisos(
         return insertRespQ.first;
     endmethod
 
-    method Action removeReq(UInt#(TLog#(vSz)) index) if (!emptyReg);
+    method Action removeReq(UInt#(TLog#(vSz)) index) if (!emptyReg && !isValid(removeReqReg[0]));
         removeReqReg[0] <= tagged Valid index;
         tagVec[index][0] <= False;
         removeRespQ.enq(tagVec[index][0]);

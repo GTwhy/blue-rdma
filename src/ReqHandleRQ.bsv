@@ -721,6 +721,7 @@ module mkReqHandleRQ#(
                 cntrl.contextRQ.incEpoch;
                 cntrl.contextRQ.restorePreReqOpCode(preOpCode);
                 cntrl.contextRQ.restoreEPSN(bth.psn);
+                rnrWaitCntReg <= fromInteger(getRnrTimeOutValue(cntrl.getMinRnrTimer));
 
                 retryFlushStateReg <= RQ_RNR_RETRY_FLUSH;
             end
@@ -1676,13 +1677,12 @@ module mkReqHandleRQ#(
         // );
     endrule
 
-    // (* no_implicit_conditions, fire_when_enabled *)
-    (* fire_when_enabled *)
+    (* no_implicit_conditions, fire_when_enabled *)
     rule retryStateChange if (
         cntrl.isNonErr && retryFlushStateReg != RQ_NOT_RETRY && !isErrFlushStateReg
     );
         if (retryFlushStateReg == RQ_RNR_RETRY_FLUSH) begin
-            rnrWaitCntReg <= fromInteger(getRnrTimeOutValue(cntrl.getMinRnrTimer));
+            // rnrWaitCntReg <= fromInteger(getRnrTimeOutValue(cntrl.getMinRnrTimer));
             retryFlushStateReg <= RQ_RNR_WAIT;
         end
         else if (retryFlushStateReg == RQ_RNR_WAIT) begin

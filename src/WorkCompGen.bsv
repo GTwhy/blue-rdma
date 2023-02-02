@@ -86,8 +86,7 @@ module mkWorkCompGenSQ#(
     Reg#(Bool)      isFirstErrPartialAckWorkReqReg <- mkRegU;
     Reg#(WorkReqID) firstErrPartialAckWorkReqIdReg <- mkRegU;
 
-    // (* no_implicit_conditions, fire_when_enabled *)
-    (* fire_when_enabled *)
+    (* no_implicit_conditions, fire_when_enabled *)
     rule start if (cntrl.isRTS && workCompGenStateReg == WC_GEN_ST_STOP);
         workCompGenStateReg <= WC_GEN_ST_NORMAL;
     endrule
@@ -357,8 +356,7 @@ module mkWorkCompGenRQ#(
 
     Reg#(WorkCompGenState) workCompGenStateReg <- mkReg(WC_GEN_ST_STOP);
 
-    // (* no_implicit_conditions, fire_when_enabled *)
-    (* fire_when_enabled *)
+    (* no_implicit_conditions, fire_when_enabled *)
     rule start if (cntrl.isNonErr && workCompGenStateReg == WC_GEN_ST_STOP);
         workCompGenStateReg <= WC_GEN_ST_NORMAL;
     endrule

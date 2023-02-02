@@ -58,6 +58,11 @@ module mkRetryHandleSQ#(
     Reg#(RetryCnt)          retryCntReg <- mkRegU;
     Reg#(RetryCnt)            rnrCntReg <- mkRegU;
 
+    Reg#(RetryCnt)    origMaxRetryCntReg <- mkRegU;
+    Reg#(RetryCnt)      origMaxRnrCntReg <- mkRegU;
+    Reg#(TimeOutTimer) origMaxTimeOutReg <- mkRegU;
+    Reg#(RnrTimer)    origMinRnrTimerReg <- mkRegU;
+
     Reg#(RetryHandleState) retryHandleStateReg[2] <- mkCReg(2, RETRY_ST_NOT_RETRY);
 
     let notRetrying = retryHandleStateReg[0] == RETRY_ST_NOT_RETRY;
@@ -102,30 +107,36 @@ module mkRetryHandleSQ#(
 
     function Action resetRetryCntInternal();
         action
-            retryCntReg         <= cntrl.getMaxRetryCnt;
-            rnrCntReg           <= cntrl.getMaxRnrCnt;
-            disableRetryCntReg  <= cntrl.getMaxRetryCnt == fromInteger(valueOf(INFINITE_RETRY));
+            retryCntReg         <= origMaxRetryCntReg; // cntrl.getMaxRetryCnt
+            rnrCntReg           <= origMaxRnrCntReg;   // cntrl.getMaxRnrCnt
+            disableRetryCntReg  <= origMaxRetryCntReg == fromInteger(valueOf(INFINITE_RETRY));
             resetRetryCntReg[1] <= False;
         endaction
     endfunction
 
     function Action resetTimeOutInternal();
         action
-            timeOutCntReg      <= fromInteger(getTimeOutValue(cntrl.getMaxTimeOut));
-            disableTimeOutReg  <= isZero(cntrl.getMaxTimeOut);
+            timeOutCntReg      <= fromInteger(getTimeOutValue(origMaxTimeOutReg));
+            disableTimeOutReg  <= isZero(origMaxTimeOutReg); // cntrl.getMaxTimeOut
             resetTimeOutReg[1] <= False;
-            // $display("time=%0d: cntrl.getMaxTimeOut=%0d", $time, cntrl.getMaxTimeOut);
+            // $display("time=%0d: cntrl.getMaxTimeOut=%0d", $time, origMaxTimeOutReg);
         endaction
     endfunction
+
+    // TODO: update retry counter and timer during runtime
+    rule initRetryCntAndTimeOutTimer if (cntrl.isInit);
+        origMaxRetryCntReg <= cntrl.getMaxRetryCnt;
+        origMaxRnrCntReg   <= cntrl.getMaxRnrCnt;
+        origMinRnrTimerReg <= cntrl.getMinRnrTimer;
+        origMaxTimeOutReg  <= cntrl.getMaxTimeOut;
+    endrule
 
     rule resetRetryCntAndTimeOutTimer if (cntrl.isRTR);
         resetRetryCntInternal;
         resetTimeOutInternal;
     endrule
 
-    // TODO: find out the implicit conditions
-    // (* no_implicit_conditions, fire_when_enabled *)
-    (* fire_when_enabled *)
+    (* no_implicit_conditions, fire_when_enabled *)
     rule canonicalize if (
         cntrl.isRTS && retryHandleStateReg[1] != RETRY_ST_RETRY_LIMIT_EXC
     );
@@ -275,7 +286,7 @@ module mkRetryHandleSQ#(
             )
         );
 
-        let rnrTimer = cntrl.getMinRnrTimer;
+        let rnrTimer = origMinRnrTimerReg; // cntrl.getMinRnrTimer
         if (retryReasonReg[0] == RETRY_REASON_RNR) begin
             rnrTimer = retryRnrTimerReg > rnrTimer ? retryRnrTimerReg : rnrTimer;
             rnrWaitCntReg <= fromInteger(getRnrTimeOutValue(rnrTimer));
