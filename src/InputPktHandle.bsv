@@ -11,7 +11,7 @@ import MetaData :: *;
 import PrimUtils :: *;
 import Utils :: *;
 
-function Bool checkBTH(BTH bth);
+function Bool checkZeroFields4BTH(BTH bth);
     let bthRsvdCheck =
         isZero(pack(bth.tver))  &&
         isZero(pack(bth.fecn))  &&
@@ -21,51 +21,49 @@ function Bool checkBTH(BTH bth);
     return bthRsvdCheck;
 endfunction
 
-// TODO: implement request header verification
-// TODO: check QP supported operation
-function Bool checkRdmaReqHeader(BTH bth, RETH reth, AtomicEth atomicEth);
-    let padCntCheck = isZero(bth.padCnt);
+function Bool padCntCheckReqHeader(BTH bth);
+    let zeroPadCntCheck = isZero(bth.padCnt);
 
     return case (bth.opcode)
-        SEND_FIRST, SEND_MIDDLE            : padCntCheck;
+        SEND_FIRST, SEND_MIDDLE            : zeroPadCntCheck;
         SEND_LAST, SEND_ONLY               ,
         SEND_LAST_WITH_IMMEDIATE           ,
         SEND_ONLY_WITH_IMMEDIATE           ,
         SEND_LAST_WITH_INVALIDATE          ,
         SEND_ONLY_WITH_INVALIDATE          : True;
 
-        RDMA_WRITE_FIRST, RDMA_WRITE_MIDDLE: padCntCheck;
+        RDMA_WRITE_FIRST, RDMA_WRITE_MIDDLE: zeroPadCntCheck;
         RDMA_WRITE_LAST, RDMA_WRITE_ONLY   ,
         RDMA_WRITE_LAST_WITH_IMMEDIATE     ,
         RDMA_WRITE_ONLY_WITH_IMMEDIATE     : True;
 
         RDMA_READ_REQUEST                  ,
         COMPARE_SWAP                       ,
-        FETCH_ADD                          : True;
+        FETCH_ADD                          : zeroPadCntCheck;
 
         default                            : False;
     endcase;
 endfunction
 
 // TODO: verify that read/atomic response can only have normal AETH code
-function Bool checkRdmaRespHeader(BTH bth, AETH aeth);
-    let padCntCheck = isZero(bth.padCnt);
+function Bool padCntCheckRespHeader(BTH bth, AETH aeth);
+    let zeroPadCntCheck = isZero(bth.padCnt);
 
     case (bth.opcode)
-        RDMA_READ_RESPONSE_MIDDLE: return padCntCheck;
+        RDMA_READ_RESPONSE_MIDDLE: return zeroPadCntCheck;
         RDMA_READ_RESPONSE_LAST  ,
         RDMA_READ_RESPONSE_ONLY  : return aeth.code == AETH_CODE_ACK;
         RDMA_READ_RESPONSE_FIRST ,
-        ATOMIC_ACKNOWLEDGE       : return aeth.code == AETH_CODE_ACK && padCntCheck;
+        ATOMIC_ACKNOWLEDGE       : return aeth.code == AETH_CODE_ACK && zeroPadCntCheck;
         ACKNOWLEDGE              : case (aeth.code)
-            AETH_CODE_ACK: return padCntCheck;
-            AETH_CODE_RNR: return padCntCheck;
+            AETH_CODE_ACK,
+            AETH_CODE_RNR: return zeroPadCntCheck;
             AETH_CODE_NAK: return case (aeth.value)
                 zeroExtend(pack(AETH_NAK_SEQ_ERR)),
                 zeroExtend(pack(AETH_NAK_INV_REQ)),
                 zeroExtend(pack(AETH_NAK_RMT_ACC)),
                 zeroExtend(pack(AETH_NAK_RMT_OP)) ,
-                zeroExtend(pack(AETH_NAK_INV_RD)) : padCntCheck;
+                zeroExtend(pack(AETH_NAK_INV_RD)) : zeroPadCntCheck;
                 default                           : False;
             endcase;
             // AETH_CODE_RSVD
@@ -73,6 +71,16 @@ function Bool checkRdmaRespHeader(BTH bth, AETH aeth);
         endcase
         default: return False;
     endcase
+endfunction
+
+function Bool validateHeader(TransType transType, QKEY qkey, Controller cntrl, Bool isRespPkt);
+    let transTypeMatch = transTypeMatchQpType(transType, cntrl.getQpType);
+    let qpStateMatch = isRespPkt ? cntrl.isRTS : cntrl.isNonErr;
+    // UD has no responses
+    let qKeyMatch = transType == TRANS_TYPE_UD ? qkey == cntrl.getQKEY : True;
+    // TODO: verify RoCEv2 only use default PKEY
+    // let pKeyMatch = isDefaultPKEY(cntrl.getPKEY);
+    return transTypeMatch && qpStateMatch && qKeyMatch;
 endfunction
 
 interface HeaderAndMetaDataAndPayloadSeperateDataStreamPipeOut;
@@ -147,6 +155,7 @@ endmodule
 interface RdmaPktMetaDataAndPayloadPipeOut;
     interface PipeOut#(RdmaPktMetaData) pktMetaData;
     interface DataStreamPipeOut payload;
+    interface PipeOut#(BTH) cnpPipeOut;
 endinterface
 
 typedef enum {
@@ -155,16 +164,8 @@ typedef enum {
 } RdmaPktBufState deriving(Bits, Eq);
 // This module will discard:
 // - invalid packet that header is without payload but packet has payload;
-// TODO: seperate requests, responses and CNP
-// TODO: receive packet when init state
-// TODO: check unsupported TransType
-// TODO: check QKEY match for UD, otherwise drop
-// TODO: check RETH dlen less than PMTU if only requests
 // TODO: check write requests have non-zero RETH.dlen but without payload
 // TODO: check remote XRC domain and XRCETH valid?
-// TODO: check PKEY match
-// TODO: discard BTH or AETH with reserved value, and packet validation
-// TODO: check read/atomic response AETH code abnormal, not RNR or NAK code
 // TODO: reset mkInputRdmaPktBufAndHeaderValidation when error or retry?
 module mkInputRdmaPktBufAndHeaderValidation#(
     // Only output payload when packet has non-zero payload,
@@ -174,6 +175,7 @@ module mkInputRdmaPktBufAndHeaderValidation#(
     HeaderAndMetaDataAndPayloadSeperateDataStreamPipeOut pipeIn,
     MetaDataQPs qpMetaData
 )(RdmaPktMetaDataAndPayloadPipeOut);
+    FIFOF#(BTH) cnpOutQ <- mkFIFOF;
     // TODO: check payloadOutQ buffer size is enough for DMA write delay?
     FIFOF#(DataStream)          payloadOutQ <- mkSizedBRAMFIFOF(valueOf(DATA_STREAM_FRAG_BUF_SIZE));
     FIFOF#(RdmaPktMetaData) pktMetaDataOutQ <- mkSizedFIFOF(valueOf(PKT_META_DATA_BUF_SIZE));
@@ -185,7 +187,7 @@ module mkInputRdmaPktBufAndHeaderValidation#(
     FIFOF#(Tuple4#(RdmaHeader, BTH, PdHandler, PMTU))  rdmaHeaderPktlenCalcQ <- mkFIFOF;
     FIFOF#(Tuple5#(DataStream, ByteEnBitNum, ByteEnBitNum, Bool, Bool)) payloadPktlenCalcQ <- mkFIFOF;
 
-    Reg#(Bool)         isValidQpReg <- mkRegU;
+    Reg#(Bool)        isValidPktReg <- mkRegU;
     Reg#(PAD)          bthPadCntReg <- mkRegU;
     Reg#(PmtuFragNum) pktFragNumReg <- mkRegU;
     Reg#(PktLen)          pktLenReg <- mkRegU;
@@ -208,13 +210,12 @@ module mkInputRdmaPktBufAndHeaderValidation#(
         let rdmaHeader = rdmaHeaderPipeOut.first;
         let bth        = extractBTH(rdmaHeader.headerData);
         let aeth       = extractAETH(rdmaHeader.headerData);
-        let reth       = extractRETH(rdmaHeader.headerData, bth.trans);
-        let atomicEth  = extractAtomicEth(rdmaHeader.headerData, bth.trans);
+        // let reth       = extractRETH(rdmaHeader.headerData, bth.trans);
+        // let atomicEth  = extractAtomicEth(rdmaHeader.headerData, bth.trans);
 
-        let bthCheckResult = checkBTH(bth);
+        let bthCheckResult = checkZeroFields4BTH(bth);
         let headerCheckResult =
-            checkRdmaReqHeader(bth, reth, atomicEth) ||
-            checkRdmaRespHeader(bth, aeth);
+            padCntCheckReqHeader(bth) || padCntCheckRespHeader(bth, aeth);
         // Discard packet that should not have payload
         let nonPayloadHeaderShouldHaveNoPayload =
             rdmaHeader.headerMetaData.hasPayload ?
@@ -230,7 +231,6 @@ module mkInputRdmaPktBufAndHeaderValidation#(
         if (payloadFrag.isFirst) begin
             rdmaHeaderPipeOut.deq;
 
-            // if (!bthCheckResult || !headerCheckResult || !nonPayloadHeaderShouldHaveNoPayload) begin
             if (bthCheckResult && headerCheckResult && nonPayloadHeaderShouldHaveNoPayload) begin
                 // Packet header is valid
                 rdmaHeaderValidationQ.enq(tuple2(rdmaHeader, bth));
@@ -274,24 +274,43 @@ module mkInputRdmaPktBufAndHeaderValidation#(
         let payloadFrag = payloadValidationQ.first;
         payloadValidationQ.deq;
 
-        let isValidQP = isValidQpReg;
+        let isValidPkt = isValidPktReg;
+
         if (payloadFrag.isFirst) begin
             let { rdmaHeader, bth } = rdmaHeaderValidationQ.first;
             rdmaHeaderValidationQ.deq;
 
-            let maybePdHandler = qpMetaData.getPD(bth.dqpn);
-            isValidQP = isValid(maybePdHandler);
-            let cntrl = qpMetaData.getCntrl(bth.dqpn);
+            let isCNP = isCongestionNotificationPkt(bth);
+            let deth = extractDETH(rdmaHeader.headerData);
+            let xrceth = extractXRCETH(rdmaHeader.headerData);
+
+            // CNP is also RDMA response
+            let isRespPkt = isRdmaRespOpCode(bth.opcode) || isCNP;
+            // If XRC requests, DQPN is defined in XRCETH, otherwise in BTH
+            let dqpn = (bth.trans == TRANS_TYPE_XRC && !isRespPkt) ? xrceth.srqn : bth.dqpn;
+
+            let maybePdHandler = qpMetaData.getPD(dqpn);
+            // let isValidDQPN = isValid(maybePdHandler);
+            let cntrl = qpMetaData.getCntrl(dqpn);
             if (maybePdHandler matches tagged Valid .pdHandler) begin
-                rdmaHeaderFragLenCalcQ.enq(tuple4(
-                    rdmaHeader, bth, pdHandler, cntrl.getPMTU
-                ));
+                let validateResult = validateHeader(bth.trans, deth.qkey, cntrl, isRespPkt);
+                if (validateResult) begin
+                    if (!isCNP) begin
+                        rdmaHeaderFragLenCalcQ.enq(tuple4(
+                            rdmaHeader, bth, pdHandler, cntrl.getPMTU
+                        ));
+                    end
+                    else begin
+                        cnpOutQ.enq(bth);
+                    end
+                end
+                isValidPkt = validateResult && !isCNP;
             end
 
-            isValidQpReg <= isValidQP;
+            isValidPktReg <= isValidPkt;
         end
 
-        if (isValidQP) begin
+        if (isValidPkt) begin
             payloadFragLenCalcQ.enq(payloadFrag);
         end
     endrule
@@ -344,6 +363,7 @@ module mkInputRdmaPktBufAndHeaderValidation#(
         // let bth = extractBTH(rdmaHeader.headerData);
         let isLastPkt = isLastRdmaOpCode(bth.opcode);
         let isFirstOrMidPkt = isFirstOrMiddleRdmaOpCode(bth.opcode);
+        let isLastOrOnlyPkt = isLastOrOnlyRdmaOpCode(bth.opcode);
 
         // $display(
         //     "time=%0d: payloadFrag.byteEn=%h, payloadFrag.isFirst=",
@@ -410,8 +430,10 @@ module mkInputRdmaPktBufAndHeaderValidation#(
                 // $info("time=%0d: discard zero-length payload for RDMA packet", $time);
             end
 
-            if (pktValid && isFirstOrMidPkt) begin
-                pktValid = pktLenEqPMTU(pktLen, pmtu);
+            if (pktValid) begin
+                pktValid =
+                    (isFirstOrMidPkt && pktLenEqPMTU(pktLen, pmtu)) ||
+                    (isLastOrOnlyPkt && !pktLenGtPMTU(pktLen, pmtu));
                 // $display(
                 //     "time=%0d: pktLen=%0d", $time, pktLen,
                 //     ", pmtu=", fshow(pmtu), ", pktValid=", fshow(pktValid)
@@ -442,4 +464,5 @@ module mkInputRdmaPktBufAndHeaderValidation#(
 
     interface pktMetaData = convertFifo2PipeOut(pktMetaDataOutQ);
     interface payload     = convertFifo2PipeOut(payloadOutQ);
+    interface cnpPipeOut  = convertFifo2PipeOut(cnpOutQ);
 endmodule

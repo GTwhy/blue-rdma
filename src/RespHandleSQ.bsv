@@ -647,7 +647,7 @@ module mkRespHandleSQ#(
 
         let isLastOrOnlyPkt       = respPktInfo.isLastOrOnlyPkt;
         let enoughDmaSpace        = True;
-        let readRespLenMatch      = True;
+        let isLastPayloadLenZero  = False;
         let remainingReadRespLen  = remainingReadRespLenReg;
         let nextReadRespWriteAddr = nextReadRespWriteAddrReg;
         let readRespPktNum        = readRespPktNumReg;
@@ -679,6 +679,7 @@ module mkRespHandleSQ#(
                     // No need to calculate next DMA write address for last read responses
                     // nextReadRespWriteAddr = nextReadRespWriteAddrReg + zeroExtend(pktPayloadLen);
                     readRespPktNum        = readRespPktNumReg + 1;
+                    isLastPayloadLenZero  = respPktInfo.isZeroPayloadLen;
                 end
                 default: begin end
             endcase
@@ -688,8 +689,8 @@ module mkRespHandleSQ#(
                 nextReadRespWriteAddrReg <= nextReadRespWriteAddr;
                 readRespPktNumReg        <= readRespPktNum;
 
-                readRespLenMatch = isLastOrOnlyPkt ? isZero(remainingReadRespLen) : True;
-                if (!enoughDmaSpace || !readRespLenMatch) begin
+                let readRespLenMatch = isLastOrOnlyPkt ? isZero(remainingReadRespLen) : True;
+                if (!enoughDmaSpace || !readRespLenMatch || isLastPayloadLenZero) begin
                     // Read response length not match WR length
                     respAction    = SQ_ACT_LOCAL_LEN_ERR;
                     wcStatus      = tagged Valid IBV_WC_LOC_LEN_ERR;

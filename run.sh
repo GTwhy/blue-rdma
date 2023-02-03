@@ -30,6 +30,7 @@ make -j8 TESTFILE=TestExtractAndPrependPipeOut.bsv TOP=mkTestExtractAndPrependHe
 make -j8 TESTFILE=TestInputPktHandle.bsv TOP=mkTestCalculateRandomPktLen 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=TestInputPktHandle.bsv TOP=mkTestCalculatePktLenEqPMTU 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=TestInputPktHandle.bsv TOP=mkTestCalculateZeroPktLen 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestInputPktHandle.bsv TOP=mkTestReceiveCNP 2>&1 | tee -a $RUN_LOG
 
 make -j8 TESTFILE=TestPayloadConAndGen.bsv TOP=mkTestPayloadConAndGenNormalCase 2>&1 | tee -a $RUN_LOG
 

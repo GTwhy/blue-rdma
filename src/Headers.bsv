@@ -158,8 +158,8 @@ typedef struct {
     PAD padCnt;
     ReservedZero#(4) tver;
     PKEY pkey;
-    ReservedZero#(1) fecn;
-    ReservedZero#(1) becn;
+    ReservedZero#(1) fecn; // Not used in RoCEv2
+    ReservedZero#(1) becn; // Not used in RoCEv2
     ReservedZero#(6) resv6;
     QPN dqpn;
     Bool ackReq;
@@ -249,10 +249,10 @@ typedef TDiv#(XRCETH_WIDTH, 8) XRCETH_BYTE_WIDTH;
 typedef struct {
     ReservedZero#(LONG_WIDTH) rsvd1;
     ReservedZero#(LONG_WIDTH) rsvd2;
-} CNPPadding deriving(Bits, Bounded);
+} PayloadCNP deriving(Bits, Bounded);
 
-typedef SizeOf#(CNPPadding)         CNP_PADDING_WIDTH;
-typedef TDiv#(CNP_PADDING_WIDTH, 8) CNP_PADDING_BYTE_WIDTH;
+typedef SizeOf#(PayloadCNP)         CNP_PAYLOAD_WIDTH;
+typedef TDiv#(CNP_PAYLOAD_WIDTH, 8) CNP_PAYLOAD_BYTE_WIDTH;
 
 // RC headers:
 // BTH + IETH = 20 bytes
@@ -326,7 +326,7 @@ function Integer calcHeaderLenByTransTypeAndRdmaOpCode(
         fromInteger(valueOf(UD_SEND_ONLY_WITH_IMMEDIATE)): valueOf(BTH_BYTE_WIDTH) + valueOf(DETH_BYTE_WIDTH) + valueOf(IMM_DT_BYTE_WIDTH);
 
         // CNP notification
-        fromInteger(valueOf(ROCE_CNP)): valueOf(BTH_BYTE_WIDTH) + valueOf(CNP_PADDING_BYTE_WIDTH);
+        fromInteger(valueOf(ROCE_CNP)): valueOf(BTH_BYTE_WIDTH) + valueOf(CNP_PAYLOAD_BYTE_WIDTH);
         default: 0; // error("invalid transType and rdmaOpCode in calcHeaderLenByTransTypeAndRdmaOpCode()");
     endcase;
 endfunction

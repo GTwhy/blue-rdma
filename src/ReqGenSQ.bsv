@@ -141,7 +141,7 @@ function Maybe#(RdmaHeader) genFirstOrOnlyReqHeader(WorkReq wr, Controller cntrl
             psn      : psn
         };
 
-        let xrcEth = genXRCETH(wr, cntrl);
+        let xrceth = genXRCETH(wr, cntrl);
         let deth = genDETH(wr, cntrl);
         let reth = genRETH(wr);
         let atomicEth = genAtomicEth(wr);
@@ -160,7 +160,7 @@ function Maybe#(RdmaHeader) genFirstOrOnlyReqHeader(WorkReq wr, Controller cntrl
                         hasPayload
                     );
                     IBV_QPT_XRC_SEND: tagged Valid genRdmaHeader(
-                        zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrcEth)), pack(unwrapMaybe(reth)) }),
+                        zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrceth)), pack(unwrapMaybe(reth)) }),
                         fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(XRCETH_BYTE_WIDTH) + valueOf(RETH_BYTE_WIDTH)),
                         hasPayload
                     );
@@ -181,8 +181,8 @@ function Maybe#(RdmaHeader) genFirstOrOnlyReqHeader(WorkReq wr, Controller cntrl
                     );
                     IBV_QPT_XRC_SEND: tagged Valid genRdmaHeader(
                         isOnlyReqPkt ?
-                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrcEth)), pack(unwrapMaybe(reth)), pack(unwrapMaybe(immDt)) }) :
-                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrcEth)), pack(unwrapMaybe(reth)) }),
+                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrceth)), pack(unwrapMaybe(reth)), pack(unwrapMaybe(immDt)) }) :
+                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrceth)), pack(unwrapMaybe(reth)) }),
                         isOnlyReqPkt ?
                             fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(XRCETH_BYTE_WIDTH) + valueOf(RETH_BYTE_WIDTH) + valueOf(IMM_DT_BYTE_WIDTH)) :
                             fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(XRCETH_BYTE_WIDTH) + valueOf(RETH_BYTE_WIDTH)),
@@ -205,7 +205,7 @@ function Maybe#(RdmaHeader) genFirstOrOnlyReqHeader(WorkReq wr, Controller cntrl
                         hasPayload
                     );
                     IBV_QPT_XRC_SEND: tagged Valid genRdmaHeader(
-                        zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrcEth)) }),
+                        zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrceth)) }),
                         fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(XRCETH_BYTE_WIDTH)),
                         hasPayload
                     );
@@ -232,8 +232,8 @@ function Maybe#(RdmaHeader) genFirstOrOnlyReqHeader(WorkReq wr, Controller cntrl
                     );
                     IBV_QPT_XRC_SEND: tagged Valid genRdmaHeader(
                         isOnlyReqPkt ?
-                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrcEth)), pack(unwrapMaybe(immDt)) }) :
-                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrcEth)) }),
+                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrceth)), pack(unwrapMaybe(immDt)) }) :
+                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrceth)) }),
                         isOnlyReqPkt ?
                             fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(XRCETH_BYTE_WIDTH) + valueOf(IMM_DT_BYTE_WIDTH)) :
                             fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(XRCETH_BYTE_WIDTH)),
@@ -255,8 +255,8 @@ function Maybe#(RdmaHeader) genFirstOrOnlyReqHeader(WorkReq wr, Controller cntrl
                     );
                     IBV_QPT_XRC_SEND: tagged Valid genRdmaHeader(
                         isOnlyReqPkt ?
-                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrcEth)), pack(unwrapMaybe(ieth)) }) :
-                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrcEth)) }),
+                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrceth)), pack(unwrapMaybe(ieth)) }) :
+                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrceth)) }),
                         isOnlyReqPkt ?
                             fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(XRCETH_BYTE_WIDTH) + valueOf(IETH_BYTE_WIDTH)) :
                             fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(XRCETH_BYTE_WIDTH)),
@@ -273,7 +273,7 @@ function Maybe#(RdmaHeader) genFirstOrOnlyReqHeader(WorkReq wr, Controller cntrl
                         False // Read requests have no payload
                     );
                     IBV_QPT_XRC_SEND: tagged Valid genRdmaHeader(
-                        zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrcEth)), pack(unwrapMaybe(reth)) }),
+                        zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrceth)), pack(unwrapMaybe(reth)) }),
                         fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(XRCETH_BYTE_WIDTH) + valueOf(RETH_BYTE_WIDTH)),
                         False // Read requests have no payload
                     );
@@ -289,7 +289,7 @@ function Maybe#(RdmaHeader) genFirstOrOnlyReqHeader(WorkReq wr, Controller cntrl
                         False // Atomic requests have no payload
                     );
                     IBV_QPT_XRC_SEND: tagged Valid genRdmaHeader(
-                        zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrcEth)), pack(unwrapMaybe(atomicEth)) }),
+                        zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrceth)), pack(unwrapMaybe(atomicEth)) }),
                         fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(XRCETH_BYTE_WIDTH) + valueOf(ATOMIC_ETH_BYTE_WIDTH)),
                         False // Atomic requests have no payload
                     );
@@ -331,7 +331,7 @@ function Maybe#(RdmaHeader) genMiddleOrLastReqHeader(WorkReq wr, Controller cntr
             psn      : psn
         };
 
-        let xrcEth = genXRCETH(wr, cntrl);
+        let xrceth = genXRCETH(wr, cntrl);
         let immDt = genImmDt(wr);
         let ieth = genIETH(wr);
 
@@ -345,7 +345,7 @@ function Maybe#(RdmaHeader) genMiddleOrLastReqHeader(WorkReq wr, Controller cntr
                         hasPayload
                     );
                     IBV_QPT_XRC_SEND: tagged Valid genRdmaHeader(
-                        zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrcEth)) }),
+                        zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrceth)) }),
                         fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(XRCETH_BYTE_WIDTH)),
                         hasPayload
                     );
@@ -365,8 +365,8 @@ function Maybe#(RdmaHeader) genMiddleOrLastReqHeader(WorkReq wr, Controller cntr
                     );
                     IBV_QPT_XRC_SEND: tagged Valid genRdmaHeader(
                         isLastReqPkt ?
-                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrcEth)), pack(unwrapMaybe(immDt)) }) :
-                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrcEth)) }),
+                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrceth)), pack(unwrapMaybe(immDt)) }) :
+                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrceth)) }),
                         isLastReqPkt ?
                             fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(XRCETH_BYTE_WIDTH) + valueOf(IMM_DT_BYTE_WIDTH)) :
                             fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(XRCETH_BYTE_WIDTH)),
@@ -383,7 +383,7 @@ function Maybe#(RdmaHeader) genMiddleOrLastReqHeader(WorkReq wr, Controller cntr
                         hasPayload
                     );
                     IBV_QPT_XRC_SEND: tagged Valid genRdmaHeader(
-                        zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrcEth)) }),
+                        zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrceth)) }),
                         fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(XRCETH_BYTE_WIDTH)),
                         hasPayload
                     );
@@ -403,8 +403,8 @@ function Maybe#(RdmaHeader) genMiddleOrLastReqHeader(WorkReq wr, Controller cntr
                     );
                     IBV_QPT_XRC_SEND: tagged Valid genRdmaHeader(
                         isLastReqPkt ?
-                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrcEth)), pack(unwrapMaybe(immDt)) }) :
-                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrcEth)) }),
+                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrceth)), pack(unwrapMaybe(immDt)) }) :
+                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrceth)) }),
                         isLastReqPkt ?
                             fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(XRCETH_BYTE_WIDTH) + valueOf(IMM_DT_BYTE_WIDTH)) :
                             fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(XRCETH_BYTE_WIDTH)),
@@ -426,8 +426,8 @@ function Maybe#(RdmaHeader) genMiddleOrLastReqHeader(WorkReq wr, Controller cntr
                     );
                     IBV_QPT_XRC_SEND: tagged Valid genRdmaHeader(
                         isLastReqPkt ?
-                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrcEth)), pack(unwrapMaybe(ieth)) }) :
-                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrcEth)) }),
+                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrceth)), pack(unwrapMaybe(ieth)) }) :
+                            zeroExtendLSB({ pack(bth), pack(unwrapMaybe(xrceth)) }),
                         isLastReqPkt ?
                             fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(XRCETH_BYTE_WIDTH) + valueOf(IETH_BYTE_WIDTH)) :
                             fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(XRCETH_BYTE_WIDTH)),

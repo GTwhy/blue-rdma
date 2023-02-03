@@ -147,19 +147,6 @@ module mkController(Controller);
     Reg#(PktNum) respPktNumReg <- mkRegU;
     Reg#(PSN)    curRespPsnReg <- mkRegU;
     Reg#(PSN)       epsnReg[2] <- mkCRegU(2);
-
-    // rule loadRnrTimer if (inited && !rnrFlushReg);
-    //     rnrWaitCntReg <= fromInteger(getRnrTimeOutValue(minRnrTimerReg));
-    // endrule
-
-    // rule rnrWait if (inited && rnrFlushReg);
-    //     if (isZero(rnrWaitCntReg)) begin
-    //         rnrFlushReg <= False;
-    //     end
-    //     else begin
-    //         rnrWaitCntReg <= rnrWaitCntReg - 1;
-    //     end
-    // endrule
     // End ContextRQ related
 
     method Action initialize(

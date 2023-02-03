@@ -99,17 +99,6 @@ function Tuple3#(TotalFragNum, ByteEn, ByteEnBitNum) calcTotalFragNumByLength(Le
     return tuple3(fragNum, lastFragByteEn, lastFragValidByteNum);
 endfunction
 
-function Bool transTypeMatchQpType(TransType tt, QpType qpt);
-    return case (tt)
-        TRANS_TYPE_CNP: True;
-        TRANS_TYPE_RC : (qpt == IBV_QPT_RC);
-        TRANS_TYPE_UC : (qpt == IBV_QPT_UC);
-        TRANS_TYPE_UD : (qpt == IBV_QPT_UD);
-        TRANS_TYPE_XRC: (qpt == IBV_QPT_XRC_RECV || qpt == IBV_QPT_XRC_SEND);
-        default: False;
-    endcase;
-endfunction
-
 function Bool rdmaReqOpCodeMatchWorkReqOpCode(RdmaOpCode rdmaOpCode, WorkReqOpCode wrOpCode);
     return case (rdmaOpCode)
         SEND_FIRST, SEND_MIDDLE            : (wrOpCode == IBV_WR_SEND || wrOpCode == IBV_WR_SEND_WITH_IMM || wrOpCode == IBV_WR_SEND_WITH_INV);

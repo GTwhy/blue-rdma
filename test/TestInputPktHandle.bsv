@@ -14,6 +14,58 @@ import SimGenRdmaReqAndResp :: *;
 import Utils :: *;
 import Utils4Test :: *;
 
+module mkInputPktBuf#(
+    DataStreamPipeOut rdmaPktPipeIn,
+    MetaDataQPs qpMetaData
+)(RdmaPktMetaDataAndPayloadPipeOut);
+    let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
+        rdmaPktPipeIn
+    );
+    let pktMetaDataAndPayloadPipeOut <- mkInputRdmaPktBufAndHeaderValidation(
+        headerAndMetaDataAndPayloadPipeOut, qpMetaData
+    );
+    return pktMetaDataAndPayloadPipeOut;
+endmodule
+
+(* synthesize *)
+module mkTestReceiveCNP(Empty);
+    let qpType = IBV_QPT_XRC_SEND;
+    let pmtu = IBV_MTU_256;
+
+    let qpMetaData <- mkSimMetaDataQPs(qpType, pmtu);
+    let qpn = dontCareValue;
+    let cntrl = qpMetaData.getCntrl(qpn);
+    let cnpDataStream = buildCNP(cntrl);
+    let cnpDataStreamPipeIn <- mkConstantPipeOut(cnpDataStream);
+    let dut <- mkInputPktBuf(cnpDataStreamPipeIn, qpMetaData);
+
+    let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
+
+    rule checkCNP;
+        let cnpBth = dut.cnpPipeOut.first;
+        dut.cnpPipeOut.deq;
+        dynAssert(
+            { pack(cnpBth.trans), pack(cnpBth.opcode) } == fromInteger(valueOf(ROCE_CNP)),
+            "CNP assertion @ mkTestReceiveCNP",
+            $format(
+                "cnpBth.trans=", fshow(cnpBth.trans),
+                " cnpBth.opcode=", fshow(cnpBth.opcode),
+                " not match ROCE_CNP=%h", valueOf(ROCE_CNP)
+            )
+        );
+        dynAssert(
+            !dut.pktMetaData.notEmpty && !dut.payload.notEmpty,
+            "no PktMetaData and payload assertion @ mkTestReceiveCNP",
+            $format(
+                "dut.pktMetaData.notEmpty=", fshow(dut.pktMetaData.notEmpty),
+                " and dut.payload.notEmpty=", fshow(dut.payload.notEmpty),
+                " should both be false"
+            )
+        );
+        countDown.decr;
+    endrule
+endmodule
+
 module mkTestCalculatePktLen#(
     QpType qpType,
     PMTU pmtu,

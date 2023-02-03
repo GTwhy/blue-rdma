@@ -236,6 +236,31 @@ function Bool pktLenEqPMTU(PktLen pktLen, PMTU pmtu);
     return isZero(tmpPktLen);
 endfunction
 
+function Bool pktLenGtPMTU(PktLen pktLen, PMTU pmtu);
+    return case (pmtu)
+        IBV_MTU_256 : begin
+            // 8 = log2(256)
+            (pktLen[8] == 1 && !isZero(pktLen[7: 0]));
+        end
+        IBV_MTU_512 : begin
+            // 9 = log2(512)
+            (pktLen[9] == 1 && !isZero(pktLen[8: 0]));
+        end
+        IBV_MTU_1024: begin
+            // 10 = log2(1024)
+            (pktLen[10] == 1 && !isZero(pktLen[9: 0]));
+        end
+        IBV_MTU_2048: begin
+            // 11 = log2(2048)
+            (pktLen[11] == 1 && !isZero(pktLen[10: 0]));
+        end
+        IBV_MTU_4096: begin
+            // 12 = log2(4096)
+            (pktLen[12] == 1 && !isZero(pktLen[11: 0]));
+        end
+    endcase;
+endfunction
+
 function PmtuFragNum calcFragNumByPmtu(PMTU pmtu);
     // TODO: check DATA_BUS_BYTE_WIDTH must be power of 2
     let busByteWidth = valueOf(TLog#(DATA_BUS_BYTE_WIDTH));
@@ -346,6 +371,10 @@ endfunction
 
 function PSN calcPsnDiff(PSN psnA, PSN psnB);
     return truncate({ 1'b1, psnA } - { 1'b0, psnB });
+endfunction
+
+function Bool isDefaultPKEY(PKEY pkey);
+    return isAllOnes(pkey);
 endfunction
 
 function ADDR addrAddPsnMultiplyPMTU(ADDR addr, PSN psn, PMTU pmtu);
@@ -599,6 +628,17 @@ function Maybe#(TransType) qpType2TransType(QpType qpt);
     endcase;
 endfunction
 
+function Bool transTypeMatchQpType(TransType tt, QpType qpt);
+    return case (tt)
+        TRANS_TYPE_CNP: True;
+        TRANS_TYPE_RC : (qpt == IBV_QPT_RC);
+        TRANS_TYPE_UC : (qpt == IBV_QPT_UC);
+        TRANS_TYPE_UD : (qpt == IBV_QPT_UD);
+        TRANS_TYPE_XRC: (qpt == IBV_QPT_XRC_RECV || qpt == IBV_QPT_XRC_SEND);
+        default: False;
+    endcase;
+endfunction
+
 function Bool qpNeedGenResp(TransType transType);
     return case (transType)
         TRANS_TYPE_RC ,
@@ -713,11 +753,11 @@ function AtomicAckEth extractAtomicAckEth(HeaderData headerData);
 endfunction
 
 function XRCETH extractXRCETH(HeaderData headerData);
-    let xrcEth = unpack(headerData[
+    let xrceth = unpack(headerData[
         valueOf(HEADER_MAX_DATA_WIDTH) - valueOf(BTH_WIDTH) -1 :
         valueOf(HEADER_MAX_DATA_WIDTH) - valueOf(BTH_WIDTH) - valueOf(XRCETH_WIDTH)
     ]);
-    return xrcEth;
+    return xrceth;
 endfunction
 
 function RETH extractRETH(HeaderData headerData, TransType transType);
@@ -746,6 +786,14 @@ function AtomicEth extractAtomicEth(HeaderData headerData, TransType transType);
         ]);
     endcase;
     return atomicEth;
+endfunction
+
+function DETH extractDETH(HeaderData headerData);
+    let deth = unpack(headerData[
+        valueOf(HEADER_MAX_DATA_WIDTH) - valueOf(BTH_WIDTH) -1 :
+        valueOf(HEADER_MAX_DATA_WIDTH) - valueOf(BTH_WIDTH) - valueOf(DETH_WIDTH)
+    ]);
+    return deth;
 endfunction
 
 function Bool isAlignedAtomicAddr(ADDR atomicAddr);
@@ -794,6 +842,10 @@ function IETH extractIETH(HeaderData headerData, TransType transType);
         ]);
     endcase;
     return ieth;
+endfunction
+
+function Bool isCongestionNotificationPkt(BTH bth);
+    return { pack(bth.trans), pack(bth.opcode) } == fromInteger(valueOf(ROCE_CNP));
 endfunction
 
 function Bool isFirstRdmaOpCode(RdmaOpCode opcode);
@@ -1368,22 +1420,21 @@ endfunction
 
 // Payload related
 
-/*
 // module mkDataStreamFromDmaReadResp#(PipeOut#(DmaReadResp) respPipeOut)(DataStreamPipeOut);
 //     function DataStream getDmaReadRespData(DmaReadResp dmaReadResp) = dmaReadResp.data;
 //     DataStreamPipeOut ret <- mkFunc2Pipe(getDmaReadRespData, respPipeOut);
 //     return ret;
 // endmodule
 
-module mkSegDataStreamPipeOutFromDmaReadResp#(
-    Get#(DmaReadResp) resp,
-    PMTU pmtu
-)(DataStreamPipeOut);
-    DataStreamPipeOut dataStreamPipeOut <-
-        mkDataStreamPipeOutFromDmaReadResp(resp);
-    let ret <- mkSegmentDataStreamByPmtu(dataStreamPipeOut, pmtu);
-    return ret;
-endmodule
+// module mkSegDataStreamPipeOutFromDmaReadResp#(
+//     Get#(DmaReadResp) resp,
+//     PMTU pmtu
+// )(DataStreamPipeOut);
+//     DataStreamPipeOut dataStreamPipeOut <-
+//         mkDataStreamPipeOutFromDmaReadResp(resp);
+//     let ret <- mkSegmentDataStreamByPmtu(dataStreamPipeOut, pmtu);
+//     return ret;
+// endmodule
 
 // module mkSegDataStreamPipeOutFromDmaReadResp#(
 //     Get#(DmaReadResp) resp,
@@ -1409,7 +1460,6 @@ endmodule
 //     let ret <- mkSegmentDataStreamByPmtu(dataStreamPipeOut, pmtu);
 //     return ret;
 // endmodule
-*/
 
 // PipeOut related
 
@@ -1433,7 +1483,7 @@ module mkPipeFilter#(
     return convertFifo2PipeOut(outQ);
 endmodule
 
-module mkConstantPipeOut#(anytype constant)(PipeOut #(anytype));
+module mkConstantPipeOut#(anytype constant)(PipeOut#(anytype));
     PipeOut#(anytype) ret <- mkSource_from_constant(constant);
     return ret;
 endmodule

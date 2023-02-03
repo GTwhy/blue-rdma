@@ -693,7 +693,7 @@ module mkReqHandleRQ#(
                         curPermCheckInfo.laddr         = recvReq.laddr;
                         curPermCheckInfo.totalLen      = isZeroPayloadLen ? 0 : recvReq.len;
                         curPermCheckInfo.pdHandler     = pktMetaData.pdHandler;
-                        curPermCheckInfo.isZeroDmaLen  = reqPktInfo.isZeroPayloadLen;
+                        curPermCheckInfo.isZeroDmaLen  = isZeroPayloadLen;
                         curPermCheckInfo.accType       = IBV_ACCESS_LOCAL_WRITE;
                         curPermCheckInfo.localOrRmtKey = True;
                     end
@@ -909,6 +909,7 @@ module mkReqHandleRQ#(
         Length totalDmaWriteLen  = cntrl.contextRQ.getTotalDmaWriteLen;
         let remainingDmaWriteLen = cntrl.contextRQ.getRemainingDmaWriteLen;
         let enoughDmaSpace       = False;
+        let isLastPayloadLenZero = False;
         let curDmaWriteAddr      = curPermCheckInfo.laddr;
         let nextDmaWriteAddr     = cntrl.contextRQ.getNextDmaWriteAddr;
         let sendWriteReqPktNum   = cntrl.contextRQ.getSendWriteReqPktNum;
@@ -947,6 +948,7 @@ module mkReqHandleRQ#(
                     // No need to calculate next DMA write address for last send/write responses
                     // nextDmaWriteAddr  = nextDmaWriteAddrReg + zeroExtend(pktPayloadLen);
                     sendWriteReqPktNum   = cntrl.contextRQ.getSendWriteReqPktNum + 1;
+                    isLastPayloadLenZero = reqPktInfo.isZeroPayloadLen;
                 end
                 default: begin end
             endcase
@@ -965,9 +967,10 @@ module mkReqHandleRQ#(
                 let noRemainingDmaWrite = isZero(remainingDmaWriteLen);
                 let writeReqLenMatch = (isWriteReq && (isLastPkt || isOnlyPkt)) ?
                     noRemainingDmaWrite : True;
-                if (!enoughDmaSpace || !writeReqLenMatch) begin
+                if (!enoughDmaSpace || !writeReqLenMatch || isLastPayloadLenZero) begin
                     // Write request length not match RETH length,
-                    // or RecvReq has not enough space.
+                    // or RecvReq has not enough space,
+                    // or last packet has no payload
                     reqStatus = getInvReqStatusByTransType(bth.trans);
                 end
                 else if (isSendReq && (isLastPkt || isOnlyPkt)) begin

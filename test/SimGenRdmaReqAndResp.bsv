@@ -222,6 +222,39 @@ function Maybe#(RdmaHeader) genMiddleOrLastRespHeader(
     end
 endfunction
 
+function DataStream buildCNP(Controller cntrl)
+provisos(
+    NumAlias#(TAdd#(BTH_BYTE_WIDTH, CNP_PAYLOAD_BYTE_WIDTH), cnpByteSz),
+    Add#(cnpByteSz, kSz, DATA_BUS_BYTE_WIDTH)
+);
+    let bth = BTH {
+        trans    : TRANS_TYPE_CNP,
+        opcode   : SEND_MIDDLE, // ROCE_CNP = 8b'10000001
+        solicited: False,
+        migReq   : unpack(0),
+        padCnt   : 0,
+        tver     : unpack(0),
+        pkey     : cntrl.getPKEY,
+        fecn     : unpack(0),
+        becn     : unpack(0),
+        resv6    : unpack(0),
+        dqpn     : cntrl.getSQPN, // DQPN of response is SQPN
+        ackReq   : False,
+        resv7    : unpack(0),
+        psn      : 0
+    };
+    let payloadCNP = PayloadCNP {
+        rsvd1: unpack(0),
+        rsvd2: unpack(0)
+    };
+    return DataStream {
+        data   : zeroExtendLSB({ pack(bth), pack(payloadCNP) }),
+        byteEn : genByteEn(fromInteger(valueOf(cnpByteSz))),
+        isFirst: True,
+        isLast : True
+    };
+endfunction
+
 interface RdmaRespHeaderAndDataStreamPipeOut;
     interface PipeOut#(RdmaHeader) respHeader;
     interface DataStreamPipeOut rdmaResp;
