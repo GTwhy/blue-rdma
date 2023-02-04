@@ -319,14 +319,11 @@ function RdmaReqStatus pktStatus2ReqStatusRQ(
 endfunction
 
 typedef enum {
-    // RQ_HANDLE_REQ_HEADER,
     RQ_SEQ_RETRY_FLUSH,
     RQ_RNR_RETRY_FLUSH,
-    // RQ_RNR_LOAD_TIMER,
     RQ_RNR_WAIT,
     RQ_RNR_WAIT_DONE,
     RQ_NOT_RETRY
-    // RQ_ERROR_FLUSH
 } RetryFlushStateRQ deriving(Bits, Eq);
 
 typedef struct {
@@ -359,6 +356,7 @@ typedef struct {
 
 interface ReqHandleRQ;
     interface PipeOut#(PayloadConReq) payloadConReqPipeOut;
+    // interface PipeOut#(PayloadGenReq) payloadGenReqPipeOut;
     interface DataStreamPipeOut rdmaRespDataStreamPipeOut;
     interface PipeOut#(WorkCompGenReqRQ) workCompGenReqPipeOut;
 endinterface
@@ -366,6 +364,7 @@ endinterface
 module mkReqHandleRQ#(
     Controller cntrl,
     DmaReadSrv dmaReadSrv,
+    // PayloadGenerator payloadGenerator,
     PermCheckMR permCheckMR,
     DupReadAtomicCache dupReadAtomicCache,
     RecvReqBuf recvReqBuf,
@@ -385,10 +384,6 @@ module mkReqHandleRQ#(
         getDataStreamFromPayloadGenRespPipeOut,
         payloadGenerator.respPipeOut
     );
-    // let segDataStreamPipeOut <- mkSegmentDataStreamByPmtu(
-    //     payloadDataStreamPipeOut,
-    //     cntrl.getPMTU
-    // );
     let headerDataStreamAndMetaDataPipeOut <- mkHeader2DataStream(
         convertFifo2PipeOut(headerQ)
     );
@@ -1789,6 +1784,7 @@ module mkReqHandleRQ#(
     endrule
 
     interface payloadConReqPipeOut      = convertFifo2PipeOut(payloadConReqOutQ);
+    // interface payloadGenReqPipeOut      = convertFifo2PipeOut(payloadGenReqOutQ);
     interface rdmaRespDataStreamPipeOut = rdmaRespPipeOut;
     interface workCompGenReqPipeOut     = convertFifo2PipeOut(workCompGenReqOutQ);
 endmodule

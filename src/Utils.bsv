@@ -1467,14 +1467,21 @@ function PipeOut#(anytype) convertFifo2PipeOut(FIFOF#(anytype) outputQ);
     return f_FIFOF_to_PipeOut(outputQ);
 endfunction
 
+module mkConnectPipeOut2Q#(
+    PipeOut#(anytype) pipeIn, FIFOF#(anytype) queue
+)(PipeOut #(anytype));
+    let resultPipeOut <- mkFIFOF_to_Pipe(queue, pipeIn);
+    return resultPipeOut;
+endmodule
+
 module mkPipeFilter#(
-    function Bool filterF(anytype inputVal),
+    function Bool filterFunc(anytype inputVal),
     PipeOut#(anytype) pipeIn
 )(PipeOut#(anytype)) provisos (Bits #(anytype, aSz));
     FIFOF#(anytype) outQ <- mkFIFOF;
 
-    rule rl_into_buffer;
-        if (filterF(pipeIn.first)) begin
+    rule filter;
+        if (filterFunc(pipeIn.first)) begin
             outQ.enq (pipeIn.first);
         end
         pipeIn.deq;
@@ -1484,30 +1491,30 @@ module mkPipeFilter#(
 endmodule
 
 module mkConstantPipeOut#(anytype constant)(PipeOut#(anytype));
-    PipeOut#(anytype) ret <- mkSource_from_constant(constant);
-    return ret;
+    PipeOut#(anytype) resultPipeOut <- mkSource_from_constant(constant);
+    return resultPipeOut;
 endmodule
 
 module mkBufferN#(
     Integer depth, PipeOut#(anytype) pipeIn
 )(PipeOut#(anytype)) provisos(Bits#(anytype, tSz));
-    let ret <- mkBuffer_n(depth, pipeIn);
-    return ret;
+    let resultPipeOut <- mkBuffer_n(depth, pipeIn);
+    return resultPipeOut;
 endmodule
 
 module mkFunc2Pipe#(
     function tb func(ta inputVal), PipeOut#(ta) pipeIn
 )(PipeOut#(tb));
-    let ret <- mkFn_to_Pipe(func, pipeIn); // No delay
-    return ret;
+    let resultPipeOut <- mkFn_to_Pipe(func, pipeIn); // No delay
+    return resultPipeOut;
 endmodule
 
 module mkActionValueFunc2Pipe#(
     function ActionValue#(tb) avfn(ta inputVal), PipeOut#(ta) pipeIn
 )(PipeOut #(tb)) provisos (Bits #(ta, taSz), Bits #(tb, tbSz));
-    // let ret <- mkTap(avfn, pipeIn); // No delay
-    let ret <- mkAVFn_to_Pipe(avfn, pipeIn); // One cycle delay
-    return ret;
+    // let resultPipeOut <- mkTap(avfn, pipeIn); // No delay
+    let resultPipeOut <- mkAVFn_to_Pipe(avfn, pipeIn); // One cycle delay
+    return resultPipeOut;
 endmodule
 
 function PipeOut#(anytype) muxPipeOut(

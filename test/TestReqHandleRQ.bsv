@@ -123,7 +123,7 @@ module mkTestReqHandleNormalCase(Empty);
     );
 
     // WorkCompGenRQ
-    FIFOF#(WorkCompGenReqRQ) wcGenReqQ4ReqGenInRQ <- mkFIFOF;
+    // FIFOF#(WorkCompGenReqRQ) wcGenReqQ4ReqGenInRQ <- mkFIFOF;
     let workCompGenRQ <- mkWorkCompGenRQ(
         cntrl,
         payloadConsumer.respPipeOut,
@@ -446,15 +446,18 @@ module mkTestReqHandleNormalAndDupReqCase#(Bool normalOrDupReq)(Empty);
         sendWriteReqPayloadPipeOutBuf, pmtuPipeOut4SendWriteReq
     );
 
-    // Extract header DataStream, HeaderMetaData and payload DataStream
-    let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
-        rdmaReqPipeOut
-    );
-
     // Build RdmaPktMetaData and payload DataStream
-    let pktMetaDataAndPayloadPipeOut <- mkInputRdmaPktBufAndHeaderValidation(
-        headerAndMetaDataAndPayloadPipeOut, qpMetaData
+    let isRespPkt = False;
+    let pktMetaDataAndPayloadPipeOut <- mkSimInputPktBuf(
+        isRespPkt, rdmaReqPipeOut, qpMetaData
     );
+    // // Extract header DataStream, HeaderMetaData and payload DataStream
+    // let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
+    //     rdmaReqPipeOut
+    // );
+    // let pktMetaDataAndPayloadPipeOut <- mkInputRdmaPktBufAndHeaderValidation(
+    //     headerAndMetaDataAndPayloadPipeOut, qpMetaData
+    // );
     let pktMetaDataPipeIn = pktMetaDataAndPayloadPipeOut.pktMetaData;
 
     // MR permission check
@@ -490,7 +493,7 @@ module mkTestReqHandleNormalAndDupReqCase#(Bool normalOrDupReq)(Empty);
     );
 
     // WorkCompGenRQ
-    FIFOF#(WorkCompGenReqRQ) wcGenReqQ4ReqGenInRQ <- mkFIFOF;
+    // FIFOF#(WorkCompGenReqRQ) wcGenReqQ4ReqGenInRQ <- mkFIFOF;
     let workCompGenRQ <- mkWorkCompGenRQ(
         cntrl,
         payloadConsumer.respPipeOut,
@@ -799,15 +802,18 @@ module mkTestReqHandleAbnormalCase#(ReqHandleErrType errType)(Empty);
         genNoPendingWorkReqOutRule(simReqGen.pendingWorkReqPipeOut)
     );
 
-    // Extract header DataStream, HeaderMetaData and payload DataStream
-    let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
-        rdmaReqPipeOut
-    );
-
     // Build RdmaPktMetaData and payload DataStream
-    let pktMetaDataAndPayloadPipeOut <- mkInputRdmaPktBufAndHeaderValidation(
-        headerAndMetaDataAndPayloadPipeOut, qpMetaData
+    let isRespPkt = False;
+    let pktMetaDataAndPayloadPipeOut <- mkSimInputPktBuf(
+        isRespPkt, rdmaReqPipeOut, qpMetaData
     );
+    // // Extract header DataStream, HeaderMetaData and payload DataStream
+    // let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
+    //     rdmaReqPipeOut
+    // );
+    // let pktMetaDataAndPayloadPipeOut <- mkInputRdmaPktBufAndHeaderValidation(
+    //     headerAndMetaDataAndPayloadPipeOut, qpMetaData
+    // );
     let pktMetaDataPipeIn = pktMetaDataAndPayloadPipeOut.pktMetaData;
 
     // MR permission check
@@ -842,7 +848,7 @@ module mkTestReqHandleAbnormalCase#(ReqHandleErrType errType)(Empty);
     );
 
     // WorkCompGenRQ
-    FIFOF#(WorkCompGenReqRQ) wcGenReqQ4ReqGenInRQ <- mkFIFOF;
+    // FIFOF#(WorkCompGenReqRQ) wcGenReqQ4ReqGenInRQ <- mkFIFOF;
     let workCompGenRQ <- mkWorkCompGenRQ(
         cntrl,
         payloadConsumer.respPipeOut,
@@ -1035,15 +1041,18 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
     );
     FIFOF#(DataStream) rdmaReqDataStreamQ <- mkFIFOF;
 
-    // Extract header DataStream, HeaderMetaData and payload DataStream
-    let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
-        convertFifo2PipeOut(rdmaReqDataStreamQ)
-    );
-
     // Build RdmaPktMetaData and payload DataStream
-    let pktMetaDataAndPayloadPipeOut <- mkInputRdmaPktBufAndHeaderValidation(
-        headerAndMetaDataAndPayloadPipeOut, qpMetaData
+    let isRespPkt = False;
+    let pktMetaDataAndPayloadPipeOut <- mkSimInputPktBuf(
+        isRespPkt, convertFifo2PipeOut(rdmaReqDataStreamQ), qpMetaData
     );
+    // // Extract header DataStream, HeaderMetaData and payload DataStream
+    // let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
+    //     convertFifo2PipeOut(rdmaReqDataStreamQ)
+    // );
+    // let pktMetaDataAndPayloadPipeOut <- mkInputRdmaPktBufAndHeaderValidation(
+    //     headerAndMetaDataAndPayloadPipeOut, qpMetaData
+    // );
     let pktMetaDataPipeIn = pktMetaDataAndPayloadPipeOut.pktMetaData;
 
     // MR permission check
@@ -1079,7 +1088,7 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
     );
 
     // WorkCompGenRQ
-    FIFOF#(WorkCompGenReqRQ) wcGenReqQ4ReqGenInRQ <- mkFIFOF;
+    // FIFOF#(WorkCompGenReqRQ) wcGenReqQ4ReqGenInRQ <- mkFIFOF;
     let workCompGenRQ <- mkWorkCompGenRQ(
         cntrl,
         payloadConsumer.respPipeOut,

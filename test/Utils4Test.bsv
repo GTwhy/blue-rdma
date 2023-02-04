@@ -8,6 +8,7 @@ import Vector :: *;
 import Controller :: *;
 import DataTypes :: *;
 import Headers :: *;
+import InputPktHandle :: *;
 import MetaData :: *;
 import PrimUtils :: *;
 import RetryHandleSQ :: *;
@@ -898,6 +899,64 @@ module mkExistingPendingWorkReqPipeOut#(
     Vector#(vSz, PipeOut#(PendingWorkReq)) resultPipeOutVec <-
         mkForkVector(pendingWorkReqPipeOut);
     return resultPipeOutVec;
+endmodule
+
+module mkSimInputPktBuf#(
+    Bool isRespPkt,
+    DataStreamPipeOut rdmaPktPipeIn,
+    MetaDataQPs qpMetaData
+)(RdmaPktMetaDataAndPayloadPipeOut);
+    let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
+        rdmaPktPipeIn
+    );
+    let inputRdmaPktBuf <- mkInputRdmaPktBufAndHeaderValidation(
+        headerAndMetaDataAndPayloadPipeOut, qpMetaData
+    );
+    let reqPktMetaDataAndPayloadPipeOut = inputRdmaPktBuf.reqPktPipeOut;
+    let respPktMetaDataAndPayloadPipeOut = inputRdmaPktBuf.respPktPipeOut;
+
+    rule checkEmpty;
+        if (isRespPkt) begin
+            dynAssert(
+                !reqPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty &&
+                !reqPktMetaDataAndPayloadPipeOut.payload.notEmpty,
+                "reqPktMetaDataAndPayloadPipeOut assertion @ mkSimInputPktBuf",
+                $format(
+                    "reqPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty=",
+                    fshow(reqPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty),
+                    " and reqPktMetaDataAndPayloadPipeOut.payload.notEmpty=",
+                    fshow(reqPktMetaDataAndPayloadPipeOut.payload.notEmpty),
+                    " should both be false"
+                )
+            );
+        end
+        else begin
+            dynAssert(
+                !respPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty &&
+                !respPktMetaDataAndPayloadPipeOut.payload.notEmpty,
+                "respPktMetaDataAndPayloadPipeOut assertion @ mkSimInputPktBuf",
+                $format(
+                    "respPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty=",
+                    fshow(respPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty),
+                    " and respPktMetaDataAndPayloadPipeOut.payload.notEmpty=",
+                    fshow(respPktMetaDataAndPayloadPipeOut.payload.notEmpty),
+                    " should both be false"
+                )
+            );
+        end
+
+        dynAssert(
+            !inputRdmaPktBuf.cnpPipeOut.notEmpty,
+            "cnpPipeOut empty assertion @ mkTestReceiveCNP",
+            $format(
+                "inputRdmaPktBuf.cnpPipeOut.notEmpty=",
+                fshow(inputRdmaPktBuf.cnpPipeOut.notEmpty),
+                " should be false"
+            )
+        );
+    endrule
+
+    return isRespPkt ? respPktMetaDataAndPayloadPipeOut : reqPktMetaDataAndPayloadPipeOut;
 endmodule
 
 module mkDebugSink#(PipeOut#(anytype) pipeIn)(Empty) provisos(FShow#(anytype));

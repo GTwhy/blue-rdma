@@ -344,14 +344,18 @@ module mkTestRespHandleNormalOrDupOrGhostRespCase#(
     let rdmaRespDataStreamPipeOut <- mkSimGenNormalOrErrOrRetryRdmaResp(
         respType, cntrl, simDmaReadSrv.dmaReadSrv, pendingWorkReqPipeOut4RespGen
     );
-    // Extract header DataStream, HeaderMetaData and payload DataStream
-    let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
-        rdmaRespDataStreamPipeOut // rdmaRespAndHeaderPipeOut.rdmaResp
-    );
     // Build RdmaPktMetaData and payload DataStream
-    let pktMetaDataAndPayloadPipeOut <- mkInputRdmaPktBufAndHeaderValidation(
-        headerAndMetaDataAndPayloadPipeOut, qpMetaData
+    let isRespPkt = True;
+    let pktMetaDataAndPayloadPipeOut <- mkSimInputPktBuf(
+        isRespPkt, rdmaRespDataStreamPipeOut, qpMetaData
     );
+    // // Extract header DataStream, HeaderMetaData and payload DataStream
+    // let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
+    //     rdmaRespDataStreamPipeOut
+    // );
+    // let pktMetaDataAndPayloadPipeOut <- mkInputRdmaPktBufAndHeaderValidation(
+    //     headerAndMetaDataAndPayloadPipeOut, qpMetaData
+    // );
     Vector#(2, PipeOut#(RdmaPktMetaData)) pktMetaDataPipeOutVec <-
         mkForkVector(pktMetaDataAndPayloadPipeOut.pktMetaData);
     let pktMetaDataPipeOut4RespHandle = pktMetaDataPipeOutVec[0];
@@ -369,8 +373,9 @@ module mkTestRespHandleNormalOrDupOrGhostRespCase#(
         retryHandler,
         permCheckMR,
         convertFifo2PipeOut(pendingWorkReqBuf.fifoIfc),
-        pktMetaDataPipeOut4RespHandle // pktMetaDataAndPayloadPipeOut.pktMetaData
+        pktMetaDataPipeOut4RespHandle
     );
+
     // PayloadConsumer
     let simDmaWriteSrv <- mkSimDmaWriteSrvAndDataStreamPipeOut;
     let readAtomicRespPayloadPipeOut = simDmaWriteSrv.dataStream;
@@ -380,6 +385,7 @@ module mkTestRespHandleNormalOrDupOrGhostRespCase#(
         simDmaWriteSrv.dmaWriteSrv,
         dut.payloadConReqPipeOut
     );
+
     // WorkCompGenSQ
     FIFOF#(WorkCompGenReqSQ) wcGenReqQ4ReqGenInSQ <- mkFIFOF;
     FIFOF#(WorkCompStatus) workCompStatusQFromRQ <- mkFIFOF;
@@ -552,14 +558,18 @@ module mkTestRespHandleAbnormalCase#(TestRespHandleRespType respType)(Empty);
         respType, cntrl, simDmaReadSrv, pendingWorkReqPipeOut4RespGen
     );
 
-    // Extract header DataStream, HeaderMetaData and payload DataStream
-    let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
-        rdmaRespDataStreamPipeOut
-    );
     // Build RdmaPktMetaData and payload DataStream
-    let pktMetaDataAndPayloadPipeOut <- mkInputRdmaPktBufAndHeaderValidation(
-        headerAndMetaDataAndPayloadPipeOut, qpMetaData
+    let isRespPkt = True;
+    let pktMetaDataAndPayloadPipeOut <- mkSimInputPktBuf(
+        isRespPkt, rdmaRespDataStreamPipeOut, qpMetaData
     );
+    // // Extract header DataStream, HeaderMetaData and payload DataStream
+    // let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
+    //     rdmaRespDataStreamPipeOut
+    // );
+    // let pktMetaDataAndPayloadPipeOut <- mkInputRdmaPktBufAndHeaderValidation(
+    //     headerAndMetaDataAndPayloadPipeOut, qpMetaData
+    // );
     // Retry handler
     let retryHandler <- mkSimRetryHandlerWithLimitExcErr;
 
@@ -720,14 +730,18 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
         rdmaRespRetryAckPipeOut
     );
 
-    // Extract header DataStream, HeaderMetaData and payload DataStream
-    let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
-        rdmaRespDataStreamPipeOut
-    );
     // Build RdmaPktMetaData and payload DataStream
-    let pktMetaDataAndPayloadPipeOut <- mkInputRdmaPktBufAndHeaderValidation(
-        headerAndMetaDataAndPayloadPipeOut, qpMetaData
+    let isRespPkt = True;
+    let pktMetaDataAndPayloadPipeOut <- mkSimInputPktBuf(
+        isRespPkt, rdmaRespDataStreamPipeOut, qpMetaData
     );
+    // // Extract header DataStream, HeaderMetaData and payload DataStream
+    // let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
+    //     rdmaRespDataStreamPipeOut
+    // );
+    // let pktMetaDataAndPayloadPipeOut <- mkInputRdmaPktBufAndHeaderValidation(
+    //     headerAndMetaDataAndPayloadPipeOut, qpMetaData
+    // );
     // Retry handler
     let retryHandler <- mkRetryHandleSQ(cntrl, pendingWorkReqBuf.scanIfc);
 

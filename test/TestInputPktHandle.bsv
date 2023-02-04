@@ -14,19 +14,6 @@ import SimGenRdmaReqAndResp :: *;
 import Utils :: *;
 import Utils4Test :: *;
 
-module mkInputPktBuf#(
-    DataStreamPipeOut rdmaPktPipeIn,
-    MetaDataQPs qpMetaData
-)(RdmaPktMetaDataAndPayloadPipeOut);
-    let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
-        rdmaPktPipeIn
-    );
-    let pktMetaDataAndPayloadPipeOut <- mkInputRdmaPktBufAndHeaderValidation(
-        headerAndMetaDataAndPayloadPipeOut, qpMetaData
-    );
-    return pktMetaDataAndPayloadPipeOut;
-endmodule
-
 (* synthesize *)
 module mkTestReceiveCNP(Empty);
     let qpType = IBV_QPT_XRC_SEND;
@@ -37,7 +24,15 @@ module mkTestReceiveCNP(Empty);
     let cntrl = qpMetaData.getCntrl(qpn);
     let cnpDataStream = buildCNP(cntrl);
     let cnpDataStreamPipeIn <- mkConstantPipeOut(cnpDataStream);
-    let dut <- mkInputPktBuf(cnpDataStreamPipeIn, qpMetaData);
+    // let dut <- mkSimInputPktBuf(cnpDataStreamPipeIn, qpMetaData);
+    let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
+        cnpDataStreamPipeIn
+    );
+    let dut <- mkInputRdmaPktBufAndHeaderValidation(
+        headerAndMetaDataAndPayloadPipeOut, qpMetaData
+    );
+    let reqPktMetaDataAndPayloadPipeOut = dut.reqPktPipeOut;
+    let respPktMetaDataAndPayloadPipeOut = dut.respPktPipeOut;
 
     let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
 
@@ -53,15 +48,41 @@ module mkTestReceiveCNP(Empty);
                 " not match ROCE_CNP=%h", valueOf(ROCE_CNP)
             )
         );
+
         dynAssert(
-            !dut.pktMetaData.notEmpty && !dut.payload.notEmpty,
-            "no PktMetaData and payload assertion @ mkTestReceiveCNP",
+            !reqPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty &&
+            !reqPktMetaDataAndPayloadPipeOut.payload.notEmpty,
+            "reqPktMetaDataAndPayloadPipeOut assertion @ mkSimInputPktBuf",
             $format(
-                "dut.pktMetaData.notEmpty=", fshow(dut.pktMetaData.notEmpty),
-                " and dut.payload.notEmpty=", fshow(dut.payload.notEmpty),
+                "reqPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty=",
+                fshow(reqPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty),
+                " and reqPktMetaDataAndPayloadPipeOut.payload.notEmpty=",
+                fshow(reqPktMetaDataAndPayloadPipeOut.payload.notEmpty),
                 " should both be false"
             )
         );
+
+        dynAssert(
+            !respPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty &&
+            !respPktMetaDataAndPayloadPipeOut.payload.notEmpty,
+            "respPktMetaDataAndPayloadPipeOut assertion @ mkSimInputPktBuf",
+            $format(
+                "respPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty=",
+                fshow(respPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty),
+                " and respPktMetaDataAndPayloadPipeOut.payload.notEmpty=",
+                fshow(respPktMetaDataAndPayloadPipeOut.payload.notEmpty),
+                " should both be false"
+            )
+        );
+        // dynAssert(
+        //     !dut.pktMetaData.notEmpty && !dut.payload.notEmpty,
+        //     "no PktMetaData and payload assertion @ mkTestReceiveCNP",
+        //     $format(
+        //         "dut.pktMetaData.notEmpty=", fshow(dut.pktMetaData.notEmpty),
+        //         " and dut.payload.notEmpty=", fshow(dut.payload.notEmpty),
+        //         " should both be false"
+        //     )
+        // );
         countDown.decr;
     endrule
 endmodule
@@ -85,18 +106,20 @@ module mkTestCalculatePktLen#(
     let pendingWorkReqPipeOut4Ref <- mkBufferN(4, reqGenSQ.pendingWorkReqPipeOut);
     let rdmaReqPipeOut = reqGenSQ.rdmaReqDataStreamPipeOut;
 
-    // Extract header DataStream, HeaderMetaData and payload DataStream
-    let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
-        rdmaReqPipeOut
-    );
-
     // QP metadata
     let qpMetaData <- mkSimMetaDataQPs(qpType, pmtu);
 
     // DUT
-    let dut <- mkInputRdmaPktBufAndHeaderValidation(
-        headerAndMetaDataAndPayloadPipeOut, qpMetaData
-    );
+    let isRespPkt = False;
+    let dut <- mkSimInputPktBuf(isRespPkt, rdmaReqPipeOut, qpMetaData);
+    // // Extract header DataStream, HeaderMetaData and payload DataStream
+    // let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
+    //     rdmaReqPipeOut
+    // );
+    // // DUT
+    // let dut <- mkInputRdmaPktBufAndHeaderValidation(
+    //     headerAndMetaDataAndPayloadPipeOut, qpMetaData
+    // );
     let pktMetaDataPipeOut = dut.pktMetaData;
 
     // Payload sink

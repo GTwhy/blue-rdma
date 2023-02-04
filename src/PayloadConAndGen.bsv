@@ -1,3 +1,4 @@
+import BRAMFIFO :: *;
 import ClientServer :: *;
 import FIFOF :: *;
 import GetPut :: *;
@@ -134,6 +135,10 @@ module mkPayloadConsumer#(
     FIFOF#(PayloadConResp)  consumeRespQ <- mkFIFOF;
     FIFOF#(PayloadConReq) pendingConReqQ <- mkFIFOF;
 
+    // TODO: check payloadOutQ buffer size is enough for DMA write delay?
+    FIFOF#(DataStream) payloadBufQ <- mkSizedBRAMFIFOF(valueOf(DATA_STREAM_FRAG_BUF_SIZE));
+    let payloadBufPipeOut <- mkConnectPipeOut2Q(payloadPipeIn, payloadBufQ);
+
     Reg#(PmtuFragNum) remainingFragNumReg <- mkRegU;
     Reg#(Bool) busyReg <- mkReg(False);
 
@@ -250,8 +255,8 @@ module mkPayloadConsumer#(
 
         case (consumeReq.consumeInfo) matches
             tagged DiscardPayload: begin
-                let payload = payloadPipeIn.first;
-                payloadPipeIn.deq;
+                let payload = payloadBufPipeOut.first;
+                payloadBufPipeOut.deq;
 
                 if (isLessOrEqOne(consumeReq.fragNum)) begin
                     checkIsOnlyPayloadDataStream(payload, consumeReq.consumeInfo);
@@ -269,8 +274,8 @@ module mkPayloadConsumer#(
                 sendDmaWriteReq(consumeReq, dontCareValue);
             end
             tagged SendWriteReqReadRespInfo .sendWriteReqReadRespInfo: begin
-                let payload = payloadPipeIn.first;
-                payloadPipeIn.deq;
+                let payload = payloadBufPipeOut.first;
+                payloadBufPipeOut.deq;
                 if (isLessOrEqOne(consumeReq.fragNum)) begin
                     checkIsOnlyPayloadDataStream(payload, consumeReq.consumeInfo);
                     consumeReqQ.deq;
@@ -308,8 +313,8 @@ module mkPayloadConsumer#(
 
     rule consumePayload if (busyReg); // if (cntrl.isNonErr && busyReg);
         let consumeReq = consumeReqQ.first;
-        let payload = payloadPipeIn.first;
-        payloadPipeIn.deq;
+        let payload = payloadBufPipeOut.first;
+        payloadBufPipeOut.deq;
         remainingFragNumReg <= remainingFragNumReg - 1;
         // $display(
         //     "time=%0d: multi-packet response remainingFragNumReg=%0d, payload.isLast=",
@@ -407,8 +412,8 @@ module mkPayloadConsumer#(
         // When error, continue send DMA write requests,
         // so as to flush payload data properly laster.
         // But discard DMA write responses when error.
-        if (payloadPipeIn.notEmpty) begin
-            payloadPipeIn.deq;
+        if (payloadBufPipeOut.notEmpty) begin
+            payloadBufPipeOut.deq;
         end
         consumeReqQ.clear;
         consumeRespQ.clear;

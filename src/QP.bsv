@@ -74,6 +74,51 @@ module mkSQ#(
     interface workCompPipeOut = wcPipeOut;
 endmodule
 
+interface RQ;
+    interface DataStreamPipeOut rdmaRespDataStreamPipeOut;
+    interface WorkCompGenRQ wcGenRQ;
+endinterface
+
+module mkRQ#(
+    Controller cntrl,
+    DmaReadSrv dmaReadSrv,
+    DmaWriteSrv dmaWriteSrv,
+    DataStreamPipeOut payloadPipeIn,
+    PermCheckMR permCheckMR,
+    RecvReqBuf recvReqBuf,
+    PipeOut#(RdmaPktMetaData) pktMetaDataPipeIn
+)(ReqHandleRQ);
+    let payloadGenerator <- mkPayloadGenerator(
+        cntrl, dmaReadSrv, convertFifo2PipeOut(payloadGenReqOutQ)
+    );
+    let dupReadAtomicCache <- mkDupReadAtomicCache(cntrl);
+
+    let reqHandlerRQ <- mkReqHandleRQ(
+        cntrl,
+        dmaReadSrv,
+        permCheckMR,
+        dupReadAtomicCache,
+        recvReqBuf,
+        pktMetaDataPipeIn
+    );
+
+    let payloadConsumer <- mkPayloadConsumer(
+        cntrl,
+        payloadPipeIn,
+        dmaWriteSrv,
+        reqHandlerRQ.payloadConReqPipeOut
+    );
+
+    let workCompGenRQ <- mkWorkCompGenRQ(
+        cntrl,
+        payloadConsumer.respPipeOut,
+        reqHandlerRQ.workCompGenReqPipeOut
+    );
+
+    interface rdmaRespDataStreamPipeOut = reqHandlerRQ.rdmaRespDataStreamPipeOut;
+    interface wcGenRQ = workCompGenRQ;
+endmodule
+
 interface QP;
     PipeOut#(WorkComp) workCompPipeOutSQ;
     PipeOut#(WorkComp) workCompPipeOutRQ;
