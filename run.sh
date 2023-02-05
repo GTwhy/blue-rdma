@@ -38,6 +38,8 @@ make -j8 TESTFILE=TestMetaData.bsv TOP=mkTestMetaDataMRs 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=TestMetaData.bsv TOP=mkTestMetaDataPDs 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=TestMetaData.bsv TOP=mkTestMetaDataQPs 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=TestMetaData.bsv TOP=mkTestPermCheckMR 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestMetaData.bsv TOP=mkTestBramCache 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestMetaData.bsv TOP=mkTestTLB 2>&1 | tee -a $RUN_LOG
 
 make -j8 TESTFILE=TestReqGenSQ.bsv TOP=mkTestReqGenNormalCase 2>&1 | tee -a $RUN_LOG
 

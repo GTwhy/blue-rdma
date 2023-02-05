@@ -1,5 +1,5 @@
 import Cntrs :: *;
-import List :: * ;
+import List :: *;
 import Vector :: *;
 
 import Controller :: *;

@@ -6,6 +6,8 @@ import Headers :: *;
 import SpecialFIFOF :: *;
 import Settings :: *;
 
+typedef 8 BYTE_WIDTH;
+
 // Protocol settings
 typedef TExp#(31) RDMA_MAX_LEN;
 typedef 8         ATOMIC_WORK_REQ_LEN;
@@ -57,6 +59,11 @@ typedef TLog#(MAX_RNR_WAIT_CYCLES)              RNR_WAIT_CYCLE_CNT_WIDTH;
 typedef TDiv#(MAX_TIMEOUT_NS, TARGET_CYCLE_NS)  MAX_TIMEOUT_CYCLES;
 typedef TAdd#(1, TLog#(MAX_TIMEOUT_CYCLES))     TIMEOUT_CYCLE_CNT_WIDTH;
 
+typedef TLog#(PAGE_SIZE_CAP)  PAGE_OFFSET_WIDTH;
+typedef TLog#(TLB_CACHE_SIZE) TLB_CACHE_INDEX_WIDTH;
+typedef TSub#(PHYSICAL_ADDR_WIDTH, PAGE_OFFSET_WIDTH) TLB_CACHE_PA_DATA_WIDTH; // 48-21=27
+typedef TSub#(TSub#(ADDR_WIDTH, TLB_CACHE_INDEX_WIDTH), PAGE_OFFSET_WIDTH) TLB_CACHE_TAG_WIDTH; // 64-14-21=29
+
 // Derived types
 typedef Bit#(DATA_BUS_WIDTH)      DATA;
 typedef Bit#(DATA_BUS_BYTE_WIDTH) ByteEn;
@@ -103,6 +110,16 @@ typedef Server#(DmaWriteReq, DmaWriteResp) DmaWriteSrv;
 
 typedef ScanFIFOF#(MAX_QP_WR, PendingWorkReq) PendingWorkReqBuf;
 typedef PipeOut#(RecvReq)                     RecvReqBuf;
+
+// typedef UInt#(TLog#(TLB_CACHE_SIZE)) AddrTLB;
+// typedef Bit#(TLB_CACHE_PA_DATA_WIDTH) DataTLB;
+
+typedef struct {
+    Bit#(TLB_CACHE_PA_DATA_WIDTH) data;
+    Bit#(TLB_CACHE_TAG_WIDTH)     tag;
+} PayloadTLB deriving(Bits);
+
+typedef SizeOf#(PayloadTLB) TLB_PAYLOAD_WIDTH;
 
 // RDMA related requests and responses
 

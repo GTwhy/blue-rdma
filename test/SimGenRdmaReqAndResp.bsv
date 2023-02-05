@@ -224,8 +224,8 @@ endfunction
 
 function DataStream buildCNP(Controller cntrl)
 provisos(
-    NumAlias#(TAdd#(BTH_BYTE_WIDTH, CNP_PAYLOAD_BYTE_WIDTH), cnpByteSz),
-    Add#(cnpByteSz, kSz, DATA_BUS_BYTE_WIDTH)
+    NumAlias#(TAdd#(BTH_BYTE_WIDTH, CNP_PAYLOAD_BYTE_WIDTH), cnpPktByteSz),
+    Add#(cnpPktByteSz, anysize, DATA_BUS_BYTE_WIDTH) // cnpPktByteSz <= DATA_BUS_BYTE_WIDTH
 );
     let bth = BTH {
         trans    : TRANS_TYPE_CNP,
@@ -249,7 +249,7 @@ provisos(
     };
     return DataStream {
         data   : zeroExtendLSB({ pack(bth), pack(payloadCNP) }),
-        byteEn : genByteEn(fromInteger(valueOf(cnpByteSz))),
+        byteEn : genByteEn(fromInteger(valueOf(cnpPktByteSz))),
         isFirst: True,
         isLast : True
     };

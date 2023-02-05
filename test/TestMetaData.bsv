@@ -708,3 +708,125 @@ module mkTestPermCheckMR(Empty);
         // $display("time=%0d: clear", $time);
     endrule
 endmodule
+
+(* synthesize *)
+module mkTestBramCache(Empty);
+    let dut <- mkBramCache;
+
+    PipeOut#(BramCacheAddr) bramCacheAddrPipeOut <- mkGenericRandomPipeOut;
+    PipeOut#(BramCacheData) bramCacheDataPipeOut <- mkGenericRandomPipeOut;
+
+    FIFOF#(BramCacheAddr) bramCacheAddrQ <- mkFIFOF;
+    FIFOF#(BramCacheData) bramCacheDataQ <- mkFIFOF;
+
+    let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
+
+    rule writeBramCache;
+        let bramCacheAddr = bramCacheAddrPipeOut.first;
+        bramCacheAddrPipeOut.deq;
+        let bramCacheData = bramCacheDataPipeOut.first;
+        bramCacheDataPipeOut.deq;
+
+        dut.write(bramCacheAddr, bramCacheData);
+        bramCacheAddrQ.enq(bramCacheAddr);
+        bramCacheDataQ.enq(bramCacheData);
+    endrule
+
+    rule readBramCache;
+        let bramCacheAddr = bramCacheAddrQ.first;
+        bramCacheAddrQ.deq;
+
+        dut.readReq(bramCacheAddr);
+    endrule
+
+    rule checkReadResp;
+        let bramCacheReadData <- dut.readResp;
+        let bramCacheReadDataRef = bramCacheDataQ.first;
+        bramCacheDataQ.deq;
+
+        dynAssert(
+            bramCacheReadData == bramCacheReadDataRef,
+            "bramCacheReadData assertion @ mkTestBramCache",
+            $format(
+                "bramCacheReadData=%h should == bramCacheReadDataRef=%h",
+                bramCacheReadData, bramCacheReadDataRef
+            )
+        );
+        countDown.decr;
+        // $display(
+        //     "bramCacheReadData=%h should == bramCacheReadDataRef=%h",
+        //     bramCacheReadData, bramCacheReadDataRef
+        // );
+    endrule
+endmodule
+
+(* synthesize *)
+module mkTestTLB(Empty);
+    let dut <- mkTLB;
+
+    PipeOut#(ADDR)                             virtAddrPipeOut <- mkGenericRandomPipeOut;
+    PipeOut#(Bit#(TLB_CACHE_PA_DATA_WIDTH)) phyAddrDataPipeOut <- mkGenericRandomPipeOut;
+
+    FIFOF#(ADDR)                             virtAddrQ <- mkFIFOF;
+    FIFOF#(ADDR)                         virtAddrQ4Ref <- mkFIFOF;
+    FIFOF#(Bit#(TLB_CACHE_PA_DATA_WIDTH)) phyAddrDataQ <- mkFIFOF;
+
+    let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
+
+    rule insert2TLB;
+        let virtAddr = virtAddrPipeOut.first;
+        virtAddrPipeOut.deq;
+        let phyAddrData = phyAddrDataPipeOut.first;
+        phyAddrDataPipeOut.deq;
+
+        let pageOffset = getPageOffset(virtAddr);
+        let phyAddr = restorePA(phyAddrData, pageOffset);
+
+        dut.insert(virtAddr, phyAddr);
+        virtAddrQ.enq(virtAddr);
+        phyAddrDataQ.enq(phyAddrData);
+    endrule
+
+    rule findInTLB;
+        let virtAddr = virtAddrQ.first;
+        virtAddrQ.deq;
+
+        dut.findReq(virtAddr);
+        virtAddrQ4Ref.enq(virtAddr);
+    endrule
+
+    rule checkFindResp;
+        let { foundOrNot, phyAddr } <- dut.findResp;
+        let phyAddrData = getData4PA(phyAddr);
+        let phyAddrDataRef = phyAddrDataQ.first;
+        phyAddrDataQ.deq;
+        let virtAddrRef = virtAddrQ4Ref.first;
+        virtAddrQ4Ref.deq;
+
+        dynAssert(
+            foundOrNot,
+            "foundOrNot assertion @ mkTestTLB",
+            $format(
+                "foundOrNot=", fshow(foundOrNot), " should be true"
+            )
+        );
+
+        dynAssert(
+            phyAddrData == phyAddrDataRef,
+            "phyAddrData assertion @ mkTestTLB",
+            $format(
+                "phyAddrData=%h should == phyAddrDataRef=%h",
+                phyAddrData, phyAddrDataRef
+            )
+        );
+        countDown.decr;
+        // $display(
+        //     "time=%0t:", $time,
+        //     " foundOrNot=", fshow(foundOrNot),
+        //     ", virtAddr=%h v.s. phyAddr=%h",
+        //     virtAddrRef, phyAddr,
+        //     ", phyAddrData=%h should == phyAddrDataRef=%h",
+        //     phyAddrData, phyAddrDataRef
+        // );
+    endrule
+endmodule

@@ -274,7 +274,7 @@ module mkSegmentDataStreamByPmtuAndAddPadCnt#(
 endmodule
 
 module mkGenericRandomPipeOut(PipeOut#(anytype))
-provisos(Bits#(anytype, tSz), Bounded#(anytype));
+provisos(Bits#(anytype, anysize), Bounded#(anytype));
     Randomize#(anytype) randomGen <- mkGenericRandomizer;
     FIFOF#(anytype) randomValQ <- mkFIFOF;
 
@@ -294,7 +294,7 @@ provisos(Bits#(anytype, tSz), Bounded#(anytype));
 endmodule
 
 module mkGenericRandomPipeOutVec(Vector#(vSz, PipeOut#(anytype)))
-provisos(Bits#(anytype, tSz), Bounded#(anytype));
+provisos(Bits#(anytype, anysize), Bounded#(anytype));
     PipeOut#(anytype) resultPipeOut <- mkGenericRandomPipeOut;
     Vector#(vSz, PipeOut#(anytype)) resultPipeOutVec <-
         mkForkVector(resultPipeOut);
@@ -304,7 +304,7 @@ endmodule
 module mkRandomValueInRangePipeOut#(
     // Both min and max are inclusive
     anytype min, anytype max
-)(Vector#(vSz, PipeOut#(anytype))) provisos (Bits#(anytype, aSz), Bounded#(anytype));
+)(Vector#(vSz, PipeOut#(anytype))) provisos (Bits#(anytype, anysize), Bounded#(anytype));
     Randomize#(anytype) randomVal <- mkConstrainedRandomizer(min, max);
     FIFOF#(anytype) randomValQ <- mkFIFOF;
     let resultPipeOutVec <- mkForkVector(convertFifo2PipeOut(randomValQ));
@@ -411,7 +411,7 @@ endmodule
 module mkRandomItemFromVec#(
     Vector#(vSz, anytype) items
 )(PipeOut#(anytype)) provisos(
-    Bits#(anytype, tSz),
+    Bits#(anytype, anysize),
     NumAlias#(TLog#(vSz), idxSz)
 );
     UInt#(idxSz) maxIdx = fromInteger(valueOf(vSz) - 1);

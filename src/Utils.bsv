@@ -161,7 +161,7 @@ function ByteEn genByteEn(ByteEnBitNum fragValidByteNum);
 endfunction
 
 function ByteEnBitNum calcLastFragValidByteNum(Bit#(nSz) len)
-provisos(Add#(DATA_BUS_BYTE_NUM_WIDTH, kSz, nSz), Add#(1, jSz, nSz));
+provisos(Add#(DATA_BUS_BYTE_NUM_WIDTH, anysizeK, nSz), Add#(1, anysizeJ, nSz));
     BusByteWidthMask busByteWidthMask = maxBound;
     ByteEnBitNum lastFragValidByteNum = zeroExtend(truncate(len) & busByteWidthMask);
 
@@ -1477,7 +1477,7 @@ endmodule
 module mkPipeFilter#(
     function Bool filterFunc(anytype inputVal),
     PipeOut#(anytype) pipeIn
-)(PipeOut#(anytype)) provisos (Bits #(anytype, aSz));
+)(PipeOut#(anytype)) provisos (Bits #(anytype, anysize));
     FIFOF#(anytype) outQ <- mkFIFOF;
 
     rule filter;
@@ -1497,7 +1497,7 @@ endmodule
 
 module mkBufferN#(
     Integer depth, PipeOut#(anytype) pipeIn
-)(PipeOut#(anytype)) provisos(Bits#(anytype, tSz));
+)(PipeOut#(anytype)) provisos(Bits#(anytype, anysize));
     let resultPipeOut <- mkBuffer_n(depth, pipeIn);
     return resultPipeOut;
 endmodule

@@ -1,4 +1,4 @@
-import Connectable :: * ;
+import Connectable :: *;
 import FIFOF :: *;
 import PAClib :: *;
 import Vector :: *;

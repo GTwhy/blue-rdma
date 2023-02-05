@@ -5,12 +5,15 @@ typedef 2 TARGET_CYCLE_NS;
 typedef 2 MIN_PKT_NUM_IN_RECV_BUF;
 typedef TMul#(2, MAX_QP_WR) MAX_PENDING_WORK_COMP_NUM;
 
-// Device attributes
+typedef TExp#(14) TLB_CACHE_SIZE; // TLB cache size 16K
+typedef 48        PHYSICAL_ADDR_WIDTH; // X86 physical address width
+
+// RDMA device attributes
 // Must be power of 2
 typedef 256 DATA_BUS_WIDTH;
 
 typedef TExp#(31) MAX_MR_SIZE;   // 2GB
-typedef 4096      PAGE_SIZE_CAP; // 4KB
+typedef TExp#(21) PAGE_SIZE_CAP; // 2MB
 typedef 32        MAX_QP;
 typedef 32        MAX_QP_WR;
 typedef 1         MAX_SGE;
@@ -24,8 +27,8 @@ typedef MAX_QP_WR MAX_SRQ_WR;
 typedef MAX_SGE   MAX_SRQ_SGE;
 // End must-be-power-of-2
 
-// typedef 1                   MAX_SEND_SGE;
-// typedef 1                   MAX_RECV_SGE;
+typedef 4                   MAX_SEND_SGE;
+typedef 4                   MAX_RECV_SGE;
 typedef 0                   MAX_INLINE_DATA; // No inline data
 
 /*

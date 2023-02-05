@@ -1,8 +1,8 @@
 TRANSFLAGS = -aggressive-conditions # -lift -split-if
 RECOMPILEFLAGS = -u -show-compiles
 SCHEDFLAGS = -show-schedule -sched-dot # -show-rule-rel dMemInit_request_put doExecute
-#	-show-elab-progress
 DEBUGFLAGS = -check-assert \
+	-show-elab-progress \
 	-continue-after-errors \
 	-keep-fires \
 	-keep-inlined-boundaries \
