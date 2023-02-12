@@ -123,7 +123,7 @@ module mkTestRetryHandleSQ#(TestRetryCase retryCase)(Empty);
         end
         isPartialRetryWorkReqReg <= isPartialRetry;
         retryHandleTestStateReg <= TEST_RETRY_TRIGGERED;
-        // $display("time=%0d: test retry triggered", $time);
+        // $display("time=%0t: test retry triggered", $time);
     endrule
 
     rule retryWait4Start if (
@@ -161,7 +161,7 @@ module mkTestRetryHandleSQ#(TestRetryCase retryCase)(Empty);
 
         retryHandleTestStateReg <= TEST_RETRY_RESTART_TRIGGERED;
         // $display(
-        //     "time=%0d: test retry restarted", $time,
+        //     "time=%0t: test retry restarted", $time,
         //     ", firstRetryWR.wr.id=%h", firstRetryWR.wr.id
         // );
     endrule
@@ -184,7 +184,7 @@ module mkTestRetryHandleSQ#(TestRetryCase retryCase)(Empty);
         let refStartPSN = unwrapMaybe(refRetryWR.startPSN);
         let refEndPSN = unwrapMaybe(refRetryWR.endPSN);
 
-        dynAssert(
+        immAssert(
             retryWR.wr.id == refRetryWR.wr.id,
             "retryWR ID assertion @ mkTestRetryHandleSQ",
             $format(
@@ -195,7 +195,7 @@ module mkTestRetryHandleSQ#(TestRetryCase retryCase)(Empty);
             )
         );
 
-        dynAssert(
+        immAssert(
             retryWR.wr.id == refRetryWR.wr.id,
             "retryWR ID assertion @ mkTestRetryHandleSQ",
             $format(
@@ -207,7 +207,7 @@ module mkTestRetryHandleSQ#(TestRetryCase retryCase)(Empty);
         );
 
         if (isPartialRetryWorkReqReg) begin
-            dynAssert(
+            immAssert(
                 startPSN == refEndPSN && endPSN == refEndPSN,
                 "retryWR partial retry PSN assertion @ mkTestRetryHandleSQ",
                 $format(
@@ -222,7 +222,7 @@ module mkTestRetryHandleSQ#(TestRetryCase retryCase)(Empty);
             isPartialRetryWorkReqReg <= False;
         end
         else begin
-            dynAssert(
+            immAssert(
                 startPSN == refStartPSN && endPSN == refEndPSN,
                 "retryWR PSN assertion @ mkTestRetryHandleSQ",
                 $format(
@@ -236,7 +236,7 @@ module mkTestRetryHandleSQ#(TestRetryCase retryCase)(Empty);
 
         countDown.decr;
         // $display(
-        //     "time=%0d: compare", $time,
+        //     "time=%0t: compare", $time,
         //     " retryWR.wr.id=%h == refRetryWR.wr.id=%h",
         //     retryWR.wr.id, refRetryWR.wr.id,
         //     ", retryHandleTestStateReg=", fshow(retryHandleTestStateReg)
@@ -252,6 +252,6 @@ module mkTestRetryHandleSQ#(TestRetryCase retryCase)(Empty);
         pendingWorkReqBuf.fifoIfc.clear;
         dut.resetRetryCntBySQ;
         dut.resetTimeOutBySQ;
-        // $display("time=%0d: test retry done", $time);
+        // $display("time=%0t: test retry done", $time);
     endrule
 endmodule

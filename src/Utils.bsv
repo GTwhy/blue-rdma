@@ -1320,8 +1320,8 @@ module mkConnectPendingWorkReqPipeOut2PendingWorkReqQ#(
         pipeIn.deq;
 
         // $display(
-        //     // "time=%0d: fill pendingWR=", $time, fshow(pendingWR)
-        //     "time=%0d: fill pendingWR.wr.id=%h", $time, pendingWR.wr.id
+        //     // "time=%0t: fill pendingWR=", $time, fshow(pendingWR)
+        //     "time=%0t: fill pendingWR.wr.id=%h", $time, pendingWR.wr.id
         // );
     endrule
 endmodule
@@ -1443,7 +1443,7 @@ endfunction
 // )(DataStreamPipeOut);
 //     function Action checkDmaReadResp(DmaReadResp resp);
 //         action
-//             dynAssert(
+//             immAssert(
 //                 resp.wrID == wrID,
 //                 "wrID assertion @ mkSegDataStreamPipeOutFromDmaReadResp",
 //                 $format("resp.wrID=%h should == wrID=%h", resp.wrID, wrID)
@@ -1561,7 +1561,7 @@ function PipeOut#(anytype) muxPipeOut2(
                 pipeIn2.deq;
             end
 
-            // $display("time=%0d: sel=", $time, fshow(sel));
+            // $display("time=%0t: sel=", $time, fshow(sel));
         endmethod
 
         method Bool notEmpty();

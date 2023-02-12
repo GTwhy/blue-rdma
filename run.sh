@@ -79,7 +79,7 @@ make -j8 TESTFILE=TestWorkCompGen.bsv TOP=mkTestWorkCompGenErrFlushCaseSQ 2>&1 |
 make -j8 TESTFILE=TestUtils.bsv TOP=mkTestSegmentDataStream 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=TestUtils.bsv TOP=mkTestPsnFunc 2>&1 | tee -a $RUN_LOG
 
-FAIL_KEYWORKS='Error\|DynAssert'
+FAIL_KEYWORKS='Error\|ImmAssert'
 grep -w $FAIL_KEYWORKS $RUN_LOG | cat
 ERR_NUM=`grep -c -w $FAIL_KEYWORKS $RUN_LOG | cat`
 if [ $ERR_NUM -gt 0 ]; then

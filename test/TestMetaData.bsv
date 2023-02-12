@@ -60,7 +60,7 @@ module mkTestMetaDataPDs(Empty);
         let pdKey = pdKeyPipeOut4InsertResp.first;
         pdKeyPipeOut4InsertResp.deq;
 
-        dynAssert(
+        immAssert(
             pdKey == truncate(pdHandler),
             "pdKey assertion @ mkTestMetaDataPDs",
             $format(
@@ -69,7 +69,7 @@ module mkTestMetaDataPDs(Empty);
             )
         );
         // $display(
-        //     "time=%0d: pdKey=%h, pdHandler=%h, pdCnt=%b when allocate MetaDataPDs, pdMetaDataDUT.notFull=",
+        //     "time=%0t: pdKey=%h, pdHandler=%h, pdCnt=%b when allocate MetaDataPDs, pdMetaDataDUT.notFull=",
         //     $time, pdKey, pdHandler, pdCnt, fshow(pdMetaDataDUT.notFull)
         // );
     endrule
@@ -87,7 +87,7 @@ module mkTestMetaDataPDs(Empty);
         pdHandlerQ4Search.deq;
 
         let isValidPD = pdMetaDataDUT.isValidPD(pdHandler2Search);
-        dynAssert(
+        immAssert(
             isValidPD,
             "isValidPD assertion @ mkTestMetaDataPDs",
             $format(
@@ -98,7 +98,7 @@ module mkTestMetaDataPDs(Empty);
         );
 
         let maybeMRs = pdMetaDataDUT.getMRs4PD(pdHandler2Search);
-        dynAssert(
+        immAssert(
             isValid(maybeMRs),
             "maybeMRs assertion @ mkTestMetaDataPDs",
             $format(
@@ -108,7 +108,7 @@ module mkTestMetaDataPDs(Empty);
             )
         );
         // $display(
-        //     "time=%0d: isValid(maybeMRs)=", $time, fshow(isValid(maybeMRs)),
+        //     "time=%0t: isValid(maybeMRs)=", $time, fshow(isValid(maybeMRs)),
         //     " should be valid when pdHandler2Search=%0d and pdCnt=%0d",
         //     pdHandler2Search, pdCnt
         // );
@@ -136,7 +136,7 @@ module mkTestMetaDataPDs(Empty);
 
         let removeResp <- pdMetaDataDUT.deAllocResp;
 
-        dynAssert(
+        immAssert(
             removeResp,
             "removeResp assertion @ mkTestMetaDataPDs",
             $format(
@@ -146,7 +146,7 @@ module mkTestMetaDataPDs(Empty);
             )
         );
         // $display(
-        //     "time=%0d: removeResp=", $time, fshow(removeResp),
+        //     "time=%0t: removeResp=", $time, fshow(removeResp),
         //     " should be true when pdCnt=%0d",
         //     pdCnt
         // );
@@ -202,7 +202,7 @@ module mkTestMetaDataMRs(Empty);
         let mrKeyPart = mrKeyPipeOut4InsertResp.first;
         mrKeyPipeOut4InsertResp.deq;
 
-        dynAssert(
+        immAssert(
             mrKeyPart == truncate(lkey),
             "lkey assertion @ mkTestMetaDataMRs",
             $format(
@@ -211,7 +211,7 @@ module mkTestMetaDataMRs(Empty);
             )
         );
         let rkeyValue = unwrapMaybe(rkey);
-        dynAssert(
+        immAssert(
             isValid(rkey) && mrKeyPart == truncate(rkeyValue),
             "rkey assertion @ mkTestMetaDataMRs",
             $format(
@@ -221,7 +221,7 @@ module mkTestMetaDataMRs(Empty);
         );
 
         // $display(
-        //     "time=%0d: mrIndex=%h, lkey=%h, rkey=%h, mrCnt=%b when allocate MetaDataMRs, mrMetaDataDUT.notFull=",
+        //     "time=%0t: mrIndex=%h, lkey=%h, rkey=%h, mrCnt=%b when allocate MetaDataMRs, mrMetaDataDUT.notFull=",
         //     $time, mrIndex, lkey, rkey, mrCnt, fshow(mrMetaDataDUT.notFull)
         // );
     endrule
@@ -239,7 +239,7 @@ module mkTestMetaDataMRs(Empty);
         mrIndexQ4Search.deq;
 
         let maybeMR = mrMetaDataDUT.getMR(mrIndex2Search);
-        dynAssert(
+        immAssert(
             isValid(maybeMR),
             "maybeMR assertion @ mkTestMetaDataMRs",
             $format(
@@ -249,7 +249,7 @@ module mkTestMetaDataMRs(Empty);
             )
         );
         // $display(
-        //     "time=%0d: maybeMR=", $time, fshow(maybeMR),
+        //     "time=%0t: maybeMR=", $time, fshow(maybeMR),
         //     " should be valid when mrIndex2Search=%0d and mrCnt=%0d",
         //     mrIndex2Search, mrCnt
         // );
@@ -277,7 +277,7 @@ module mkTestMetaDataMRs(Empty);
 
         let removeResp <- mrMetaDataDUT.deAllocResp;
 
-        dynAssert(
+        immAssert(
             removeResp,
             "removeResp assertion @ mkTestMetaDataMRs",
             $format(
@@ -287,7 +287,7 @@ module mkTestMetaDataMRs(Empty);
             )
         );
         // $display(
-        //     "time=%0d: removeResp=", $time, fshow(removeResp),
+        //     "time=%0t: removeResp=", $time, fshow(removeResp),
         //     " should be true when mrCnt=%0d",
         //     mrCnt
         // );
@@ -339,7 +339,7 @@ module mkTestMetaDataQPs(Empty);
 
         Bit#(TSub#(QPN_WIDTH, QP_INDEX_WIDTH)) refPart = truncateLSB(refPdHandler);
         Bit#(TSub#(QPN_WIDTH, QP_INDEX_WIDTH)) qpnPart = truncate(qpn);
-        dynAssert(
+        immAssert(
             qpnPart == refPart,
             "qpnPart assertion @ mkTestMetaDataQPs",
             $format(
@@ -349,7 +349,7 @@ module mkTestMetaDataQPs(Empty);
         );
 
         // $display(
-        //     "time=%0d: qpn=%h should match refPdHandler=%h",
+        //     "time=%0t: qpn=%h should match refPdHandler=%h",
         //     $time, qpn, refPdHandler
         // );
     endrule
@@ -367,7 +367,7 @@ module mkTestMetaDataQPs(Empty);
         qpnQ4Search.deq;
 
         let isValidQP = qpMetaDataDUT.isValidQP(qpn2Search);
-        dynAssert(
+        immAssert(
             isValidQP,
             "isValidQP assertion @ mkTestMetaDataQPs",
             $format(
@@ -378,7 +378,7 @@ module mkTestMetaDataQPs(Empty);
         );
 
         let maybePD = qpMetaDataDUT.getPD(qpn2Search);
-        dynAssert(
+        immAssert(
             isValid(maybePD),
             "maybePD assertion @ mkTestMetaDataQPs",
             $format(
@@ -391,7 +391,7 @@ module mkTestMetaDataQPs(Empty);
         let refPdHandler = pdHandlerPipeOut4Search.first;
         pdHandlerPipeOut4Search.deq;
 
-        dynAssert(
+        immAssert(
             pdHandler == refPdHandler,
             "pdHandler assertion @ mkTestMetaDataQPs",
             $format(
@@ -401,7 +401,7 @@ module mkTestMetaDataQPs(Empty);
         );
 
         let qpCntrl = qpMetaDataDUT.getCntrl(qpn2Search);
-        dynAssert(
+        immAssert(
             qpCntrl.isReset,
             "qpCntrl assertion @ mkTestMetaDataQPs",
             $format(
@@ -410,7 +410,7 @@ module mkTestMetaDataQPs(Empty);
             )
         );
         // let maybeQpCntrl = qpMetaDataDUT.getCntrl2(qpn2Search);
-        // dynAssert(
+        // immAssert(
         //     isValid(maybeQpCntrl),
         //     "isValid(maybeQpCntrl) assertion @ mkTestMetaDataQPs",
         //     $format(
@@ -420,7 +420,7 @@ module mkTestMetaDataQPs(Empty);
         // );
 
         // $display(
-        //     "time=%0d: isValidQP=", $time, fshow(isValidQP),
+        //     "time=%0t: isValidQP=", $time, fshow(isValidQP),
         //     " should be valid when qpn2Search=%h and qpCnt=%0d",
         //     qpn2Search, qpCnt
         // );
@@ -448,7 +448,7 @@ module mkTestMetaDataQPs(Empty);
 
         let removeResp <- qpMetaDataDUT.destroyResp;
 
-        dynAssert(
+        immAssert(
             removeResp,
             "removeResp assertion @ mkTestMetaDataQPs",
             $format(
@@ -458,7 +458,7 @@ module mkTestMetaDataQPs(Empty);
             )
         );
         // $display(
-        //     "time=%0d: removeResp=", $time, fshow(removeResp),
+        //     "time=%0t: removeResp=", $time, fshow(removeResp),
         //     " should be true when qpCnt=%0d",
         //     qpCnt
         // );
@@ -499,20 +499,20 @@ module mkTestPermCheckMR(Empty);
 
         pdMetaData.allocPD(curPdKey);
 
-        // $display("time=%0d: curPdKey=%h", $time, curPdKey);
+        // $display("time=%0t: curPdKey=%h", $time, curPdKey);
     endrule
 
     rule allocRespPDs if (mrCheckStateReg == TEST_ST_FILL);
         let pdHandler <- pdMetaData.allocResp;
         pdHandlerQ4FillMR.enq(pdHandler);
 
-        // $display("time=%0d: pdHandler=%h", $time, pdHandler);
+        // $display("time=%0t: pdHandler=%h", $time, pdHandler);
     endrule
 
     rule allocMRs if (mrCheckStateReg == TEST_ST_FILL);
         let pdHandler = pdHandlerQ4FillMR.first;
         let maybeMRs = pdMetaData.getMRs4PD(pdHandler);
-        dynAssert(
+        immAssert(
             isValid(maybeMRs),
             "maybeMRs assertion @ mkTestPermCheckMR",
             $format(
@@ -535,7 +535,7 @@ module mkTestPermCheckMR(Empty);
                 tagged Valid curMrKey // rkeyPart
             );
 
-            // $display("time=%0d: curMrKey=%h", $time, curMrKey);
+            // $display("time=%0t: curMrKey=%h", $time, curMrKey);
         end
     endrule
 
@@ -546,7 +546,7 @@ module mkTestPermCheckMR(Empty);
 
                 let pdHandler = pdHandlerQ4FillMR.first;
                 let maybeMRs = pdMetaData.getMRs4PD(pdHandler);
-                dynAssert(
+                immAssert(
                     isValid(maybeMRs),
                     "maybeMRs assertion @ mkTestPermCheckMR",
                     $format(
@@ -558,7 +558,7 @@ module mkTestPermCheckMR(Empty);
                 if (maybeMRs matches tagged Valid .mrMetaData) begin
                     let { mrIndex, lkey, rkey } <- mrMetaData.allocResp;
 
-                    dynAssert(
+                    immAssert(
                         isValid(rkey),
                         "rkey assertion @ mkTestPermCheckMR",
                         $format("rkey=", rkey, " should be valid")
@@ -567,7 +567,7 @@ module mkTestPermCheckMR(Empty);
                     lKeyQ4Search.enq(tuple2(pdHandler, lkey));
                     rKeyQ4Search.enq(tuple2(pdHandler, unwrapMaybe(rkey)));
 
-                    // $display("time=%0d: mrIndex=%h", $time, mrIndex);
+                    // $display("time=%0t: mrIndex=%h", $time, mrIndex);
                 end
             end
             else begin
@@ -583,7 +583,7 @@ module mkTestPermCheckMR(Empty);
         end
 
         // $display(
-        //     "time=%0d: mrMetaDataCnt=%h, mrCnt=%h", $time, mrMetaDataCnt, mrCnt
+        //     "time=%0t: mrMetaDataCnt=%h, mrCnt=%h", $time, mrMetaDataCnt, mrCnt
         // );
     endrule
 
@@ -607,7 +607,7 @@ module mkTestPermCheckMR(Empty);
         // lKeyPermCheckInfoQ.enq(permCheckInfo);
 
         // $display(
-        //     "time=%0d: permCheckInfo=", $time, fshow(permCheckInfo)
+        //     "time=%0t: permCheckInfo=", $time, fshow(permCheckInfo)
         // );
     endrule
 
@@ -636,7 +636,7 @@ module mkTestPermCheckMR(Empty);
 
         // if (lKeyPermCheckInfoQ.notEmpty) begin
         //     let lKeyCheckResp <- permCheckMR.checkResp;
-        //     dynAssert(
+        //     immAssert(
         //         lKeyCheckResp,
         //         "lKeyCheckResp @ mkTestPermCheckMR",
         //         $format(
@@ -647,12 +647,12 @@ module mkTestPermCheckMR(Empty);
         //     searchCnt.decr(1);
 
         //     $display(
-        //         "time=%0d: lKeyCheckResp=", $time, fshow(lKeyCheckResp), " should be true"
+        //         "time=%0t: lKeyCheckResp=", $time, fshow(lKeyCheckResp), " should be true"
         //     );
         // end
         // else if (rKeyPermCheckInfoQ.notEmpty) begin
         //     let rKeyCheckResp <- permCheckMR.checkResp;
-        //     dynAssert(
+        //     immAssert(
         //         rKeyCheckResp,
         //         "rKeyCheckResp @ mkTestPermCheckMR",
         //         $format(
@@ -663,12 +663,12 @@ module mkTestPermCheckMR(Empty);
         //     searchCnt.decr(1);
 
         //     $display(
-        //         "time=%0d: rKeyCheckResp=", $time, fshow(rKeyCheckResp), " should be true"
+        //         "time=%0t: rKeyCheckResp=", $time, fshow(rKeyCheckResp), " should be true"
         //     );
         // end
 
         let checkResp <- permCheckMR.checkResp;
-        dynAssert(
+        immAssert(
             checkResp,
             "checkResp @ mkTestPermCheckMR",
             $format(
@@ -684,7 +684,7 @@ module mkTestPermCheckMR(Empty);
         end
 
         // $display(
-        //     "time=%0d: searchCnt=%0d, checkResp=",
+        //     "time=%0t: searchCnt=%0d, checkResp=",
         //     $time, searchCnt, fshow(checkResp),
         //     " should be true"
         // );
@@ -705,7 +705,7 @@ module mkTestPermCheckMR(Empty);
 
         mrCheckStateReg <= TEST_ST_FILL;
 
-        // $display("time=%0d: clear", $time);
+        // $display("time=%0t: clear", $time);
     endrule
 endmodule
 
@@ -744,7 +744,7 @@ module mkTestBramCache(Empty);
         let bramCacheReadDataRef = bramCacheDataQ.first;
         bramCacheDataQ.deq;
 
-        dynAssert(
+        immAssert(
             bramCacheReadData == bramCacheReadDataRef,
             "bramCacheReadData assertion @ mkTestBramCache",
             $format(
@@ -803,7 +803,7 @@ module mkTestTLB(Empty);
         let virtAddrRef = virtAddrQ4Ref.first;
         virtAddrQ4Ref.deq;
 
-        dynAssert(
+        immAssert(
             foundOrNot,
             "foundOrNot assertion @ mkTestTLB",
             $format(
@@ -811,7 +811,7 @@ module mkTestTLB(Empty);
             )
         );
 
-        dynAssert(
+        immAssert(
             phyAddrData == phyAddrDataRef,
             "phyAddrData assertion @ mkTestTLB",
             $format(

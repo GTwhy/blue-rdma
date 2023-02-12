@@ -235,7 +235,7 @@ module mkDupReadAtomicCache#(Controller cntrl)(DupReadAtomicCache);
             end
 
             // $display(
-            //     "time=%0d: dupReadReth.rkey=%h, origReadReth.rkey=%h",
+            //     "time=%0t: dupReadReth.rkey=%h, origReadReth.rkey=%h",
             //     $time, dupReadReth.rkey, origReadReth.rkey,
             //     ", dupReadReth.va=%h, origReadReth.va=%h",
             //     dupReadReth.va, origReadReth.va,

@@ -22,7 +22,7 @@ for FILE in $FILES; do
     done
 done
 
-FAIL_KEYWORKS='Error\|DynAssert'
+FAIL_KEYWORKS='Error\|ImmAssert'
 grep -w $FAIL_KEYWORKS $TEST_LOG | cat
 ERR_NUM=`grep -c -w $FAIL_KEYWORKS $TEST_LOG | cat`
 if [ $ERR_NUM -gt 0 ]; then

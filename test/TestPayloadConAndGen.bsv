@@ -116,7 +116,7 @@ module mkTestPayloadConAndGenNormalCase(Empty);
         let expectedPSN = payloadConReqPsnQ.first;
         payloadConReqPsnQ.deq;
 
-        dynAssert(
+        immAssert(
             payloadConResp.dmaWriteResp.psn == expectedPSN,
             "payloadConResp PSN assertion @ mkTestPayloadConAndGenNormalCase",
             $format(
@@ -125,7 +125,7 @@ module mkTestPayloadConAndGenNormalCase(Empty);
             )
         );
         // $display(
-        //     "time=%0d: payloadConResp.dmaWriteResp.psn=%h should == expectedPSN=%h",
+        //     "time=%0t: payloadConResp.dmaWriteResp.psn=%h should == expectedPSN=%h",
         //     $time, payloadConResp.dmaWriteResp.psn, expectedPSN
         // );
     endrule
@@ -136,7 +136,7 @@ module mkTestPayloadConAndGenNormalCase(Empty);
         let dmaWritePayload = simDmaWriteSrvDataStreamPipeOut.first;
         simDmaWriteSrvDataStreamPipeOut.deq;
 
-        dynAssert(
+        immAssert(
             dmaReadPayload == dmaWritePayload,
             "dmaReadPayload == dmaWritePayload assertion @ mkTestPayloadConAndGenNormalCase",
             $format(

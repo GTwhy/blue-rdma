@@ -37,7 +37,7 @@ module mkTestScanFIFOF(Empty);
 
             scanQ.fifoIfc.enq(curEnqData);
             // $display(
-            //     "time=%0d: curEnqData=%h when in fill mode",
+            //     "time=%0t: curEnqData=%h when in fill mode",
             //     $time, curEnqData
             // );
         end
@@ -58,7 +58,7 @@ module mkTestScanFIFOF(Empty);
             let refScanData = qElemPipeOut4ScanRef.first;
             qElemPipeOut4ScanRef.deq;
 
-            dynAssert(
+            immAssert(
                 curScanData == refScanData,
                 "curScanData assertion @ mkTestScanFIFOF",
                 $format(
@@ -67,7 +67,7 @@ module mkTestScanFIFOF(Empty);
                 )
             );
             // $display(
-            //     "time=%0d: curScanData=%h should == refScanData=%h when in scan mode",
+            //     "time=%0t: curScanData=%h should == refScanData=%h when in scan mode",
             //     $time, curScanData, refScanData
             // );
         end
@@ -83,7 +83,7 @@ module mkTestScanFIFOF(Empty);
             let refDeqData = qElemPipeOut4DeqRef.first;
             qElemPipeOut4DeqRef.deq;
 
-            dynAssert(
+            immAssert(
                 curDeqData == refDeqData,
                 "curDeqData assertion @ mkTestScanFIFOF",
                 $format(
@@ -92,7 +92,7 @@ module mkTestScanFIFOF(Empty);
                 )
             );
             // $display(
-            //     "time=%0d: curDeqData=%h should == refDeqData=%h when in deq mode",
+            //     "time=%0t: curDeqData=%h should == refDeqData=%h when in deq mode",
             //     $time, curDeqData, refDeqData
             // );
         end
@@ -126,7 +126,7 @@ module mkTestSearchFIFOF(Empty);
 
             searchQ.fifoIfc.enq(curEnqData);
             $display(
-                "time=%0d: curEnqData=%h when in fill mode",
+                "time=%0t: curEnqData=%h when in fill mode",
                 $time, curEnqData
             );
         end
@@ -149,7 +149,7 @@ module mkTestSearchFIFOF(Empty);
         qElemPipeOut4SearchRef.deq;
 
         let maybeFindData = searchQ.searchIfc.search(searchFunc(refSearchData));
-        dynAssert(
+        immAssert(
             isValid(maybeFindData),
             "maybeFindData assertion @ mkTestSearchFIFOF",
             $format(
@@ -160,7 +160,7 @@ module mkTestSearchFIFOF(Empty);
         );
 
         let curSearchData = unwrapMaybe(maybeFindData);
-        dynAssert(
+        immAssert(
             curSearchData == refSearchData,
             "curSearchData assertion @ mkTestSearchFIFOF",
             $format(
@@ -169,7 +169,7 @@ module mkTestSearchFIFOF(Empty);
             )
         );
         // $display(
-        //     "time=%0d: curSearchData=%h should == refSearchData=%h when itemCnt=%0d",
+        //     "time=%0t: curSearchData=%h should == refSearchData=%h when itemCnt=%0d",
         //     $time, curSearchData, refSearchData, itemCnt
         // );
     endrule
@@ -184,7 +184,7 @@ module mkTestSearchFIFOF(Empty);
             let refDeqData = qElemPipeOut4DeqRef.first;
             qElemPipeOut4DeqRef.deq;
 
-            dynAssert(
+            immAssert(
                 curDeqData == refDeqData,
                 "curDeqData assertion @ mkTestSearchFIFOF",
                 $format(
@@ -193,7 +193,7 @@ module mkTestSearchFIFOF(Empty);
                 )
             );
             // $display(
-            //     "time=%0d: curDeqData=%h should == refDeqData=%h when in deq mode",
+            //     "time=%0t: curDeqData=%h should == refDeqData=%h when in deq mode",
             //     $time, curDeqData, refDeqData
             // );
         end
@@ -226,7 +226,7 @@ module mkTestCacheFIFO(Empty);
 
         cacheQ.cacheQIfc.push(curEnqData);
         // $display(
-        //     "time=%0d: curEnqData=%h when in fill mode",
+        //     "time=%0t: curEnqData=%h when in fill mode",
         //     $time, curEnqData
         // );
     endrule
@@ -246,7 +246,7 @@ module mkTestCacheFIFO(Empty);
         let refSearchData = qElemPipeOut4SearchResp.first;
         qElemPipeOut4SearchResp.deq;
 
-        dynAssert(
+        immAssert(
             isValid(searchResult),
             "searchResult assertion @ mkTestCacheFIFO",
             $format(
@@ -256,7 +256,7 @@ module mkTestCacheFIFO(Empty);
         );
 
         let searchData = unwrapMaybe(searchResult);
-        dynAssert(
+        immAssert(
             searchData == refSearchData,
             "searchData assertion @ mkTestCacheFIFO",
             $format(
@@ -265,7 +265,7 @@ module mkTestCacheFIFO(Empty);
             )
         );
         // $display(
-        //     "time=%0d: searchData=%h should == refSearchData=%h",
+        //     "time=%0t: searchData=%h should == refSearchData=%h",
         //     $time, searchData, refSearchData
         // );
     endrule
@@ -307,7 +307,7 @@ module mkTestVectorSearch(Empty);
         tagVec[elemCnt] <= True;
         searchVec[elemCnt] <= curEnqData;
         // $display(
-        //     "time=%0d: curEnqData=%h when in fill mode",
+        //     "time=%0t: curEnqData=%h when in fill mode",
         //     $time, curEnqData
         // );
     endrule
@@ -328,7 +328,7 @@ module mkTestVectorSearch(Empty);
         // let maybeFindData = findIndex(searchFunc(refSearchData), zipVec);
         let maybeFindData = findElem(tuple2(True, refSearchData), zipVec);
         // let maybeFindData = find(searchFunc(refSearchData), zipVec);
-        dynAssert(
+        immAssert(
             isValid(maybeFindData),
             "maybeFindData assertion @ mkTestSearchFIFOF",
             $format(
@@ -340,7 +340,7 @@ module mkTestVectorSearch(Empty);
         let index = unwrapMaybe(maybeFindData);
         let { curSearchTag, curSearchData } = zipVec[index];
         // let { curSearchTag, curSearchData } = unwrapMaybe(maybeFindData);
-        dynAssert(
+        immAssert(
             curSearchTag && curSearchData == refSearchData,
             "curSearchData assertion @ mkTestSearchFIFOF",
             $format(
@@ -351,7 +351,7 @@ module mkTestVectorSearch(Empty);
             )
         );
         // $display(
-        //     "time=%0d: curSearchData=%h should == refSearchData=%h",
+        //     "time=%0t: curSearchData=%h should == refSearchData=%h",
         //     $time, curSearchData, refSearchData,
         //     ", and curSearchTag=", fshow(curSearchTag),
         //     " should be true"
@@ -375,7 +375,7 @@ module mkTestVectorSearch(Empty);
         let refDeqData = qElemPipeOut4DeqRef.first;
         qElemPipeOut4DeqRef.deq;
 
-        dynAssert(
+        immAssert(
             curDeqData == refDeqData,
             "curDeqData assertion @ mkTestSearchFIFOF",
             $format(
@@ -384,7 +384,7 @@ module mkTestVectorSearch(Empty);
             )
         );
         // $display(
-        //     "time=%0d: curDeqData=%h should == refDeqData=%h when in deq mode",
+        //     "time=%0t: curDeqData=%h should == refDeqData=%h when in deq mode",
         //     $time, curDeqData, refDeqData
         // );
     endrule

@@ -95,7 +95,7 @@ module mkTagVector(TagVector#(vSz, anytype)) provisos(
             end
 
             // $display(
-            //     "time=%0d: inserted=", $time, fshow(inserted),
+            //     "time=%0t: inserted=", $time, fshow(inserted),
             //     ", removed=", fshow(removed)
             // );
         end
@@ -435,7 +435,7 @@ module mkPermCheckMR#(MetaDataPDs pdMetaData)(PermCheckMR);
 
     method Action checkReq(PermCheckInfo permCheckInfo);
         let isZeroDmaLen = isZero(permCheckInfo.totalLen);
-        dynAssert(
+        immAssert(
             !isZeroDmaLen,
             "isZeroDmaLen assertion @ mkPermCheckMR",
             $format(

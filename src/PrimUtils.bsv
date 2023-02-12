@@ -53,13 +53,13 @@ function anytype2 getTupleSecond(Tuple2#(anytype1, anytype2) tupleVal);
     return tpl_2(tupleVal);
 endfunction
 
-function Action dynAssert(Bool condition, String assertName, Fmt assertFmtMsg);
+function Action immAssert(Bool condition, String assertName, Fmt assertFmtMsg);
     action
         let pos = printPosition(getStringPosition(assertName));
         // let pos = printPosition(getEvalPosition(condition));
         if (!condition) begin
             $display(
-              "DynAssert failed in %m @time=%0d: %s-- %s: ",
+              "ImmAssert failed in %m @time=%0t: %s-- %s: ",
               $time, pos, assertName, assertFmtMsg
             );
             $finish(1);

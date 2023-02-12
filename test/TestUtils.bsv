@@ -53,7 +53,7 @@ module mkTestSegmentDataStream(Empty);
         let segDataStream = pmtuSegPipeOut.first;
         pmtuSegPipeOut.deq;
 
-        dynAssert(
+        immAssert(
             segDataStream == refDataStream,
             "segDataStream assertion @ mkTestSegmentDataStream",
             $format(
@@ -92,12 +92,12 @@ module mkTestPsnFunc(Empty);
             let psnInRangeExcl = psnInRangeExclusive(midPSN, startPSN, endPSN);
 
             $display(
-                "time=%0d: startPSN=%h, len=%h, pktNum=%h, endPSN=%h, nextPSN=%h, midPSN=%h",
+                "time=%0t: startPSN=%h, len=%h, pktNum=%h, endPSN=%h, nextPSN=%h, midPSN=%h",
                 $time, startPSN, len, pktNum, endPSN, nextPSN, midPSN
             );
 
             if (pktNum > 2) begin
-                dynAssert(
+                immAssert(
                     psnInRangeExcl,
                     "psnInRangeExcl assertion @ mkTestPsnFunc",
                     $format(
@@ -107,7 +107,7 @@ module mkTestPsnFunc(Empty);
                 );
             end
             else begin
-                dynAssert(
+                immAssert(
                     midPSN == startPSN || midPSN == endPSN,
                     "midPSN assertion @ mkTestPsnFunc",
                     $format(
@@ -116,13 +116,13 @@ module mkTestPsnFunc(Empty);
                     )
                 );
             end
-            dynAssert(
+            immAssert(
                 |len == |pktNum,
                 "len and pktNum assertion @ mkTestPsnFunc",
                 $format("|len=%b == |pktNum=%b",|len, |pktNum)
             );
 
-            dynAssert(
+            immAssert(
                 nextPSN == endPSN + 1,
                 "nextPSN and endPSN assertion @ mkTestPsnFunc",
                 $format("nextPSN=%h == endPSN=%h + 1", nextPSN, endPSN)

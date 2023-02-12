@@ -121,7 +121,7 @@ module mkExtractHeaderFromRdmaPktPipeOut#(
             HeaderByteNum headerLen = fromInteger(
                 calcHeaderLenByTransTypeAndRdmaOpCode(transType, rdmaOpCode)
             );
-            dynAssert(
+            immAssert(
                 !isZero(headerLen),
                 "!isZero(headerLen) assertion @ mkExtractHeaderFromRdmaPktPipeOut",
                 $format(
@@ -134,7 +134,7 @@ module mkExtractHeaderFromRdmaPktPipeOut#(
             let headerMetaData = genHeaderMetaData(headerLen, headerHasPayload);
             headerMetaDataInQ.enq(headerMetaData);
             // $display(
-            //     "time=%0d: extractHeader", $time,
+            //     "time=%0t: extractHeader", $time,
             //     ", headerLen=%0d, transType=", headerLen, fshow(transType),
             //     ", rdmaOpCode=", fshow(rdmaOpCode),
             //     ", rdmaPktDataStream=", fshow(rdmaPktDataStream),
@@ -142,7 +142,7 @@ module mkExtractHeaderFromRdmaPktPipeOut#(
             //     ", headerMetaData=", fshow(headerMetaData)
             // );
         end
-        // $display("time=%0d: rdmaPktDataStream=", $time, fshow(rdmaPktDataStream));
+        // $display("time=%0t: rdmaPktDataStream=", $time, fshow(rdmaPktDataStream));
     endrule
 
     interface headerAndMetaData = interface HeaderDataStreamAndMetaDataPipeOut;
@@ -229,7 +229,7 @@ module mkInputRdmaPktBufAndHeaderValidation#(
                 True : (payloadHasSingleFrag && fragHasNoData);
         // TODO: find out why following display leads to deadlock?
         // $display(
-        //     "time=%0d: bthCheckResult=", $time, fshow(bthCheckResult),
+        //     "time=%0t: bthCheckResult=", $time, fshow(bthCheckResult),
         //     ", headerCheckResult=", fshow(headerCheckResult),
         //     ", nonPayloadHeaderShouldHaveNoPayload=", fshow(nonPayloadHeaderShouldHaveNoPayload),
         //     ", bth=", fshow(bth), ", aeth=", fshow(aeth)
@@ -244,7 +244,7 @@ module mkInputRdmaPktBufAndHeaderValidation#(
                 payloadValidationQ.enq(payloadFrag);
 
                 // $display(
-                //     "time=%0d: bth=", $time, fshow(bth),
+                //     "time=%0t: bth=", $time, fshow(bth),
                 //     ", headerMetaData=", fshow(rdmaHeader.headerMetaData),
                 //     "\ntime=%0d: payloadFrag=", $time, fshow(payloadFrag)
                 // );
@@ -252,20 +252,20 @@ module mkInputRdmaPktBufAndHeaderValidation#(
             else begin
                 if (!payloadFrag.isLast) begin
                     $warning(
-                        "time=%0d: discard invalid RDMA packet of multi-fragment payload", $time
+                        "time=%0t: discard invalid RDMA packet of multi-fragment payload", $time
                     );
                     pktBufStateReg <= RDMA_PKT_BUF_ST_DISCARD_FRAG;
                 end
                 else begin
                     $warning(
-                        "time=%0d: discard invalid RDMA packet of single-fragment payload", $time
+                        "time=%0t: discard invalid RDMA packet of single-fragment payload", $time
                     );
                 end
             end
         end
         else begin
             payloadValidationQ.enq(payloadFrag);
-            // $display("time=%0d: payloadFrag=", $time, fshow(payloadFrag));
+            // $display("time=%0t: payloadFrag=", $time, fshow(payloadFrag));
         end
     endrule
 
@@ -338,7 +338,7 @@ module mkInputRdmaPktBufAndHeaderValidation#(
             rdmaHeaderPktlenCalcQ.enq(tuple4(rdmaHeader, bth, pdHandler, pmtu));
 
             // $display(
-            //     "time=%0d: payloadFrag.byteEn=%h, payloadFrag.isFirst=",
+            //     "time=%0t: payloadFrag.byteEn=%h, payloadFrag.isFirst=",
             //     $time, payloadFrag.byteEn, fshow(payloadFrag.isFirst),
             //     ", payloadFrag.isLast=", payloadFrag.isLast, ", bth.psn=%h", bth.psn,
             //     ", bth.opcode=", fshow(bth.opcode), ", bth.padCnt=%h", bth.padCnt,
@@ -347,7 +347,7 @@ module mkInputRdmaPktBufAndHeaderValidation#(
         end
 
         let payloadFragLen = calcFragByteNumFromByteEn(payloadFrag.byteEn);
-        dynAssert(
+        immAssert(
             isValid(payloadFragLen),
             "isValid(payloadFragLen) assertion @ mkInputRdmaPktBufAndHeaderValidation",
             $format(
@@ -377,7 +377,7 @@ module mkInputRdmaPktBufAndHeaderValidation#(
         let isLastOrOnlyPkt = isLastOrOnlyRdmaOpCode(bth.opcode);
 
         // $display(
-        //     "time=%0d: payloadFrag.byteEn=%h, payloadFrag.isFirst=",
+        //     "time=%0t: payloadFrag.byteEn=%h, payloadFrag.isFirst=",
         //     $time, payloadFrag.byteEn, fshow(payloadFrag.isFirst),
         //     ", payloadFrag.isLast=", payloadFrag.isLast, ", bth.psn=%h", bth.psn,
         //     ", bth.opcode=", fshow(bth.opcode), ", bth.padCnt=%h", bth.padCnt,
@@ -418,7 +418,7 @@ module mkInputRdmaPktBufAndHeaderValidation#(
         pktFragNumReg <= pktFragNum;
         pktValidReg <= pktValid;
         // $display(
-        //     "time=%0d: pktLen=%0d, pktFragNum=%0d", $time, pktLen, pktFragNum,
+        //     "time=%0t: pktLen=%0d, pktFragNum=%0d", $time, pktLen, pktFragNum,
         //     ", byteEn=%h", payloadFrag.byteEn, ", isByteEnAllOne=", fshow(isByteEnAllOne),
         //     ", pktValid=", fshow(pktValid),
         //     ", payloadOutQ.notFull=", fshow(payloadOutQ.notFull)
@@ -439,11 +439,11 @@ module mkInputRdmaPktBufAndHeaderValidation#(
                 else begin
                     reqPayloadOutQ.enq(payloadFrag);
                 end
-                // $display("time=%0d: payloadFrag=", $time, fshow(payloadFrag));
+                // $display("time=%0t: payloadFrag=", $time, fshow(payloadFrag));
             end
             else begin
                 // Discard zero length payload no matter packet has payload or not
-                // $info("time=%0d: discard zero-length payload for RDMA packet", $time);
+                // $info("time=%0t: discard zero-length payload for RDMA packet", $time);
             end
 
             if (pktValid) begin
@@ -451,7 +451,7 @@ module mkInputRdmaPktBufAndHeaderValidation#(
                     (isFirstOrMidPkt && pktLenEqPMTU(pktLen, pmtu)) ||
                     (isLastOrOnlyPkt && !pktLenGtPMTU(pktLen, pmtu));
                 // $display(
-                //     "time=%0d: pktLen=%0d", $time, pktLen,
+                //     "time=%0t: pktLen=%0d", $time, pktLen,
                 //     ", pmtu=", fshow(pmtu), ", pktValid=", fshow(pktValid)
                 // );
             end
@@ -474,7 +474,7 @@ module mkInputRdmaPktBufAndHeaderValidation#(
                 reqPktMetaDataOutQ.enq(pktMetaData);
             end
             // $display(
-            //     "time=%0d: bth=", $time, fshow(bth), ", pktMetaData=", fshow(pktMetaData)
+            //     "time=%0t: bth=", $time, fshow(bth), ", pktMetaData=", fshow(pktMetaData)
             // );
         end
         else begin
@@ -484,7 +484,7 @@ module mkInputRdmaPktBufAndHeaderValidation#(
             else begin
                 reqPayloadOutQ.enq(payloadFrag);
             end
-            // $display("time=%0d: payloadFrag=", $time, fshow(payloadFrag));
+            // $display("time=%0t: payloadFrag=", $time, fshow(payloadFrag));
         end
     endrule
 

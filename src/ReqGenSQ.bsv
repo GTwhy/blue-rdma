@@ -488,7 +488,7 @@ module mkReqGenSQ#(
 
     rule deqWorkReqPipeOut if (cntrl.isRTS);
         let qpType = cntrl.getQpType;
-        dynAssert(
+        immAssert(
             qpType == IBV_QPT_RC || qpType == IBV_QPT_UC ||
             qpType == IBV_QPT_XRC_SEND || qpType == IBV_QPT_UD,
             "qpType assertion @ mkReqGenSQ",
@@ -505,7 +505,7 @@ module mkReqGenSQ#(
         ) begin
             if (pendingWorkReqBufNotEmpty) begin
                 $info(
-                    "time=%0d: wait pendingWorkReqBufNotEmpty=",
+                    "time=%0t: wait pendingWorkReqBufNotEmpty=",
                     $time, fshow(pendingWorkReqBufNotEmpty),
                     " to be false, when IBV_QPS_SQD or IBV_SEND_FENCE"
                 );
@@ -518,7 +518,7 @@ module mkReqGenSQ#(
             shouldDeqPendingWR = True;
         end
 
-        dynAssert(
+        immAssert(
             curPendingWR.wr.sqpn == cntrl.getSQPN,
             "curPendingWR.wr.sqpn assertion @ mkWorkReq2RdmaReq",
             $format(
@@ -528,7 +528,7 @@ module mkReqGenSQ#(
         );
 
         if (isAtomicWorkReq(curPendingWR.wr.opcode)) begin
-            dynAssert(
+            immAssert(
                 curPendingWR.wr.len == fromInteger(valueOf(ATOMIC_WORK_REQ_LEN)),
                 "curPendingWR.wr.len assertion @ mkWorkReq2RdmaReq",
                 $format(
@@ -541,13 +541,13 @@ module mkReqGenSQ#(
 
         if (shouldDeqPendingWR) begin
             pendingWorkReqPipeIn.deq;
-            // $display("time=%0d: received PendingWorkReq=", $time, fshow(curPendingWR));
+            // $display("time=%0t: received PendingWorkReq=", $time, fshow(curPendingWR));
 
             let isNewWorkReq = False;
             let isValidWorkReq = True;
             if (isValid(curPendingWR.isOnlyReqPkt)) begin
                 // Should be retry WorkReq
-                dynAssert(
+                immAssert(
                     isValid(curPendingWR.startPSN) &&
                     isValid(curPendingWR.endPSN)   &&
                     isValid(curPendingWR.pktNum)   &&
@@ -564,7 +564,7 @@ module mkReqGenSQ#(
                 let { isOnlyPkt, totalPktNum, nextPktSeqNum, endPktSeqNum } = calcPktNumNextAndEndPSN(
                     startPktSeqNum, curPendingWR.wr.len, cntrl.getPMTU
                 );
-                dynAssert(
+                immAssert(
                     startPktSeqNum <= endPktSeqNum && (endPktSeqNum + 1 == nextPktSeqNum),
                     "startPSN, endPSN, nextPSN assertion @ mkReqGenSQ",
                     $format(
@@ -584,7 +584,7 @@ module mkReqGenSQ#(
                 isValidWorkReq = qpType == IBV_QPT_UD ? isLessOrEqOne(totalPktNum) : True;
                 isNewWorkReq = True;
                 // $display(
-                //     "time=%0d: curPendingWR=", $time, fshow(curPendingWR), ", nPSN=%h", nextPktSeqNum
+                //     "time=%0t: curPendingWR=", $time, fshow(curPendingWR), ", nPSN=%h", nextPktSeqNum
                 // );
             end
 
@@ -621,7 +621,7 @@ module mkReqGenSQ#(
             pendingWorkReq.wr, cntrl, startPSN, isOnlyReqPkt
         );
         // TODO: remove this assertion, just report error by WC
-        dynAssert(
+        immAssert(
             isValid(maybeFirstOrOnlyHeader),
             "maybeFirstOrOnlyHeader assertion @ mkReqGenSQ",
             $format(
@@ -655,13 +655,13 @@ module mkReqGenSQ#(
                 isGenMultiPktReqReg <= !isOnlyReqPkt;
 
                 // $display(
-                //     "time=%0d: output PendingWorkReq=", $time, fshow(pendingWorkReq),
+                //     "time=%0t: output PendingWorkReq=", $time, fshow(pendingWorkReq),
                 //     ", output header=", fshow(firstOrOnlyHeader)
                 // );
             end
             else begin
                 $info(
-                    "time=%0d: discard PendingWorkReq with length=%0d",
+                    "time=%0t: discard PendingWorkReq with length=%0d",
                     $time, pendingWorkReq.wr.len,
                     " larger than PMTU when QpType=", fshow(qpType)
                 );
@@ -687,7 +687,7 @@ module mkReqGenSQ#(
         let pendingWorkReq = pendingReqGenQ.first;
 
         let qpType = cntrl.getQpType;
-        dynAssert(
+        immAssert(
             qpType == IBV_QPT_RC || qpType == IBV_QPT_UC || qpType == IBV_QPT_XRC_SEND,
             "qpType assertion @ mkReqGenSQ",
             $format(
@@ -704,7 +704,7 @@ module mkReqGenSQ#(
         let maybeMiddleOrLastHeader = genMiddleOrLastReqHeader(
             pendingWorkReq.wr, cntrl, curPsnReg, isLastReqPkt
         );
-        dynAssert(
+        immAssert(
             isValid(maybeMiddleOrLastHeader),
             "maybeMiddleOrLastHeader assertion @ mkReqGenSQ",
             $format(
@@ -730,7 +730,7 @@ module mkReqGenSQ#(
             workCompGenReqOutQ.enq(errWorkCompGenReq);
         end
         // $display(
-        //     "time=%0d: curPsnReg=%h, pktNumReg=%0d, isLastReqPkt=%b",
+        //     "time=%0t: curPsnReg=%h, pktNumReg=%0d, isLastReqPkt=%b",
         //     $time, curPsnReg, pktNumReg, isLastReqPkt
         // );
 
@@ -738,7 +738,7 @@ module mkReqGenSQ#(
             pendingReqGenQ.deq;
             isGenMultiPktReqReg <= !isLastReqPkt;
             let endPSN = unwrapMaybe(pendingWorkReq.endPSN);
-            dynAssert(
+            immAssert(
                 curPsnReg == endPSN,
                 "endPSN assertion @ mkWorkReq2Headers",
                 $format(

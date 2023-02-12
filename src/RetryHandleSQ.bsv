@@ -119,7 +119,7 @@ module mkRetryHandleSQ#(
             timeOutCntReg      <= fromInteger(getTimeOutValue(origMaxTimeOutReg));
             disableTimeOutReg  <= isZero(origMaxTimeOutReg); // cntrl.getMaxTimeOut
             resetTimeOutReg[1] <= False;
-            // $display("time=%0d: cntrl.getMaxTimeOut=%0d", $time, origMaxTimeOutReg);
+            // $display("time=%0t: cntrl.getMaxTimeOut=%0d", $time, origMaxTimeOutReg);
         endaction
     endfunction
 
@@ -161,7 +161,7 @@ module mkRetryHandleSQ#(
 
         if (resetRetryCntReg[1]) begin
             resetRetryCntInternal;
-            // dynAssert(
+            // immAssert(
             //     resetTimeOutReg[1],
             //     "resetTimeOutReg assertion @ mkRetryHandleSQ",
             //     $format(
@@ -172,7 +172,7 @@ module mkRetryHandleSQ#(
         end
         else if (hasNotifiedRetryReg[1] || hasTimeOutRetry) begin
             // if (hasNotifiedRetryReg[1]) begin
-            //     dynAssert(
+            //     immAssert(
             //         resetTimeOutReg[1],
             //         "resetTimeOutReg assertion @ mkRetryHandleSQ",
             //         $format(
@@ -189,7 +189,7 @@ module mkRetryHandleSQ#(
             retryHandleStateReg[1] <= RETRY_ST_START_RETRY;
 
             // $display(
-            //     "time=%0d: retry start in canonicalize", $time,
+            //     "time=%0t: retry start in canonicalize", $time,
             //     ", hasNotifiedRetryReg[1]=", fshow(hasNotifiedRetryReg[1]),
             //     ", hasTimeOutRetry=", fshow(hasTimeOutRetry)
             // );
@@ -197,7 +197,7 @@ module mkRetryHandleSQ#(
 
         hasNotifiedRetryReg[1] <= False;
         // $display(
-        //     "time=%0d: canonicalize", $time,
+        //     "time=%0t: canonicalize", $time,
         //     ", resetRetryCntReg[1]=", fshow(resetRetryCntReg[1]),
         //     ", hasNotifiedRetryReg[1]=", fshow(hasNotifiedRetryReg[1]),
         //     ", hasTimeOutRetry=", fshow(hasTimeOutRetry)
@@ -212,7 +212,7 @@ module mkRetryHandleSQ#(
         if (retryCntExceedLimit(retryReason)) begin
             retryHandleStateReg[0] <= RETRY_ST_RETRY_LIMIT_EXC;
 
-            // $display("time=%0d: retry error occured", $time);
+            // $display("time=%0t: retry error occured", $time);
         end
         else begin
             retryHandleStateReg[0] <= RETRY_ST_RNR_CHECK;
@@ -221,20 +221,20 @@ module mkRetryHandleSQ#(
             if (pendingWorkReqScan.scanDone) begin
                 pendingWorkReqScan.scanStart;
                 // $display(
-                //     "time=%0d: pendingWorkReqScan.scanStart", $time,
+                //     "time=%0t: pendingWorkReqScan.scanStart", $time,
                 //     " pendingWorkReqScan.isEmpty=", fshow(pendingWorkReqScan.isEmpty)
                 // );
             end
             else begin
                 pendingWorkReqScan.scanRestart;
                 // $display(
-                //     "time=%0d: pendingWorkReqScan.scanRestart", $time,
+                //     "time=%0t: pendingWorkReqScan.scanRestart", $time,
                 //     " pendingWorkReqScan.isEmpty=", fshow(pendingWorkReqScan.isEmpty)
                 // );
             end
         end
         // $display(
-        //     "time=%0d: startRetry", $time,
+        //     "time=%0t: startRetry", $time,
         //     ", retryHandleStateReg=", fshow(retryHandleStateReg[0]),
         //     ", retryErr=", fshow(retryErr),
         //     ", retryReason=", fshow(retryReason)
@@ -250,7 +250,7 @@ module mkRetryHandleSQ#(
         let laddr    = curRetryWR.wr.laddr;
         let raddr    = curRetryWR.wr.raddr;
 
-        dynAssert(
+        immAssert(
             retryReasonReg[0] != RETRY_REASON_NOT_RETRY,
             "retryReasonReg assertion @ mkRespHandleSQ",
             $format(
@@ -264,7 +264,7 @@ module mkRetryHandleSQ#(
             retryStartPSN = startPSN;
         end
         else begin
-            dynAssert(
+            immAssert(
                 retryWorkReqIdReg == curRetryWR.wr.id,
                 "retryWorkReqIdReg assertion @ mkRespHandleSQ",
                 $format(
@@ -275,7 +275,7 @@ module mkRetryHandleSQ#(
         end
 
         psnDiffReg  <= calcPsnDiff(retryStartPSN, startPSN);
-        dynAssert(
+        immAssert(
             retryStartPSN == startPSN ||
             retryStartPSN == endPSN   ||
             psnInRangeExclusive(retryStartPSN, startPSN, endPSN),
@@ -292,15 +292,15 @@ module mkRetryHandleSQ#(
             rnrWaitCntReg <= fromInteger(getRnrTimeOutValue(rnrTimer));
             retryHandleStateReg[0] <= RETRY_ST_RNR_WAIT;
 
-            // $display("time=%0d: retry next state is RNR wait", $time);
+            // $display("time=%0t: retry next state is RNR wait", $time);
         end
         else begin
             retryHandleStateReg[0] <= RETRY_ST_PARTIAL_RETRY_WR;
 
-            // $display("time=%0d: retry next state is partial retry WR", $time);
+            // $display("time=%0t: retry next state is partial retry WR", $time);
         end
         // $display(
-        //     "time=%0d: rnrCheck", $time,
+        //     "time=%0t: rnrCheck", $time,
         //     ", retryReasonReg=", fshow(retryReasonReg[0]),
         //     ", hasNotifiedRetryReg[0]=", fshow(hasNotifiedRetryReg[0])
         // );
@@ -315,7 +315,7 @@ module mkRetryHandleSQ#(
         end
 
         // $display(
-        //     "time=%0d: retry rnrWait", $time,
+        //     "time=%0t: retry rnrWait", $time,
         //     ", rnrWaitCntReg=%h", rnrWaitCntReg
         // );
     endrule
@@ -339,7 +339,7 @@ module mkRetryHandleSQ#(
 
         retryPendingWorkReqOutQ.enq(curRetryWR);
         retryHandleStateReg[0] <= RETRY_ST_FULL_RETRY_WR;
-        // $display("time=%0d:", $time, " partial retry WR ID=%h", curRetryWR.wr.id);
+        // $display("time=%0t:", $time, " partial retry WR ID=%h", curRetryWR.wr.id);
     endrule
 
     rule fullRetryWR if (cntrl.isRTS && retryHandleStateReg[0] == RETRY_ST_FULL_RETRY_WR);
@@ -347,7 +347,7 @@ module mkRetryHandleSQ#(
             retryHandleStateReg[0] <= RETRY_ST_NOT_RETRY;
 
             // $display(
-            //     "time=%0d: retry done", $time,
+            //     "time=%0t: retry done", $time,
             //     ", cntrl.isRTS=", fshow(cntrl.isRTS)
             // );
         end
@@ -355,7 +355,7 @@ module mkRetryHandleSQ#(
             let curRetryWR = pendingWorkReqScan.current;
             pendingWorkReqScan.scanNext;
             retryPendingWorkReqOutQ.enq(curRetryWR);
-            // $display("time=%0d:", $time, " full retry WR ID=%h", curRetryWR.wr.id);
+            // $display("time=%0t:", $time, " full retry WR ID=%h", curRetryWR.wr.id);
         end
     endrule
 
@@ -383,7 +383,7 @@ module mkRetryHandleSQ#(
         retryReasonReg[0] <= retryReason;
 
         if (retryReason == RETRY_REASON_RNR) begin
-            dynAssert(
+            immAssert(
                 isValid(retryRnrTimer),
                 "retryRnrTimer assertion @ mkRetryHandleSQ",
                 $format(

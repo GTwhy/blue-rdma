@@ -76,13 +76,13 @@ module mkScanFIFOF(ScanFIFOF#(qSz, anytype)) provisos(
             if (pushReg[1] matches tagged Valid .pushVal) begin
                 dataVec[removeMSB(enqPtrReg)] <= pushVal;
                 nextEnqPtr = enqPtrReg + 1;
-                // $display("time=%0d: push into ScanFIFOF, enqPtrReg=%h", $time, enqPtrReg);
+                // $display("time=%0t: push into ScanFIFOF, enqPtrReg=%h", $time, enqPtrReg);
             end
 
             if (popReg[1]) begin
                 nextDeqPtr = deqPtrReg + 1;
                 // $display(
-                //     "time=%0d: pop from ScanFIFOF, deqPtrReg=%h, emptyReg=",
+                //     "time=%0t: pop from ScanFIFOF, deqPtrReg=%h, emptyReg=",
                 //     $time, deqPtrReg, fshow(emptyReg)
                 // );
             end
@@ -102,7 +102,7 @@ module mkScanFIFOF(ScanFIFOF#(qSz, anytype)) provisos(
                 scanModeReg <= !(isEmpty || scanFinish);
             end
 
-            dynAssert(
+            immAssert(
                 !(scanStartReg[1] && popReg[1]),
                 "scanStartReg and popReg assertion @ mkScanFIFOF",
                 $format(
@@ -126,7 +126,7 @@ module mkScanFIFOF(ScanFIFOF#(qSz, anytype)) provisos(
             deqPtrReg  <= nextDeqPtr;
             scanPtrReg <= nextScanPtr;
             // $display(
-            //     "time=%0d: enqPtrReg=%0d, deqPtrReg=%0d", $time, enqPtrReg, deqPtrReg,
+            //     "time=%0t: enqPtrReg=%0d, deqPtrReg=%0d", $time, enqPtrReg, deqPtrReg,
             //     ", fullReg=", fshow(fullReg), ", emptyReg=", fshow(emptyReg)
             // );
         end
@@ -163,7 +163,7 @@ module mkScanFIFOF(ScanFIFOF#(qSz, anytype)) provisos(
     interface scanIfc = interface ScanIfc#(qSz, anytype);
         // (* preempts = "scanStart, deq" *)
         method Action scanStart() if (!scanModeReg);
-            dynAssert(
+            immAssert(
                 !emptyReg,
                 "emptyReg assertion @ mkScanFIFOF",
                 $format("cannot start scan when emptyReg=", fshow(emptyReg))
@@ -171,7 +171,7 @@ module mkScanFIFOF(ScanFIFOF#(qSz, anytype)) provisos(
             scanStartReg[0] <= True;
 
             // $display(
-            //     "time=%0d: scanStart(), scanPtrReg=%0d, deqPtrReg=%0d, enqPtrReg=%0d",
+            //     "time=%0t: scanStart(), scanPtrReg=%0d, deqPtrReg=%0d, enqPtrReg=%0d",
             //     $time, scanPtrReg, deqPtrReg, enqPtrReg,
             //     ", scanModeReg=", fshow(scanModeReg),
             //     ", emptyReg=", fshow(emptyReg)
@@ -180,7 +180,7 @@ module mkScanFIFOF(ScanFIFOF#(qSz, anytype)) provisos(
 
         // (* preempts = "scanRestart, deq" *)
         method Action scanRestart() if (scanModeReg);
-            dynAssert(
+            immAssert(
                 !emptyReg,
                 "emptyReg assertion @ mkScanFIFOF",
                 $format("cannot restart scan when emptyReg=", fshow(emptyReg))
@@ -196,7 +196,7 @@ module mkScanFIFOF(ScanFIFOF#(qSz, anytype)) provisos(
         method Action scanNext if (scanModeReg);
             scanNextReg[0] <= True;
             // $display(
-            //     "time=%0d: scanPtrReg=%0d, nextScanPtr=%0d, enqPtrReg=%0d, deqPtrReg=%0d, scanModeReg=",
+            //     "time=%0t: scanPtrReg=%0d, nextScanPtr=%0d, enqPtrReg=%0d, deqPtrReg=%0d, scanModeReg=",
             //     $time, scanPtrReg, nextScanPtr, enqPtrReg, deqPtrReg, fshow(scanModeReg)
             // );
         endmethod
@@ -294,7 +294,7 @@ module mkSearchFIFOF(SearchFIFOF#(qSz, anytype)) provisos(
             let maybeFindResult = findIndex(predFunc(searchFunc), zipVec);
             if (maybeFindResult matches tagged Valid .index) begin
                 // let tag = readReg(tagVec[index]);
-                // dynAssert(
+                // immAssert(
                 //     tag,
                 //     "tag assertion @ mkSearchFIFOF",
                 //     $format("search found tag=", fshow(tag), " must be true")

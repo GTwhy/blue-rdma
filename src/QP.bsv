@@ -130,7 +130,7 @@ module mkQP#()(QP);
         // Notify controller when flush done
         cntrl.errFlushDone;
         $display(
-            "time=%0d: error flush done, pendingWorkCompQ4SQ.notEmpty=",
+            "time=%0t: error flush done, pendingWorkCompQ4SQ.notEmpty=",
             $time, fshow(pendingWorkCompQ4SQ.notEmpty)
         );
     end

@@ -37,7 +37,7 @@ module mkPayloadGenerator#(
     rule recvPayloadGenReq if (cntrl.isNonErr);
         let payloadGenReq = payloadGenReqPipeIn.first;
         payloadGenReqPipeIn.deq;
-        dynAssert(
+        immAssert(
             !isZero(payloadGenReq.dmaReadReq.len),
             "payloadGenReq.dmaReadReq.len assertion @ mkPayloadGenerator",
             $format(
@@ -45,7 +45,7 @@ module mkPayloadGenerator#(
                 payloadGenReq.dmaReadReq.len
             )
         );
-        // $display("time=%0d: payloadGenReq=", $time, fshow(payloadGenReq));
+        // $display("time=%0t: payloadGenReq=", $time, fshow(payloadGenReq));
 
         let dmaLen = payloadGenReq.dmaReadReq.len;
         let padCnt = calcPadCnt(dmaLen);
@@ -53,7 +53,7 @@ module mkPayloadGenerator#(
         let lastFragValidByteNumWithPadding = lastFragValidByteNum + zeroExtend(padCnt);
         let lastFragByteEnWithPadding = genByteEn(lastFragValidByteNumWithPadding);
         let pmtuFragNum = calcFragNumByPmtu(payloadGenReq.pmtu);
-        dynAssert(
+        immAssert(
             !isZero(lastFragValidByteNumWithPadding),
             "lastFragValidByteNumWithPadding assertion @ mkPayloadGenerator",
             $format(
@@ -105,7 +105,7 @@ module mkPayloadGenerator#(
             dmaReadResp: dmaReadResp
         };
         payloadGenRespQ.enq(generateResp);
-        // $display("time=%0d: generateResp=", $time, fshow(generateResp));
+        // $display("time=%0t: generateResp=", $time, fshow(generateResp));
     endrule
 
     rule flushDmaReadResp if (cntrl.isERR);
@@ -146,7 +146,7 @@ module mkPayloadConsumer#(
         DataStream payload, PayloadConInfo consumeInfo
     );
         action
-            dynAssert(
+            immAssert(
                 payload.isFirst,
                 "only payload assertion @ mkPayloadConsumer",
                 $format(
@@ -162,7 +162,7 @@ module mkPayloadConsumer#(
         DataStream payload, PayloadConInfo consumeInfo
     );
         action
-            dynAssert(
+            immAssert(
                 payload.isFirst && payload.isLast,
                 "only payload assertion @ mkPayloadConsumer",
                 $format(
@@ -185,7 +185,7 @@ module mkPayloadConsumer#(
                         metaData  : sendWriteReqReadRespInfo,
                         dataStream: payload
                     };
-                    // $display("time=%0d: dmaWriteReq=", $time, fshow(dmaWriteReq));
+                    // $display("time=%0t: dmaWriteReq=", $time, fshow(dmaWriteReq));
                     dmaWriteSrv.request.put(dmaWriteReq);
                 end
                 tagged AtomicRespInfoAndPayload .atomicRespInfo: begin
@@ -213,7 +213,7 @@ module mkPayloadConsumer#(
 
         case (consumeReq.consumeInfo) matches
             tagged DiscardPayload: begin
-                dynAssert(
+                immAssert(
                     !isZero(consumeReq.fragNum),
                     "consumeReq.fragNum assertion @ mkPayloadConsumer",
                     $format(
@@ -224,7 +224,7 @@ module mkPayloadConsumer#(
             end
             tagged AtomicRespInfoAndPayload .atomicRespInfo: begin
                 let { atomicRespDmaWriteMetaData, atomicRespPayload } = atomicRespInfo;
-                dynAssert(
+                immAssert(
                     atomicRespDmaWriteMetaData.len == fromInteger(valueOf(ATOMIC_WORK_REQ_LEN)),
                     "atomicRespDmaWriteMetaData.len assertion @ mkPayloadConsumer",
                     $format(
@@ -234,7 +234,7 @@ module mkPayloadConsumer#(
                 );
             end
             tagged SendWriteReqReadRespInfo .sendWriteReqReadRespInfo    : begin
-                dynAssert(
+                immAssert(
                     !isZero(consumeReq.fragNum),
                     "consumeReq.fragNum assertion @ mkPayloadConsumer",
                     $format(
@@ -251,7 +251,7 @@ module mkPayloadConsumer#(
 
     rule processReq if (!busyReg); // if (cntrl.isNonErr && !busyReg);
         let consumeReq = consumeReqQ.first;
-        // $display("time=%0d: consumeReq=", $time, fshow(consumeReq));
+        // $display("time=%0t: consumeReq=", $time, fshow(consumeReq));
 
         case (consumeReq.consumeInfo) matches
             tagged DiscardPayload: begin
@@ -281,13 +281,13 @@ module mkPayloadConsumer#(
                     consumeReqQ.deq;
                     pendingConReqQ.enq(consumeReq);
                     // $display(
-                    //     "time=%0d: single packet response consumeReq.fragNum=%0d",
+                    //     "time=%0t: single packet response consumeReq.fragNum=%0d",
                     //     $time, consumeReq.fragNum
                     // );
                 end
                 else begin
                     // checkIsFirstPayloadDataStream(payload, consumeReq.consumeInfo);
-                    dynAssert(
+                    immAssert(
                         payload.isFirst,
                         "only payload assertion @ mkPayloadConsumer",
                         $format(
@@ -300,7 +300,7 @@ module mkPayloadConsumer#(
                     remainingFragNumReg <= consumeReq.fragNum - 2;
                     busyReg <= True;
                     // $display(
-                    //     "time=%0d: multi-packet response remainingFragNumReg=%0d, change to busy",
+                    //     "time=%0t: multi-packet response remainingFragNumReg=%0d, change to busy",
                     //     $time, consumeReq.fragNum - 1
                     // );
                 end
@@ -317,12 +317,12 @@ module mkPayloadConsumer#(
         payloadBufPipeOut.deq;
         remainingFragNumReg <= remainingFragNumReg - 1;
         // $display(
-        //     "time=%0d: multi-packet response remainingFragNumReg=%0d, payload.isLast=",
+        //     "time=%0t: multi-packet response remainingFragNumReg=%0d, payload.isLast=",
         //     $time, remainingFragNumReg, fshow(payload.isLast)
         // );
 
         if (isZero(remainingFragNumReg)) begin
-            dynAssert(
+            immAssert(
                 payload.isLast,
                 "payload.isLast assertion @ mkPayloadConsumer",
                 $format(
@@ -348,7 +348,7 @@ module mkPayloadConsumer#(
         let consumeReq = pendingConReqQ.first;
         pendingConReqQ.deq;
         // $display(
-        //     "time=%0d: dmaWriteResp=", $time, fshow(dmaWriteResp),
+        //     "time=%0t: dmaWriteResp=", $time, fshow(dmaWriteResp),
         //     ", consumeReq=", fshow(consumeReq)
         // );
 
@@ -363,7 +363,7 @@ module mkPayloadConsumer#(
                 };
                 consumeRespQ.enq(consumeResp);
 
-                dynAssert(
+                immAssert(
                     dmaWriteResp.sqpn == sendWriteReqReadRespInfo.sqpn &&
                     dmaWriteResp.psn  == sendWriteReqReadRespInfo.psn,
                     "dmaWriteResp SQPN and PSN assertion @ ",
@@ -384,10 +384,10 @@ module mkPayloadConsumer#(
                         psn     : atomicRespDmaWriteMetaData.psn
                     }
                 };
-                // $display("time=%0d: consumeResp=", $time, fshow(consumeResp));
+                // $display("time=%0t: consumeResp=", $time, fshow(consumeResp));
                 consumeRespQ.enq(consumeResp);
 
-                dynAssert(
+                immAssert(
                     dmaWriteResp.sqpn == atomicRespDmaWriteMetaData.sqpn &&
                     dmaWriteResp.psn  == atomicRespDmaWriteMetaData.psn,
                     "dmaWriteResp SQPN and PSN assertion @ ",

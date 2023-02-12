@@ -32,7 +32,7 @@ module mkDataStreamPipeOutFromDmaReadResp#(Get#(DmaReadResp) resp)(DataStreamPip
     DataStreamPipeOut ret <- mkFunc2Pipe(getDmaReadRespData, dmaReadRespPipeOut);
     // rule display;
     //     $display(
-    //         "Before segment: time=%0d, isFirst=%b, isLast=%b, byteEn=%h",
+    //         "Before segment: time=%0t, isFirst=%b, isLast=%b, byteEn=%h",
     //         $time, ret.first.isFirst, ret.first.isLast, ret.first.byteEn
     //     );
     // endrule
@@ -77,7 +77,7 @@ module mkSimDmaReadSrvAndReqRespPipeOut(DmaReadSrvAndReqRespPipeOut);
         dmaReadReqOutQ.enq(curReq);
 
         let isZeroLen = isZero(curReq.len);
-        dynAssert(
+        immAssert(
             !isZeroLen,
             "dmaReadReq.len non-zero assrtion",
             $format("curReq.len=%h should not be zero", curReq.len)
@@ -92,7 +92,7 @@ module mkSimDmaReadSrvAndReqRespPipeOut(DmaReadSrvAndReqRespPipeOut);
         lastFragByteEnReg <= lastFragByteEn;
         lastFragInvalidBitNumReg <= lastFragInvalidBitNum;
 
-        dynAssert(
+        immAssert(
             !isZero(lastFragByteEn),
             "lastFragByteEn non-zero assertion",
             $format(
@@ -106,7 +106,7 @@ module mkSimDmaReadSrvAndReqRespPipeOut(DmaReadSrvAndReqRespPipeOut);
         isFirstReg <= True;
 
         // $display(
-        //     "time=%0d: curReq.len=%0d, totalFragCnt=%0d",
+        //     "time=%0t: curReq.len=%0d, totalFragCnt=%0d",
         //     $time, curReq.len, totalFragCnt
         // );
     endrule
@@ -134,13 +134,13 @@ module mkSimDmaReadSrvAndReqRespPipeOut(DmaReadSrvAndReqRespPipeOut);
         dmaReadRespQ.enq(resp);
         dmaReadRespOutQ.enq(resp);
 
-        dynAssert(
+        immAssert(
             !isZero(dataStream.byteEn),
             "dmaReadResp.data.byteEn non-zero assertion",
             $format("dmaReadResp.data should not have zero ByteEn, ", fshow(dataStream))
         );
         // $display(
-        //     "time=%0d: mkSimDmaReadSrvAndReqRespPipeOut response, totalFragNum=%h, dataStream=",
+        //     "time=%0t: mkSimDmaReadSrvAndReqRespPipeOut response, totalFragNum=%h, dataStream=",
         //     $time, totalFragCntReg, fshow(dataStream)
         // );
 
@@ -196,7 +196,7 @@ module mkSimDmaWriteSrvAndReqRespPipeOut(DmaWriteSrvAndReqRespPipeOut);
                 sqpn: metaData.sqpn,
                 psn : metaData.psn
             };
-            // $display("time=%0d: dmaWriteResp=", $time, fshow(dmaWriteResp));
+            // $display("time=%0t: dmaWriteResp=", $time, fshow(dmaWriteResp));
 
             dmaWriteRespQ.enq(dmaWriteResp);
             dmaWriteRespOutQ.enq(dmaWriteResp);
@@ -208,7 +208,7 @@ module mkSimDmaWriteSrvAndReqRespPipeOut(DmaWriteSrvAndReqRespPipeOut);
         dmaWriteReqQ.deq;
         dmaWriteReqOutQ.enq(dmaWriteReq);
 
-        // $display("time=%0d: dmaWriteReq=", $time, fshow(dmaWriteReq));
+        // $display("time=%0t: dmaWriteReq=", $time, fshow(dmaWriteReq));
 
         if (dmaWriteReq.dataStream.isLast) begin
             genDmaWriteResp(dmaWriteReq.metaData);
@@ -265,7 +265,7 @@ module mkFixedLenSimDataStreamPipeOut#(
             wrID     : dontCareValue
         };
         simDmaReadSrv.request.put(dmaReq);
-        // $display("time=%0d: dmaLength=%0d", $time, dmaLength);
+        // $display("time=%0t: dmaLength=%0d", $time, dmaLength);
     endrule
 
     return dataStreamPipeOutVec;
@@ -316,7 +316,7 @@ module mkTestFixedLenSimDataStreamPipeOut(Empty);
         end
 
         if (curDataStreamFrag.isLast) begin
-            dynAssert(
+            immAssert(
                 totalDmaLen == refDmaLen,
                 "dataStream length assertion @ mkTestFixedLenSimDataStreamPipeOut",
                 $format("totalDmaLen=%0d should == refDmaLen=%0d", totalDmaLen, refDmaLen)

@@ -37,7 +37,7 @@ module mkTestCntrlInVec(Empty);
         // end
         cntrl.contextRQ.setCurRespPsn(cntrl.contextRQ.getEPSN);
         // $display(
-        //     "time=%0d: cntrlVec[%0d].contextRQ.getEPSN=%h",
+        //     "time=%0t: cntrlVec[%0d].contextRQ.getEPSN=%h",
         //     $time, qpCnt, cntrl.contextRQ.getEPSN
         // );
     endrule
@@ -56,7 +56,7 @@ module mkTestCntrlInVec(Empty);
         let cntrl1 = cntrlVec[qpCnt];
         let cntrl2 = cntrlArray[qpCnt];
 
-        dynAssert(
+        immAssert(
             cntrl1.getQKEY == cntrl2.getQKEY,
             "qkey assertion @ mkTestCntrlInVec",
             $format(
@@ -64,7 +64,7 @@ module mkTestCntrlInVec(Empty);
                 cntrl1.getQKEY, cntrl2.getQKEY
             )
         );
-        dynAssert(
+        immAssert(
             cntrl1.contextRQ.getCurRespPsn == cntrl2.contextRQ.getEPSN,
             "curRespPsn assertion @ mkTestCntrlInVec",
             $format(
@@ -73,7 +73,7 @@ module mkTestCntrlInVec(Empty);
             )
         );
         // $display(
-        //     "time=%0d: cntrl1.getQKEY=%h == cntrl2.getQKEY=%h",
+        //     "time=%0t: cntrl1.getQKEY=%h == cntrl2.getQKEY=%h",
         //     $time, cntrl1.getQKEY, cntrl2.getQKEY
         // );
     endrule

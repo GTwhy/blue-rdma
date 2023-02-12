@@ -31,10 +31,10 @@ module mkCountDown#(Integer maxValue)(CountDown);
 
     method Action decr();
         cnt.decr(1);
-        // $display("time=%0d: cycles=%0d, cmp cnt=%0d", $time, cycleNumReg, cnt);
+        // $display("time=%0t: cycles=%0d, cmp cnt=%0d", $time, cycleNumReg, cnt);
 
         if (isZero(pack(cnt))) begin
-            $info("time=%0d: finished after %0d cycles", $time, cycleNumReg);
+            $info("time=%0t: finished after %0d cycles", $time, cycleNumReg);
             $finish(0);
         end
     endmethod
@@ -256,7 +256,7 @@ module mkSegmentDataStreamByPmtuAndAddPadCnt#(
                 inputDataStream.byteEn
             );
             // $display(
-            //     "time=%0d: inputDataStream.byteEn=%h, padCnt=%0d",
+            //     "time=%0t: inputDataStream.byteEn=%h, padCnt=%0d",
             //     $time, inputDataStream.byteEn, padCnt
             // );
             inputDataStream.byteEn = lastFragByteEnWithPadding;
@@ -341,7 +341,7 @@ module mkRandomLenPipeOut#(
     rule gen if (initializedReg);
         let len <- randomLen.next;
         // $display(
-        //     "time=%0d: generate random len=%0d in range(min=%0d, max=%0d)",
+        //     "time=%0t: generate random len=%0d in range(min=%0d, max=%0d)",
         //     $time, len, minLength, maxLength
         // );
         lenQ.enq(len);
@@ -372,7 +372,7 @@ module mkFixedLenHeaderMetaPipeOut#(
             hasPayload: alwaysHasPayload || unpack(headerLen[0])
         };
         headerMetaDataQ.enq(headerMetaData);
-        // $display("time=%0d: headerMetaData=", $time, fshow(headerMetaData));
+        // $display("time=%0t: headerMetaData=", $time, fshow(headerMetaData));
     endrule
 
     return resultPipeOutVec;
@@ -402,7 +402,7 @@ module mkRandomHeaderMetaPipeOut#(
     rule enq if (initializedReg);
         let headerLen <- randomHeaderLen.next;
         headerLenQ.enq(headerLen);
-        // $display("time=%0d: headerLen=%0d", $time, headerLen);
+        // $display("time=%0t: headerLen=%0d", $time, headerLen);
     endrule
 
     return resultPipeOutVec;
@@ -505,7 +505,7 @@ module mkSimGenWorkReqByOpCode#(
             qkey     : tagged Valid qkey
         };
         workReqOutQ.enq(workReq);
-        // $display("time=%0d: generate random WR=", $time, fshow(workReq));
+        // $display("time=%0t: generate random WR=", $time, fshow(workReq));
     endrule
 
     return resultPipeOutVec;
@@ -618,7 +618,7 @@ module mkGenIllegalAtomicWorkReq(PipeOut#(WorkReq));
             qkey     : tagged Invalid
         };
         workReqOutQ.enq(workReq);
-        // $display("time=%0d: generate illegal atomic WR=", $time, fshow(workReq));
+        // $display("time=%0t: generate illegal atomic WR=", $time, fshow(workReq));
     endrule
 
     return convertFifo2PipeOut(workReqOutQ);
@@ -645,13 +645,13 @@ module mkGenNormalOrDupWorkReq#(
                 pendingWorkReqPipeIn.deq;
                 dupWorkReqReg <= pendingWorkReqPipeIn.first;
                 // $display(
-                //     "time=%0d:", $time,
+                //     "time=%0t:", $time,
                 //     " normal pendingWR=", fshow(pendingWorkReqPipeIn.first)
                 // );
             end
             else begin
                 // $display(
-                //     "time=%0d:", $time,
+                //     "time=%0t:", $time,
                 //     " duplicate pendingWR=", fshow(dupWorkReqReg)
                 // );
             end
@@ -842,7 +842,7 @@ module mkPendingWorkReqPipeOut#(
                 isOnlyReqPkt: tagged Valid isOnlyReqPkt
             };
 
-            // $display("time=%0d: generates pendingWR=", $time, fshow(pendingWR));
+            // $display("time=%0t: generates pendingWR=", $time, fshow(pendingWR));
             return pendingWR;
         endactionvalue
     endfunction
@@ -892,7 +892,7 @@ module mkExistingPendingWorkReqPipeOut#(
         pendingWorkReqOutQ.enq(pendingWR);
 
         // $display(
-        //     "time=%0d: generates pendingWR=", $time, fshow(pendingWR)
+        //     "time=%0t: generates pendingWR=", $time, fshow(pendingWR)
         // );
     endrule
 
@@ -917,7 +917,7 @@ module mkSimInputPktBuf#(
 
     rule checkEmpty;
         if (isRespPkt) begin
-            dynAssert(
+            immAssert(
                 !reqPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty &&
                 !reqPktMetaDataAndPayloadPipeOut.payload.notEmpty,
                 "reqPktMetaDataAndPayloadPipeOut assertion @ mkSimInputPktBuf",
@@ -931,7 +931,7 @@ module mkSimInputPktBuf#(
             );
         end
         else begin
-            dynAssert(
+            immAssert(
                 !respPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty &&
                 !respPktMetaDataAndPayloadPipeOut.payload.notEmpty,
                 "respPktMetaDataAndPayloadPipeOut assertion @ mkSimInputPktBuf",
@@ -945,7 +945,7 @@ module mkSimInputPktBuf#(
             );
         end
 
-        dynAssert(
+        immAssert(
             !inputRdmaPktBuf.cnpPipeOut.notEmpty,
             "cnpPipeOut empty assertion @ mkTestReceiveCNP",
             $format(
@@ -962,6 +962,6 @@ endmodule
 module mkDebugSink#(PipeOut#(anytype) pipeIn)(Empty) provisos(FShow#(anytype));
    rule drain;
       pipeIn.deq;
-      $display("time=%0d: mkDebugSink drain ", $time, fshow(pipeIn.first));
+      $display("time=%0t: mkDebugSink drain ", $time, fshow(pipeIn.first));
    endrule
 endmodule

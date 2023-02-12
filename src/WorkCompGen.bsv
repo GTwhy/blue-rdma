@@ -106,7 +106,7 @@ module mkWorkCompGenSQ#(
             pendingWorkCompQ4SQ.enq(wcGenReqSQ);
 
             // $display(
-            //     "time=%0d: wcGenReqPipeInFromRespHandleInSQ.notEmpty=",
+            //     "time=%0t: wcGenReqPipeInFromRespHandleInSQ.notEmpty=",
             //     $time, fshow(wcGenReqPipeInFromRespHandleInSQ.notEmpty),
             //     ", wcGenReqSQ=", fshow(wcGenReqSQ)
             // );
@@ -142,7 +142,7 @@ module mkWorkCompGenSQ#(
             wcGenReqSQ.wcReqType == WC_REQ_TYPE_FULL_ACK &&
             (workReqNeedWorkCompSQ(wcGenReqSQ.pendingWR.wr) || cntrl.getSigAll);
 
-        dynAssert(
+        immAssert(
             isValid(maybeWorkComp),
             "maybeWorkComp assertion @ mkWorkCompGenSQ",
             $format("maybeWorkComp=", fshow(maybeWorkComp), " should be valid")
@@ -152,7 +152,7 @@ module mkWorkCompGenSQ#(
         let isCompQueueFull = False;
 
         // $display(
-        //     "time=%0d: wcGenReqSQ=", $time, fshow(wcGenReqSQ),
+        //     "time=%0t: wcGenReqSQ=", $time, fshow(wcGenReqSQ),
         //     ", needWorkCompWhenNormal=", fshow(needWorkCompWhenNormal)
         // );
 
@@ -164,7 +164,7 @@ module mkWorkCompGenSQ#(
 
                 // TODO: better error handling
                 let dmaRespPsnMatch = payloadConResp.dmaWriteResp.psn == wcGenReqSQ.triggerPSN;
-                dynAssert (
+                immAssert (
                     dmaRespPsnMatch,
                     "dmaWriteRespMatchPSN assertion @ mkWorkCompGenSQ",
                     $format(
@@ -201,7 +201,7 @@ module mkWorkCompGenSQ#(
                 wcGenReqSQ.wcReqType == WC_REQ_TYPE_PARTIAL_ACK;
             firstErrPartialAckWorkReqIdReg <= wcGenReqSQ.pendingWR.wr.id;
             // $display(
-            //     "time=%0d: hasErrWorkCompOrCompQueueFullSQ=",
+            //     "time=%0t: hasErrWorkCompOrCompQueueFullSQ=",
             //     $time, fshow(hasErrWorkCompOrCompQueueFullSQ),
             //     ", pulseHasErrFromRQ=", fshow(pulseHasErrFromRQ),
             //     ", wcGenReqSQ=", fshow(wcGenReqSQ)
@@ -214,7 +214,7 @@ module mkWorkCompGenSQ#(
         pendingWorkCompQ4SQ.deq;
 
         // TODO: use formal to check no partial ACK after NAK
-        dynAssert(
+        immAssert(
             wcGenReqSQ.wcReqType == WC_REQ_TYPE_FULL_ACK,
             "wcGenReqSQ.wcReqType assertion @ mkWorkCompGenSQ",
             $format(
@@ -224,7 +224,7 @@ module mkWorkCompGenSQ#(
         );
 
         let maybeErrFlushWC = genErrFlushWorkComp4WorkReq(cntrl, wcGenReqSQ.pendingWR.wr);
-        dynAssert(
+        immAssert(
             isValid(maybeErrFlushWC),
             "maybeErrFlushWC assertion @ mkWorkCompGenSQ",
             $format("maybeErrFlushWC=", fshow(maybeErrFlushWC), " should be valid")
@@ -237,7 +237,7 @@ module mkWorkCompGenSQ#(
             // then skip the first full ACK to the WR,
             // since the WR has generated error WC.
             isFirstErrPartialAckWorkReqReg <= False;
-            dynAssert(
+            immAssert(
                 wcGenReqSQ.pendingWR.wr.id == firstErrPartialAckWorkReqIdReg,
                 "wcGenReqSQ.pendingWR.wr.id assertion @ mkWorkCompGenSQ",
                 $format(
@@ -255,7 +255,7 @@ module mkWorkCompGenSQ#(
             isCompQueueFull = True;
         end
         // $display(
-        //     "time=%0d: flush pendingWorkCompQ4SQ, errFlushWC=",
+        //     "time=%0t: flush pendingWorkCompQ4SQ, errFlushWC=",
         //     $time, fshow(errFlushWC), ", wcGenReqSQ=", fshow(wcGenReqSQ)
         // );
     endrule
@@ -387,7 +387,7 @@ module mkWorkCompGenRQ#(
 
         if (isWorkCompSuccess) begin
             if (isLastOrOnlyReq && (isSendReq || isWriteImmReq)) begin
-                dynAssert(
+                immAssert(
                     isValid(maybeWorkComp),
                     "maybeWorkComp assertion @ mkWorkCompGenRQ",
                     $format(
@@ -412,7 +412,7 @@ module mkWorkCompGenRQ#(
 
                 // TODO: better error handling
                 let dmaRespPsnMatch = payloadConsumeResp.dmaWriteResp.psn == wcGenReqRQ.reqPSN;
-                dynAssert (
+                immAssert (
                     dmaRespPsnMatch,
                     "dmaWriteRespMatchPSN assertion @ mkWorkCompGenRQ",
                     $format(
@@ -423,7 +423,7 @@ module mkWorkCompGenRQ#(
                     )
                 );
                 // $display(
-                //     "time=%0d: payloadConsumeResp=", $time, fshow(payloadConsumeResp),
+                //     "time=%0t: payloadConsumeResp=", $time, fshow(payloadConsumeResp),
                 //     ", needWaitDmaRespWhenNormal=", fshow(needWaitDmaRespWhenNormal)
                 // );
             end
@@ -442,7 +442,7 @@ module mkWorkCompGenRQ#(
             end
         end
         // $display(
-        //     "time=%0d: wcGenReqRQ=", $time, fshow(wcGenReqRQ),
+        //     "time=%0t: wcGenReqRQ=", $time, fshow(wcGenReqRQ),
         //     ", maybeWorkComp=", fshow(maybeWorkComp),
         //     ", needWaitDmaRespWhenNormal=", fshow(needWaitDmaRespWhenNormal)
         // );
@@ -460,7 +460,7 @@ module mkWorkCompGenRQ#(
 
         let maybeErrFlushWC = genErrFlushWorkComp4WorkCompGenReqRQ(cntrl, wcGenReqRQ);
         if (maybeErrFlushWC matches tagged Valid .errFlushWC) begin
-            dynAssert(
+            immAssert(
                 isSendReq || isWriteImmReq,
                 "isSendReq or isWriteImmReq assertion @ mkWorkCompGenRQ",
                 $format(
@@ -493,7 +493,7 @@ module mkWorkCompGenRQ#(
         end
 
         // $display(
-        //     "time=%0d: flush wcGenReqPipeInFromRQ, wcGenReqRQ=",
+        //     "time=%0t: flush wcGenReqPipeInFromRQ, wcGenReqRQ=",
         //     $time, fshow(wcGenReqRQ),
         //     ", maybeErrFlushWC=", fshow(maybeErrFlushWC)
         // );

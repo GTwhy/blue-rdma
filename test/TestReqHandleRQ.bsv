@@ -25,7 +25,7 @@ function Rules genNoPendingWorkReqOutRule(PipeOut#(PendingWorkReq) pendingWorkRe
     return (
         rules
             rule noPendingWorkReqOut;
-                dynAssert(
+                immAssert(
                     !pendingWorkReqPipeOut.notEmpty,
                     "pendingWorkReqPipeOut empty assertion @ genNoPendingWorkReqOutRule",
                     $format(
@@ -163,7 +163,7 @@ module mkTestReqHandleNormalCase(Empty);
         let sendWritePayloadDataStream = sendWriteReqPayloadPipeOut.first;
         sendWriteReqPayloadPipeOut.deq;
 
-        dynAssert(
+        immAssert(
             sendWritePayloadDataStream == sendWritePayloadDataStreamRef,
             "sendWritePayloadDataStream assertion @ mkTestReqHandleNormalCase",
             $format(
@@ -174,7 +174,7 @@ module mkTestReqHandleNormalCase(Empty);
             )
         );
         // $display(
-        //     "time=%0d: sendWritePayloadDataStream=", $time,
+        //     "time=%0t: sendWritePayloadDataStream=", $time,
         //     fshow(sendWritePayloadDataStream),
         //     " should == sendWritePayloadDataStreamRef=",
         //     fshow(sendWritePayloadDataStreamRef)
@@ -186,7 +186,7 @@ module mkTestReqHandleNormalCase(Empty);
     //     sendWriteReqPayloadPipeOut.deq;
 
     //     $display(
-    //         "time=%0d: sendWritePayloadDataStreamRef.isFirst=",
+    //         "time=%0t: sendWritePayloadDataStreamRef.isFirst=",
     //         $time, fshow(sendWritePayloadDataStreamRef.isFirst),
     //         ", sendWritePayloadDataStreamRef.isLast=",
     //         fshow(sendWritePayloadDataStreamRef.isLast),
@@ -202,7 +202,7 @@ module mkTestReqHandleNormalCase(Empty);
     //     let wc = workCompPipeOut4RecvReq.first;
     //     workCompPipeOut4RecvReq.deq;
 
-    //     dynAssert(
+    //     immAssert(
     //         wc.id == rr.id,
     //         "WC ID assertion @ mkTestReqHandleNormalCase",
     //         $format(
@@ -211,7 +211,7 @@ module mkTestReqHandleNormalCase(Empty);
     //         )
     //     );
 
-    //     dynAssert(
+    //     immAssert(
     //         wc.status == IBV_WC_SUCCESS,
     //         "WC status assertion @ mkTestReqHandleNormalCase",
     //         $format(
@@ -225,21 +225,21 @@ module mkTestReqHandleNormalCase(Empty);
         let pendingWR = pendingWorkReqPipeOut4WorkComp.first;
         pendingWorkReqPipeOut4WorkComp.deq;
 
-        // $display("time=%0d: pendingWR=", $time, fshow(pendingWR));
+        // $display("time=%0t: pendingWR=", $time, fshow(pendingWR));
 
         if (workReqNeedRecvReq(pendingWR.wr.opcode)) begin
             let wc = workCompPipeOut4WorkReq.first;
             workCompPipeOut4WorkReq.deq;
 
-            dynAssert(
+            immAssert(
                 workCompMatchWorkReqInRQ(wc, pendingWR.wr),
                 "workCompMatchWorkReqInRQ assertion @ mkTestReqHandleNormalCase",
                 $format("WC=", fshow(wc), " not match WR=", fshow(pendingWR.wr))
             );
-            // $display("time=%0d: WC=", $time, fshow(wc));
+            // $display("time=%0t: WC=", $time, fshow(wc));
 
             if (workReqHasImmDt(pendingWR.wr.opcode)) begin
-                dynAssert(
+                immAssert(
                     isValid(wc.immDt) && isValid(pendingWR.wr.immDt) &&
                     !isValid(wc.rkey2Inv) && !isValid(pendingWR.wr.rkey2Inv),
                     "WC has ImmDT assertion @ mkTestReqHandleNormalCase",
@@ -252,7 +252,7 @@ module mkTestReqHandleNormalCase(Empty);
 
                 let wrImmDt = unwrapMaybe(pendingWR.wr.immDt);
                 let wcImmDt = unwrapMaybe(wc.immDt);
-                dynAssert(
+                immAssert(
                     wrImmDt == wcImmDt,
                     "wc.immDt equal assertion @ mkTestReqHandleNormalCase",
                     $format(
@@ -263,7 +263,7 @@ module mkTestReqHandleNormalCase(Empty);
                 );
             end
             else if (workReqHasInv(pendingWR.wr.opcode)) begin
-                dynAssert(
+                immAssert(
                     !isValid(wc.immDt) && !isValid(pendingWR.wr.immDt) &&
                     isValid(wc.rkey2Inv) && isValid(pendingWR.wr.rkey2Inv),
                     "WC has IETH assertion @ mkTestReqHandleNormalCase",
@@ -273,7 +273,7 @@ module mkTestReqHandleNormalCase(Empty);
                         fshow(wc.immDt), " should be invalid"
                     )
                 );
-                dynAssert(
+                immAssert(
                     unwrapMaybe(pendingWR.wr.rkey2Inv) == unwrapMaybe(wc.rkey2Inv),
                     "wc.rkey2Inv equal assertion @ mkTestReqHandleNormalCase",
                     $format(
@@ -284,7 +284,7 @@ module mkTestReqHandleNormalCase(Empty);
                 );
             end
             else begin
-                dynAssert(
+                immAssert(
                     !isValid(wc.immDt) &&
                     !isValid(wc.rkey2Inv),
                     "WC has no ImmDT or IETH assertion @ mkTestReqHandleNormalCase",
@@ -315,7 +315,7 @@ module mkTestReqHandleNormalCase(Empty);
 
             if (rdmaRespHasAETH(bth.opcode)) begin
                 let aeth = extractAETH(zeroExtendLSB(rdmaRespDataStream.data));
-                dynAssert(
+                immAssert(
                     aeth.code == AETH_CODE_ACK,
                     "aeth.code assertion @ mkTestReqHandleNormalCase",
                     $format(
@@ -325,13 +325,13 @@ module mkTestReqHandleNormalCase(Empty);
                 );
 
                 // $display(
-                //     "time=%0d: response bth=", $time, fshow(bth),
+                //     "time=%0t: response bth=", $time, fshow(bth),
                 //     ", aeth=", fshow(aeth)
                 // );
             end
             else begin
-                // $display("time=%0d: response bth=", $time, fshow(bth));
-                // $display("time=%0d: pendingWR=", $time, fshow(pendingWR));
+                // $display("time=%0t: response bth=", $time, fshow(bth));
+                // $display("time=%0t: pendingWR=", $time, fshow(pendingWR));
             end
         end
     endrule
@@ -528,7 +528,7 @@ module mkTestReqHandleNormalAndDupReqCase#(Bool normalOrDupReq)(Empty);
     //     sendWriteReqPayloadPipeOut.deq;
 
     //     $display(
-    //         "time=%0d: sendWritePayloadDataStreamRef.isFirst=",
+    //         "time=%0t: sendWritePayloadDataStreamRef.isFirst=",
     //         $time, fshow(sendWritePayloadDataStreamRef.isFirst),
     //         ", sendWritePayloadDataStreamRef.isLast=",
     //         fshow(sendWritePayloadDataStreamRef.isLast),
@@ -545,7 +545,7 @@ module mkTestReqHandleNormalAndDupReqCase#(Bool normalOrDupReq)(Empty);
     //     let wc = workCompPipeOut4RecvReq.first;
     //     workCompPipeOut4RecvReq.deq;
 
-    //     dynAssert(
+    //     immAssert(
     //         wc.id == rr.id,
     //         "WC ID assertion @ mkTestReqHandleNormalCase",
     //         $format(
@@ -554,7 +554,7 @@ module mkTestReqHandleNormalAndDupReqCase#(Bool normalOrDupReq)(Empty);
     //         )
     //     );
 
-    //     dynAssert(
+    //     immAssert(
     //         wc.status == IBV_WC_SUCCESS,
     //         "WC status assertion @ mkTestReqHandleNormalCase",
     //         $format(
@@ -571,7 +571,7 @@ module mkTestReqHandleNormalAndDupReqCase#(Bool normalOrDupReq)(Empty);
         let sendWritePayloadDataStream = sendWriteReqPayloadPipeOut.first;
         sendWriteReqPayloadPipeOut.deq;
 
-        dynAssert(
+        immAssert(
             sendWritePayloadDataStream == sendWritePayloadDataStreamRef,
             "sendWritePayloadDataStream assertion @ mkTestReqHandleNormalCase",
             $format(
@@ -582,7 +582,7 @@ module mkTestReqHandleNormalAndDupReqCase#(Bool normalOrDupReq)(Empty);
             )
         );
         // $display(
-        //     "time=%0d: sendWritePayloadDataStream=", $time,
+        //     "time=%0t: sendWritePayloadDataStream=", $time,
         //     fshow(sendWritePayloadDataStream),
         //     " should == sendWritePayloadDataStreamRef=",
         //     fshow(sendWritePayloadDataStreamRef)
@@ -595,21 +595,21 @@ module mkTestReqHandleNormalAndDupReqCase#(Bool normalOrDupReq)(Empty);
         let isNormalReq = normalOrDupReqSelPipeOut4WorkComp.first;
         normalOrDupReqSelPipeOut4WorkComp.deq;
 
-        // $display("time=%0d: pendingWR=", $time, fshow(pendingWR));
+        // $display("time=%0t: pendingWR=", $time, fshow(pendingWR));
 
         if (isNormalReq && workReqNeedRecvReq(pendingWR.wr.opcode)) begin
             let wc = workCompPipeOut4WorkReq.first;
             workCompPipeOut4WorkReq.deq;
 
-            dynAssert(
+            immAssert(
                 workCompMatchWorkReqInRQ(wc, pendingWR.wr),
                 "workCompMatchWorkReqInRQ assertion @ mkTestReqHandleNormalCase",
                 $format("WC=", fshow(wc), " not match WR=", fshow(pendingWR.wr))
             );
-            // $display("time=%0d: WC=", $time, fshow(wc));
+            // $display("time=%0t: WC=", $time, fshow(wc));
 
             if (workReqHasImmDt(pendingWR.wr.opcode)) begin
-                dynAssert(
+                immAssert(
                     isValid(wc.immDt) && isValid(pendingWR.wr.immDt) &&
                     !isValid(wc.rkey2Inv) && !isValid(pendingWR.wr.rkey2Inv),
                     "WC has ImmDT assertion @ mkTestReqHandleNormalCase",
@@ -622,7 +622,7 @@ module mkTestReqHandleNormalAndDupReqCase#(Bool normalOrDupReq)(Empty);
 
                 let wrImmDt = unwrapMaybe(pendingWR.wr.immDt);
                 let wcImmDt = unwrapMaybe(wc.immDt);
-                dynAssert(
+                immAssert(
                     wrImmDt == wcImmDt,
                     "wc.immDt equal assertion @ mkTestReqHandleNormalCase",
                     $format(
@@ -633,7 +633,7 @@ module mkTestReqHandleNormalAndDupReqCase#(Bool normalOrDupReq)(Empty);
                 );
             end
             else if (workReqHasInv(pendingWR.wr.opcode)) begin
-                dynAssert(
+                immAssert(
                     !isValid(wc.immDt) && !isValid(pendingWR.wr.immDt) &&
                     isValid(wc.rkey2Inv) && isValid(pendingWR.wr.rkey2Inv),
                     "WC has IETH assertion @ mkTestReqHandleNormalCase",
@@ -643,7 +643,7 @@ module mkTestReqHandleNormalAndDupReqCase#(Bool normalOrDupReq)(Empty);
                         fshow(wc.immDt), " should be invalid"
                     )
                 );
-                dynAssert(
+                immAssert(
                     unwrapMaybe(pendingWR.wr.rkey2Inv) == unwrapMaybe(wc.rkey2Inv),
                     "wc.rkey2Inv equal assertion @ mkTestReqHandleNormalCase",
                     $format(
@@ -654,7 +654,7 @@ module mkTestReqHandleNormalAndDupReqCase#(Bool normalOrDupReq)(Empty);
                 );
             end
             else begin
-                dynAssert(
+                immAssert(
                     !isValid(wc.immDt) &&
                     !isValid(wc.rkey2Inv),
                     "WC has no ImmDT or IETH assertion @ mkTestReqHandleNormalCase",
@@ -687,7 +687,7 @@ module mkTestReqHandleNormalAndDupReqCase#(Bool normalOrDupReq)(Empty);
 
             if (rdmaRespHasAETH(bth.opcode)) begin
                 let aeth = extractAETH(zeroExtendLSB(rdmaRespDataStream.data));
-                dynAssert(
+                immAssert(
                     aeth.code == AETH_CODE_ACK,
                     "aeth.code assertion @ mkTestReqHandleNormalCase",
                     $format(
@@ -697,13 +697,13 @@ module mkTestReqHandleNormalAndDupReqCase#(Bool normalOrDupReq)(Empty);
                 );
 
                 // $display(
-                //     "time=%0d: response bth=", $time, fshow(bth),
+                //     "time=%0t: response bth=", $time, fshow(bth),
                 //     ", aeth=", fshow(aeth)
                 // );
             end
             else begin
-                // $display("time=%0d: response bth=", $time, fshow(bth));
-                // $display("time=%0d: pendingWR=", $time, fshow(pendingWR));
+                // $display("time=%0t: response bth=", $time, fshow(bth));
+                // $display("time=%0t: pendingWR=", $time, fshow(pendingWR));
             end
 
             if (isAtomicWR) begin
@@ -712,7 +712,7 @@ module mkTestReqHandleNormalAndDupReqCase#(Bool normalOrDupReq)(Empty);
                     normalAtomicRespOrigReg <= atomicAckEth.orig;
                 end
                 else begin
-                    dynAssert(
+                    immAssert(
                         atomicAckEth.orig == normalAtomicRespOrigReg,
                         "atomicAckEth.orig assertion @ mkTestReqHandleNormalCase",
                         $format(
@@ -721,7 +721,7 @@ module mkTestReqHandleNormalAndDupReqCase#(Bool normalOrDupReq)(Empty);
                         )
                     );
                     // $display(
-                    //     "time=%0d:", $time,
+                    //     "time=%0t:", $time,
                     //     " atomicAckEth.orig=%h", atomicAckEth.orig,
                     //     " should == normalAtomicRespOrigReg=%h", normalAtomicRespOrigReg
                     // );
@@ -876,7 +876,7 @@ module mkTestReqHandleAbnormalCase#(ReqHandleErrType errType)(Empty);
         if (firstErrRdmaRespGenReg) begin
             pendingWorkReqPipeOut4Resp.deq;
 
-            dynAssert(
+            immAssert(
                 !dut.rdmaRespDataStreamPipeOut.notEmpty,
                 "dut.rdmaRespDataStreamPipeOut.notEmpty assertion @ mkTestReqHandleAbnormalCase",
                 $format(
@@ -905,7 +905,7 @@ module mkTestReqHandleAbnormalCase#(ReqHandleErrType errType)(Empty);
                     if (aeth.code != AETH_CODE_ACK) begin
                         firstErrRdmaRespGenReg <= True;
 
-                        dynAssert(
+                        immAssert(
                             rdmaRespDataStream.isLast,
                             "rdmaRespDataStream.isLast assertion @ mkTestReqHandleAbnormalCase",
                             $format(
@@ -915,7 +915,7 @@ module mkTestReqHandleAbnormalCase#(ReqHandleErrType errType)(Empty);
                         );
 
                         if (errType == REQ_HANDLE_PERM_CHECK_FAIL) begin
-                            dynAssert(
+                            immAssert(
                                 aeth.code == AETH_CODE_NAK && aeth.value == zeroExtend(pack(AETH_NAK_RMT_ACC)),
                                 "aeth.code assertion @ mkTestReqHandleAbnormalCase",
                                 $format(
@@ -926,7 +926,7 @@ module mkTestReqHandleAbnormalCase#(ReqHandleErrType errType)(Empty);
                             );
                         end
                         else begin
-                            dynAssert(
+                            immAssert(
                                 aeth.code == AETH_CODE_NAK && aeth.value == zeroExtend(pack(AETH_NAK_INV_RD)),
                                 "aeth.code assertion @ mkTestReqHandleAbnormalCase",
                                 $format(
@@ -937,7 +937,7 @@ module mkTestReqHandleAbnormalCase#(ReqHandleErrType errType)(Empty);
                             );
                         end
                         // $display(
-                        //     "time=%0d: response bth=", $time, fshow(bth),
+                        //     "time=%0t: response bth=", $time, fshow(bth),
                         //     ", aeth=", fshow(aeth)
                         // );
                     end
@@ -954,7 +954,7 @@ module mkTestReqHandleAbnormalCase#(ReqHandleErrType errType)(Empty);
         recvReqBuf4Ref.deq;
 
         if (firstErrWorkCompGenReg) begin
-            dynAssert(
+            immAssert(
                 workComp.status == IBV_WC_WR_FLUSH_ERR,
                 "WC status assertion @ mkTestReqHandleAbnormalCase",
                 $format(
@@ -968,7 +968,7 @@ module mkTestReqHandleAbnormalCase#(ReqHandleErrType errType)(Empty);
             firstErrWorkCompGenReg <= True;
         end
 
-        dynAssert(
+        immAssert(
             workComp.id == recvReq.id,
             "WC ID assertion @ mkTestReqHandleAbnormalCase",
             $format(
@@ -976,7 +976,7 @@ module mkTestReqHandleAbnormalCase#(ReqHandleErrType errType)(Empty);
                 workComp.id, recvReq.id, fshow(firstErrWorkCompGenReg)
             )
         );
-        // $display("time=%0d: WC status=", $time, fshow(workComp.status));
+        // $display("time=%0t: WC status=", $time, fshow(workComp.status));
     endrule
 endmodule
 
@@ -1112,7 +1112,7 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
     rule noErrWorkComp;
         let hasWorkCompErrStatusRQ = workCompGenRQ.workCompStatusPipeOutRQ.notEmpty;
         // Check workCompGenRQ.wcStatusQ4SQ has no error WC status
-        dynAssert(
+        immAssert(
             !hasWorkCompErrStatusRQ,
             "hasWorkCompErrStatusRQ assertion @ mkTestReqHandleRetryCase",
             $format(
@@ -1128,7 +1128,7 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
 
         let startPSN = unwrapMaybe(pendingWR.startPSN);
         let endPSN   = unwrapMaybe(pendingWR.endPSN);
-        dynAssert(
+        immAssert(
             startPSN != endPSN,
             "Pending WR PSN assertion @ mkTestReqHandleRetryCase",
             $format(
@@ -1142,7 +1142,7 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
 
         discardFirstReqPktReg <= !rnrOrSeqErr;
         retryTestState <= TEST_REQ_HANDLE_RETRY_RESP_CHECK;
-        // $display("time=%0d: retryTestState=", $time, fshow(retryTestState));
+        // $display("time=%0t: retryTestState=", $time, fshow(retryTestState));
     endrule
 
     rule filterReqPkt4SeqErr if (retryTestState != TEST_REQ_HANDLE_RETRY_REQ_GEN);
@@ -1165,7 +1165,7 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
         dut.rdmaRespDataStreamPipeOut.deq;
 
         let bth = extractBTH(zeroExtendLSB(rdmaRespDataStream.data));
-        dynAssert(
+        immAssert(
             bth.psn == startPSN,
             "bth.psn assertion @ mkTestReqHandleRetryCase",
             $format(
@@ -1174,7 +1174,7 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
             )
         );
 
-        dynAssert(
+        immAssert(
             rdmaRespDataStream.isFirst && rdmaRespDataStream.isLast,
             "rdmaRespDataStream assertion @ mkTestReqHandleRetryCase",
             $format(
@@ -1185,7 +1185,7 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
         );
 
         let hasAETH = rdmaRespHasAETH(bth.opcode);
-        dynAssert(
+        immAssert(
             hasAETH,
             "hasAETH assertion @ mkTestReqHandleRetryCase",
             $format(
@@ -1200,7 +1200,7 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
             rnrTestWaitCntReg <= fromInteger(getRnrTimeOutValue(aeth.value));
             retryTestState      <= TEST_REQ_HANDLE_RETRY_RNR_WAIT;
 
-            dynAssert(
+            immAssert(
                 aeth.code == AETH_CODE_RNR,
                 "aeth.code assertion @ mkTestReqHandleRetryCase",
                 $format(
@@ -1212,7 +1212,7 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
         else begin
             retryTestState <= TEST_REQ_HANDLE_RETRY_REQ_AGAIN;
 
-            dynAssert(
+            immAssert(
                 aeth.code == AETH_CODE_NAK && aeth.value == zeroExtend(pack(AETH_NAK_SEQ_ERR)),
                 "aeth.code assertion @ mkTestReqHandleRetryCase",
                 $format(
@@ -1223,7 +1223,7 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
         end
 
         // $display(
-        //     "time=%0d:", $time,
+        //     "time=%0t:", $time,
         //     " retryTestState=", fshow(retryTestState),
         //     ", response bth=", fshow(bth),
         //     ", aeth=", fshow(aeth)
@@ -1237,7 +1237,7 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
         else begin
             rnrTestWaitCntReg <= rnrTestWaitCntReg - 1;
         end
-        // $display("time=%0d: retryTestState=", $time, fshow(retryTestState));
+        // $display("time=%0t: retryTestState=", $time, fshow(retryTestState));
     endrule
 
     rule retryReq if (retryTestState == TEST_REQ_HANDLE_RETRY_REQ_AGAIN);
@@ -1250,7 +1250,7 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
         recvReqQ4Cmp.enq(recvReq);
 
         retryTestState <= TEST_REQ_HANDLE_RETRY_CLEAR;
-        // $display("time=%0d: retryTestState=", $time, fshow(retryTestState));
+        // $display("time=%0t: retryTestState=", $time, fshow(retryTestState));
     endrule
 
     rule retryClear if (retryTestState == TEST_REQ_HANDLE_RETRY_CLEAR);
@@ -1262,7 +1262,7 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
         dut.rdmaRespDataStreamPipeOut.deq;
 
         let bth = extractBTH(zeroExtendLSB(rdmaRespDataStream.data));
-        dynAssert(
+        immAssert(
             bth.psn == endPSN,
             "bth.psn assertion @ mkTestReqHandleRetryCase",
             $format(
@@ -1271,7 +1271,7 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
             )
         );
 
-        dynAssert(
+        immAssert(
             rdmaRespDataStream.isFirst && rdmaRespDataStream.isLast,
             "rdmaRespDataStream assertion @ mkTestReqHandleRetryCase",
             $format(
@@ -1282,7 +1282,7 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
         );
 
         let hasAETH = rdmaRespHasAETH(bth.opcode);
-        dynAssert(
+        immAssert(
             hasAETH,
             "hasAETH assertion @ mkTestReqHandleRetryCase",
             $format(
@@ -1293,7 +1293,7 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
         );
 
         let aeth = extractAETH(zeroExtendLSB(rdmaRespDataStream.data));
-        dynAssert(
+        immAssert(
             aeth.code == AETH_CODE_ACK,
             "aeth.code assertion @ mkTestReqHandleRetryCase",
             $format(
@@ -1304,7 +1304,7 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
 
         retryTestState <= TEST_REQ_HANDLE_RETRY_DONE_CHECK;
         // $display(
-        //     "time=%0d:", $time,
+        //     "time=%0t:", $time,
         //     " retryTestState=", fshow(retryTestState),
         //     ", response bth=", fshow(bth),
         //     ", aeth=", fshow(aeth)
@@ -1318,7 +1318,7 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
         let recvReq = recvReqQ4Cmp.first;
         recvReqQ4Cmp.deq;
 
-        dynAssert(
+        immAssert(
             workComp.id == recvReq.id,
             "WC ID assertion @ mkTestReqHandleRetryCase",
             $format(
@@ -1328,6 +1328,6 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
         );
 
         retryTestState <= TEST_REQ_HANDLE_RETRY_REQ_GEN;
-        // $display("time=%0d: retryTestState=", $time, fshow(retryTestState));
+        // $display("time=%0t: retryTestState=", $time, fshow(retryTestState));
     endrule
 endmodule

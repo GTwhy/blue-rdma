@@ -127,13 +127,13 @@ module mkTestRespHandleNormalCase(Empty);
             let workComp = workCompPipeOut.first;
             workCompPipeOut.deq;
 
-            dynAssert(
+            immAssert(
                 workCompMatchWorkReqInSQ(workComp, pendingWR.wr),
                 "workCompMatchWorkReqInSQ assertion @ mkTestRespHandleSQ",
                 $format("WC=", fshow(workComp), " not match WR=", fshow(pendingWR.wr))
             );
             // $display(
-            //     "time=%0d: WC=", $time, fshow(workComp), " not match WR=", fshow(pendingWR.wr)
+            //     "time=%0t: WC=", $time, fshow(workComp), " not match WR=", fshow(pendingWR.wr)
             // );
         end
     endrule
@@ -149,7 +149,7 @@ module mkTestRespHandleNormalCase(Empty);
             let refDataStream = segSimDmaReadSrvDataStreamPipeOut.first;
             segSimDmaReadSrvDataStreamPipeOut.deq;
 
-            dynAssert(
+            immAssert(
                 payloadDataStream == refDataStream,
                 "payloadDataStream assertion @ mkTestRespHandleNormalCase",
                 $format(
@@ -171,7 +171,7 @@ module mkTestRespHandleNormalCase(Empty);
             // No DMA read or write when generate send/write/zero-length read responses
             rdmaRespAndHeaderPipeOut.respHeader.deq;
         end
-        // $display("time=%0d: respHeader=", $time, fshow(respHeader));
+        // $display("time=%0t: respHeader=", $time, fshow(respHeader));
     endrule
 endmodule
 */
@@ -219,7 +219,7 @@ module mkSimGenNormalOrErrOrRetryRdmaResp#(
                 else begin
                     pipeIn2.deq;
                 end
-                // $display("time=%0d: sel=", $time, fshow(sel));
+                // $display("time=%0t: sel=", $time, fshow(sel));
             endmethod
 
             method Bool notEmpty();
@@ -431,17 +431,17 @@ module mkTestRespHandleNormalOrDupOrGhostRespCase#(
             let workComp = workCompPipeOut.first;
             workCompPipeOut.deq;
 
-            dynAssert(
+            immAssert(
                 workCompMatchWorkReqInSQ(workComp, pendingWR.wr),
                 "workCompMatchWorkReqInSQ assertion @ mkTestRespHandleSQ",
                 $format("WC=", fshow(workComp), " not match WR=", fshow(pendingWR.wr))
             );
             // $display(
-            //     "time=%0d: WC=", $time, fshow(workComp), " match WR=", fshow(pendingWR.wr)
+            //     "time=%0t: WC=", $time, fshow(workComp), " match WR=", fshow(pendingWR.wr)
             // );
         end
         // $display(
-        //     "time=%0d:", $time, ", pendingWR ID=%h", pendingWR.wr.id
+        //     "time=%0t:", $time, ", pendingWR ID=%h", pendingWR.wr.id
         // );
     endrule
 
@@ -470,7 +470,7 @@ module mkTestRespHandleNormalOrDupOrGhostRespCase#(
                     let payloadDataStream = readAtomicRespPayloadPipeOut.first;
                     readAtomicRespPayloadPipeOut.deq;
 
-                    dynAssert(
+                    immAssert(
                         payloadDataStream == refDataStream,
                         "payloadDataStream assertion @ mkTestRespHandleNormalCase",
                         $format(
@@ -505,7 +505,7 @@ module mkTestRespHandleNormalOrDupOrGhostRespCase#(
                 normalOrDupReqSelPipeOut4ReadResp.deq;
             end
         end
-        // $display("time=%0d: respHeader=", $time, fshow(respHeader));
+        // $display("time=%0t: respHeader=", $time, fshow(respHeader));
     endrule
 endmodule
 
@@ -636,13 +636,13 @@ module mkTestRespHandleAbnormalCase#(TestRespHandleRespType respType)(Empty);
                 firstErrWorkCompGenReg <= True;
             end
 
-            dynAssert(
+            immAssert(
                 workCompMatchWorkReqInSQ(workComp, pendingWR.wr),
                 "workCompMatchWorkReqInSQ assertion @ mkTestRespHandleAbnormalCase",
                 $format("WC=", fshow(workComp), " not match WR=", fshow(pendingWR.wr))
             );
             // $display(
-            //     "time=%0d: WC=", $time, fshow(workComp), " not match WR=", fshow(pendingWR.wr)
+            //     "time=%0t: WC=", $time, fshow(workComp), " not match WR=", fshow(pendingWR.wr)
             // );
         end
     endrule
@@ -825,7 +825,7 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
 
         retryTestState  <= TEST_RESP_HANDLE_FOLLOWING_RESP_GEN;
         $display(
-            "time=%0d:", $time, " retry response for WR=", fshow(pendingWR)
+            "time=%0t:", $time, " retry response for WR=", fshow(pendingWR)
         );
     endrule
 
@@ -843,7 +843,7 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
         // to be flushed
         followingAckCnt <= fromInteger(valueOf(FollowingAckNum) - 2);
         $display(
-            "time=%0d:", $time,
+            "time=%0t:", $time,
             " normal response to be flushed for following WR=", fshow(pendingWR)
         );
     endrule
@@ -865,7 +865,7 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
             followingAckCnt.decr(1);
         end
         $display(
-            "time=%0d:", $time,
+            "time=%0t:", $time,
             " other following WR=", fshow(pendingWR)
         );
     endrule
@@ -877,7 +877,7 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
         retryHandler.retryWorkReqPipeOut.deq;
 
         let workReqID = retryRestartWR.wr.id;
-        dynAssert(
+        immAssert(
             retryWorkReqIdReg == workReqID,
             "retryWorkReqIdReg assertion @ mkTestRespHandleRetryCase",
             $format(
@@ -890,7 +890,7 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
 
         retryTestState <= TEST_RESP_HANDLE_WAIT_RETRY_RESTART;
         $display(
-            "time=%0d:", $time,
+            "time=%0t:", $time,
             " retry response again for WR=%h", retryRestartWR.wr.id
         );
     endrule
@@ -901,14 +901,14 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
 
         if (workReqID == retryWorkReqIdReg) begin
             $display(
-                "time=%0d:", $time,
+                "time=%0t:", $time,
                 " retry restart for WR=%h", retryWorkReqIdReg
             );
             retryTestState <= TEST_RESP_HANDLE_NORMAL_RESP_GEN;
         end
         else begin
             // $display(
-            //     "time=%0d:", $time,
+            //     "time=%0t:", $time,
             //     " wait retry restart for WR ID=%h", retryWorkReqIdReg,
             //     ", but current WR ID=%h", workReqID
             // );
@@ -920,7 +920,7 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
         retryHandler.retryWorkReqPipeOut.deq;
 
         let workReqID = retryPendingWR.wr.id;
-        dynAssert(
+        immAssert(
             retryWorkReqIdReg == workReqID,
             "retryWorkReqIdReg assertion @ mkTestRespHandleRetryCase",
             $format(
@@ -934,7 +934,7 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
         retryTestState  <= TEST_RESP_HANDLE_FOLLOWING_NORMAL_RESP_GEN;
         followingAckCnt <= fromInteger(valueOf(FollowingAckNum) - 1);
         $display(
-            "time=%0d:", $time, " normal response for WR=%h", retryPendingWR.wr.id
+            "time=%0t:", $time, " normal response for WR=%h", retryPendingWR.wr.id
         );
     endrule
 
@@ -953,7 +953,7 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
             followingAckCnt.decr(1);
         end
         $display(
-            "time=%0d:", $time,
+            "time=%0t:", $time,
             " normal response for following WR=%h", followingPendingWR.wr.id
         );
     endrule
@@ -966,7 +966,7 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
             let workComp = workCompPipeOut.first;
             workCompPipeOut.deq;
 
-            dynAssert(
+            immAssert(
                 workComp.status == IBV_WC_SUCCESS,
                 "workComp.status assertion @ mkTestRespHandleRetryCase",
                 $format(
@@ -974,13 +974,13 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
                     " should == IBV_WC_SUCCESS")
             );
 
-            dynAssert(
+            immAssert(
                 workCompMatchWorkReqInSQ(workComp, pendingWR.wr),
                 "workCompMatchWorkReqInSQ assertion @ mkTestRespHandleRetryCase",
                 $format("WC=", fshow(workComp), " not match WR=", fshow(pendingWR.wr))
             );
             // $display(
-            //     "time=%0d: WC=", $time, fshow(workComp), " v.s. WR=", fshow(pendingWR.wr)
+            //     "time=%0t: WC=", $time, fshow(workComp), " v.s. WR=", fshow(pendingWR.wr)
             // );
         end
         countDown.decr;

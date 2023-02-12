@@ -83,7 +83,7 @@ module mkTestWorkCompGenSQ#(Bool isNormalCase)(Empty);
             if (isNormalCase) begin
                 payloadConRespQ.enq(payloadConResp);
                 // $display(
-                //     "time=%0d: pendingWR=", $time, fshow(pendingWR),
+                //     "time=%0t: pendingWR=", $time, fshow(pendingWR),
                 //     " payloadConResp=", fshow(payloadConResp)
                 // );
             end
@@ -112,7 +112,7 @@ module mkTestWorkCompGenSQ#(Bool isNormalCase)(Empty);
             pendingWorkReqPipeOut4Ref.enq(pendingWR);
 
             // $display(
-            //     "time=%0d: submit to workCompGen pendingWR=",
+            //     "time=%0t: submit to workCompGen pendingWR=",
             //     $time, fshow(pendingWR)
             // );
         end
@@ -125,14 +125,14 @@ module mkTestWorkCompGenSQ#(Bool isNormalCase)(Empty);
         let workCompSQ = workCompPipeOut.first;
         workCompPipeOut.deq;
 
-        dynAssert(
+        immAssert(
             workCompMatchWorkReqInSQ(workCompSQ, pendingWR.wr),
             "workCompMatchWorkReqInSQ assertion @ mkTestWorkCompGenSQ",
             $format("WC=", fshow(workCompSQ), " not match WR=", fshow(pendingWR.wr))
         );
 
         let expectedWorkCompStatus = isNormalCase ? IBV_WC_SUCCESS : IBV_WC_WR_FLUSH_ERR;
-        dynAssert(
+        immAssert(
             workCompSQ.status == expectedWorkCompStatus,
             "workCompSQ.status assertion @ mkTestWorkCompGenSQ",
             $format(
@@ -142,7 +142,7 @@ module mkTestWorkCompGenSQ#(Bool isNormalCase)(Empty);
 
         countDown.decr;
         // $display(
-        //     "time=%0d: WC=", $time, fshow(workCompSQ), " not match WR=", fshow(pendingWR.wr)
+        //     "time=%0t: WC=", $time, fshow(workCompSQ), " not match WR=", fshow(pendingWR.wr)
         // );
     endrule
 endmodule
@@ -206,7 +206,7 @@ module mkTestWorkCompGenRQ#(Bool isNormalCase)(Empty);
         let wcStatus = dut.workCompStatusPipeOutRQ.first;
         dut.workCompStatusPipeOutRQ.deq;
 
-        dynAssert(
+        immAssert(
             wcStatus != IBV_WC_SUCCESS,
             "wcStatus assertion @ mkTestWorkCompGenRQ",
             $format("wcStatus=", fshow(wcStatus), " should not be success")
@@ -271,7 +271,7 @@ module mkTestWorkCompGenRQ#(Bool isNormalCase)(Empty);
 
             workCompGenReqQ4RQ.enq(workCompReq);
 
-            // $display("time=%0d: workCompReq=", $time, fshow(workCompReq));
+            // $display("time=%0t: workCompReq=", $time, fshow(workCompReq));
         end
     endrule
 
@@ -284,7 +284,7 @@ module mkTestWorkCompGenRQ#(Bool isNormalCase)(Empty);
         let workCompRQ = dut.workCompPipeOut.first;
         dut.workCompPipeOut.deq;
 
-        dynAssert(
+        immAssert(
             workCompRQ.id == recvReqID,
             "workCompRQ.id assertion @ mkTestWorkCompGenRQ",
             $format(
@@ -292,7 +292,7 @@ module mkTestWorkCompGenRQ#(Bool isNormalCase)(Empty);
                 " not match expected WC recvReqID=", fshow(recvReqID))
         );
 
-        dynAssert(
+        immAssert(
             workCompRQ.opcode == wcOpCode,
             "workCompRQ.opcode assertion @ mkTestWorkCompGenRQ",
             $format(
@@ -300,7 +300,7 @@ module mkTestWorkCompGenRQ#(Bool isNormalCase)(Empty);
                 " not match expected WC opcode=", fshow(wcOpCode))
         );
 
-        dynAssert(
+        immAssert(
             workCompRQ.flags == wcFlags,
             "workCompRQ.flags assertion @ mkTestWorkCompGenRQ",
             $format(
@@ -308,7 +308,7 @@ module mkTestWorkCompGenRQ#(Bool isNormalCase)(Empty);
                 " not match expected WC flags=", fshow(wcFlags))
         );
 
-        dynAssert(
+        immAssert(
             workCompRQ.immDt == maybeImmDt,
             "workCompRQ.immDt assertion @ mkTestWorkCompGenRQ",
             $format(
@@ -316,7 +316,7 @@ module mkTestWorkCompGenRQ#(Bool isNormalCase)(Empty);
                 " not match expected WC immDt=", fshow(maybeImmDt))
         );
 
-        dynAssert(
+        immAssert(
             workCompRQ.rkey2Inv == maybeRKey2Inv,
             "workCompRQ.rkey2Inv assertion @ mkTestWorkCompGenRQ",
             $format(
@@ -325,7 +325,7 @@ module mkTestWorkCompGenRQ#(Bool isNormalCase)(Empty);
         );
 
         let expectedWorkCompStatus = isNormalCase ? IBV_WC_SUCCESS : IBV_WC_WR_FLUSH_ERR;
-        dynAssert(
+        immAssert(
             workCompRQ.status == expectedWorkCompStatus,
             "workCompRQ.status assertion @ mkTestWorkCompGenRQ",
             $format(
@@ -335,6 +335,6 @@ module mkTestWorkCompGenRQ#(Bool isNormalCase)(Empty);
         );
 
         countDown.decr;
-        // $display("time=%0d: WC=", $time, fshow(workCompRQ));
+        // $display("time=%0t: WC=", $time, fshow(workCompRQ));
     endrule
 endmodule

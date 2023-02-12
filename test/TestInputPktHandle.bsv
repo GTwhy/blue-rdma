@@ -39,7 +39,7 @@ module mkTestReceiveCNP(Empty);
     rule checkCNP;
         let cnpBth = dut.cnpPipeOut.first;
         dut.cnpPipeOut.deq;
-        dynAssert(
+        immAssert(
             { pack(cnpBth.trans), pack(cnpBth.opcode) } == fromInteger(valueOf(ROCE_CNP)),
             "CNP assertion @ mkTestReceiveCNP",
             $format(
@@ -49,7 +49,7 @@ module mkTestReceiveCNP(Empty);
             )
         );
 
-        dynAssert(
+        immAssert(
             !reqPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty &&
             !reqPktMetaDataAndPayloadPipeOut.payload.notEmpty,
             "reqPktMetaDataAndPayloadPipeOut assertion @ mkSimInputPktBuf",
@@ -62,7 +62,7 @@ module mkTestReceiveCNP(Empty);
             )
         );
 
-        dynAssert(
+        immAssert(
             !respPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty &&
             !respPktMetaDataAndPayloadPipeOut.payload.notEmpty,
             "respPktMetaDataAndPayloadPipeOut assertion @ mkSimInputPktBuf",
@@ -74,7 +74,7 @@ module mkTestReceiveCNP(Empty);
                 " should both be false"
             )
         );
-        // dynAssert(
+        // immAssert(
         //     !dut.pktMetaData.notEmpty && !dut.payload.notEmpty,
         //     "no PktMetaData and payload assertion @ mkTestReceiveCNP",
         //     $format(
@@ -145,10 +145,10 @@ module mkTestCalculatePktLen#(
 
         if (isLastOrOnlyRdmaOpCode(bth.opcode)) begin
             pendingWorkReqPipeOut4Ref.deq;
-            // $display("time=%0d: PendingWorkReq=", $time, fshow(pendingWR));
+            // $display("time=%0t: PendingWorkReq=", $time, fshow(pendingWR));
 
             if (isReadWorkReq(pendingWR.wr.opcode) || isAtomicWorkReq(pendingWR.wr.opcode)) begin
-                dynAssert(
+                immAssert(
                     isZero(pktLenSum),
                     "pktLenSum assertion @ mkTestCalculatePktLen",
                     $format("pktLenSum=%0d should be zero", pktLenSum)
@@ -156,7 +156,7 @@ module mkTestCalculatePktLen#(
             end
             else begin
                 // Length pktPadCnt = zeroExtend(bth.padCnt);
-                dynAssert(
+                immAssert(
                     pktLenSum == pendingWR.wr.len,
                     // pktLenSum == (pendingWR.wr.len + pktPadCnt),
                     "pktLenSum assertion @ mkTestCalculatePktLen",
@@ -170,7 +170,7 @@ module mkTestCalculatePktLen#(
             end
         end
 
-        dynAssert(
+        immAssert(
             rdmaReqOpCodeMatchWorkReqOpCode(bth.opcode, pendingWR.wr.opcode),
             "rdmaReqOpCodeMatchWorkReqOpCode assertion @ mkTestCalculatePktLen",
             $format(
@@ -184,7 +184,7 @@ module mkTestCalculatePktLen#(
         if (maxPayloadLen == 0) begin
             countDown.decr;
         end
-        // $display("time=%0d: pending WR=", $time, fshow(pendingWR));
+        // $display("time=%0t: pending WR=", $time, fshow(pendingWR));
     endrule
 endmodule
 

@@ -70,7 +70,7 @@ module mkTestDupReadAtomicCache(Empty);
             // };
             // let addrLenMatch = compareDupReadAddrAndLen(pmtu, dupReadReth, reth);
             // $display(
-            //     "time=%0d: addrLenMatch=", $time, fshow(addrLenMatch),
+            //     "time=%0t: addrLenMatch=", $time, fshow(addrLenMatch),
             //     ", dupReadReth.va=%h, origReadReth.va=%h",
             //     dupReadReth.va, reth.va,
             //     ", dupReadReth.dlen=%h, origReadReth.dlen=%h",
@@ -96,7 +96,7 @@ module mkTestDupReadAtomicCache(Empty);
         readSearchRespQ.deq;
 
         let maybeSearchReadResp <- dut.searchReadResp;
-        dynAssert(
+        immAssert(
             isValid(maybeSearchReadResp),
             "maybeSearchReadResp assertion @ mkTestDupReadAtomicCache",
             $format(
@@ -106,7 +106,7 @@ module mkTestDupReadAtomicCache(Empty);
         );
 
         let searchReadResp = unwrapMaybe(maybeSearchReadResp);
-        dynAssert(
+        immAssert(
             searchReadResp == exptectedDupreadReqStartState,
             "searchReadResp assertion @ mkTestDupReadAtomicCache",
             $format(
@@ -170,7 +170,7 @@ module mkTestDupReadAtomicCache(Empty);
         atomicSearchRespQ.deq;
 
         let maybeSearchAtomicResp <- dut.searchAtomicResp;
-        dynAssert(
+        immAssert(
             isValid(maybeSearchAtomicResp),
             "maybeSearchAtomicResp assertion @ mkTestDupReadAtomicCache",
             $format(
@@ -192,7 +192,7 @@ module mkTestDupReadAtomicCache(Empty);
         let exptectedAtomicRespSwap = exptectedAtomicCache.atomicEth.swap;
         let searchAtomicRespOrig = searchAtomicResp.atomicAckEth.orig;
         let exptectedAtomicRespOrig = exptectedAtomicCache.atomicAckEth.orig;
-        dynAssert(
+        immAssert(
             searchAtomicRespOrig == exptectedAtomicRespOrig &&
             searchAtomicRespAddr == exptectedAtomicRespAddr &&
             searchAtomicRespRKey == exptectedAtomicRespRKey &&

@@ -161,7 +161,7 @@ module mkRespHandleSQ#(
         let bth         = extractBTH(curRdmaHeader.headerData);
         let aeth        = extractAETH(curRdmaHeader.headerData);
         let retryReason = getRetryReasonFromAETH(aeth);
-        dynAssert(
+        immAssert(
             isRdmaRespOpCode(bth.opcode),
             "isRdmaRespOpCode assertion @ mkRespHandleSQ",
             $format(
@@ -169,7 +169,7 @@ module mkRespHandleSQ#(
             )
         );
         // $display(
-        //     "time=%0d: curPendingWR=", $time, fshow(curPendingWR),
+        //     "time=%0t: curPendingWR=", $time, fshow(curPendingWR),
         //     ", curPktMetaData=", fshow(curPktMetaData),
         //     ", bth=", fshow(bth)
         // );
@@ -178,7 +178,7 @@ module mkRespHandleSQ#(
         PSN startPSN  = unwrapMaybe(curPendingWR.startPSN);
         PSN endPSN    = unwrapMaybe(curPendingWR.endPSN);
         PktNum pktNum = unwrapMaybe(curPendingWR.pktNum);
-        dynAssert(
+        immAssert(
             isValid(curPendingWR.startPSN) &&
             isValid(curPendingWR.endPSN) &&
             isValid(curPendingWR.pktNum) &&
@@ -191,7 +191,7 @@ module mkRespHandleSQ#(
         );
 
         let rdmaRespType = getRdmaRespType(bth.opcode, aeth);
-        dynAssert(
+        immAssert(
             rdmaRespType != RDMA_RESP_UNKNOWN,
             "rdmaRespType assertion @ handleRetryResp() in mkRespHandleSQ",
             $format("rdmaRespType=", fshow(rdmaRespType), " should not be unknown")
@@ -309,7 +309,7 @@ module mkRespHandleSQ#(
             endcase
         end
 
-        dynAssert(
+        immAssert(
             wrAckType != WR_ACK_UNKNOWN && wcReqType != WC_REQ_TYPE_UNKNOWN,
             "wrAckType and wcReqType assertion @ mkRespHandleSQ",
             $format(
@@ -326,7 +326,7 @@ module mkRespHandleSQ#(
             pendingWorkReqPipeIn.deq;
             retryHandler.resetRetryCntBySQ;
             // $display(
-            //     "time=%0d:", $time, " dequeue WR ID=%h", curPendingWR.wr.id
+            //     "time=%0t:", $time, " dequeue WR ID=%h", curPendingWR.wr.id
             // );
         end
 
@@ -337,7 +337,7 @@ module mkRespHandleSQ#(
                 rdmaRespType == RDMA_RESP_ERROR
             )
         ) begin
-            dynAssert(
+            immAssert(
                 deqPendingWorkReq,
                 "deqPendingWorkReq assertion @ mkRespHandleSQ",
                 $format(
@@ -367,7 +367,7 @@ module mkRespHandleSQ#(
             rdmaRespType, retryReason, wrAckType, wcReqType
         ));
         // $display(
-        //     "time=%0d: 1st stage, bth.psn=%h, nextPSN=%h",
+        //     "time=%0t: 1st stage, bth.psn=%h, nextPSN=%h",
         //     $time, bth.psn, nextPSN,
         //     ", bth.opcode=", fshow(bth.opcode),
         //     ", aeth.code=", fshow(aeth.code),
@@ -455,7 +455,7 @@ module mkRespHandleSQ#(
             default: begin end
         endcase
 
-        dynAssert(
+        immAssert(
             respAction != SQ_ACT_UNKNOWN,
             "respAction assertion @ mkRespHandleSQ",
             $format("respAction=", fshow(respAction), " should not be unknown")
@@ -464,7 +464,7 @@ module mkRespHandleSQ#(
             curPendingWR, curPktMetaData, respPktInfo, respAction, wcReqType
         ));
         // $display(
-        //     "time=%0d: 2nd stage, bth.psn=%h", $time, bth.psn,
+        //     "time=%0t: 2nd stage, bth.psn=%h", $time, bth.psn,
         //     ", bth.opcode=", fshow(bth.opcode),
         //     ", respAction=", fshow(respAction),
         //     ", wcReqType=", fshow(wcReqType)
@@ -509,7 +509,7 @@ module mkRespHandleSQ#(
             pendingWR, pktMetaData, respPktInfo, respAction, wcReqType, expectPermCheckResp
         ));
         // $display(
-        //     "time=%0d: 3rd stage, respAction=", $time, fshow(respAction),
+        //     "time=%0t: 3rd stage, respAction=", $time, fshow(respAction),
         //     ", wcReqType=", fshow(wcReqType),
         //     ", expectPermCheckResp=", fshow(expectPermCheckResp)
         // );
@@ -538,7 +538,7 @@ module mkRespHandleSQ#(
             SQ_ACT_ERROR_RESP: begin
                 respPktInfo.genWorkComp = True;
 
-                dynAssert(
+                immAssert(
                     rdmaRespHasAETH(bth.opcode),
                     "rdmaRespHasAETH assertion @ mkRespHandleSQ",
                     $format(
@@ -547,7 +547,7 @@ module mkRespHandleSQ#(
                     )
                 );
                 wcStatus = genErrWorkCompStatusFromAethSQ(aeth);
-                dynAssert(
+                immAssert(
                     isValid(wcStatus),
                     "isValid(wcStatus) assertion @ mkRespHandleSQ",
                     $format("wcStatus=", fshow(wcStatus), " should be valid")
@@ -622,7 +622,7 @@ module mkRespHandleSQ#(
             pendingWR, pktMetaData, respPktInfo, respAction, wcStatus, wcReqType
         ));
         // $display(
-        //     "time=%0d: 4th stage, bth.psn=%h", $time, bth.psn,
+        //     "time=%0t: 4th stage, bth.psn=%h", $time, bth.psn,
         //     ", bth.opcode=", fshow(bth.opcode),
         //     ", respAction=", fshow(respAction),
         //     ", wcStatus=", fshow(wcStatus),
@@ -702,7 +702,7 @@ module mkRespHandleSQ#(
                 end
 
                 // $display(
-                //     "time=%0d: bth.opcode=", $time, fshow(bth.opcode),
+                //     "time=%0t: bth.opcode=", $time, fshow(bth.opcode),
                 //     ", remainingReadRespLen=%h", remainingReadRespLen,
                 //     ", nextReadRespWriteAddr=%h", nextReadRespWriteAddr,
                 //     ", readRespPktNum=%0d", readRespPktNum
@@ -715,7 +715,7 @@ module mkRespHandleSQ#(
             wcStatus, wcReqType, nextReadRespWriteAddr
         ));
         // $display(
-        //     "time=%0d: 5th stage, bth.psn=%h", $time, bth.psn,
+        //     "time=%0t: 5th stage, bth.psn=%h", $time, bth.psn,
         //     ", bth.opcode=", fshow(bth.opcode),
         //     ", respAction=", fshow(respAction),
         //     ", wcStatus=", fshow(wcStatus),
@@ -780,7 +780,7 @@ module mkRespHandleSQ#(
             discardPktPayload(pktMetaData.pktFragNum);
         end
 
-        dynAssert(
+        immAssert(
             !hasLocalErr || genWorkComp,
             "hasLocalErr -> genWorkComp assertion @ mkRespHandleSQ",
             $format(
@@ -794,11 +794,11 @@ module mkRespHandleSQ#(
             if (wcStatus matches tagged Valid .wcs &&& wcs != IBV_WC_SUCCESS) begin
                 hasErrOccuredReg <= True;
                 // $display(
-                //     "time=%0d: hasErrOccuredReg=", $time, fshow(hasErrOccuredReg),
+                //     "time=%0t: hasErrOccuredReg=", $time, fshow(hasErrOccuredReg),
                 //     ", wcStatus=", fshow(wcStatus)
                 // );
 
-                dynAssert(
+                immAssert(
                     genWorkComp,
                     "genWorkComp assertion @ mkRespHandleSQ",
                     $format(
@@ -810,7 +810,7 @@ module mkRespHandleSQ#(
         end
 
         if (genWorkComp || wcWaitDmaResp) begin
-            dynAssert(
+            immAssert(
                 !genWorkComp || isValid(wcStatus),
                 "genWorkComp -> isValid(wcStatus) assertion @ mkRespHandleSQ",
                 $format(
@@ -820,7 +820,7 @@ module mkRespHandleSQ#(
                 )
             );
 
-            dynAssert(
+            immAssert(
                 !(wcWaitDmaResp && !genWorkComp) || !isValid(wcStatus),
                 "(wcWaitDmaResp && !genWorkComp) -> !isValid(wcStatus) assertion @ mkRespHandleSQ",
                 $format(
@@ -841,12 +841,12 @@ module mkRespHandleSQ#(
             // Wait for read/atomic response DMA write and generate WC for WR if needed
             workCompGenReqOutQ.enq(wcGenReq);
             // $display(
-            //     "time=%0d: wcGenReq=", $time, fshow(wcGenReq),
+            //     "time=%0t: wcGenReq=", $time, fshow(wcGenReq),
             //     ", wcStatus=", fshow(wcStatus)
             // );
         end
         // $display(
-        //     "time=%0d: 6th stage, bth.psn=%h", $time, bth.psn,
+        //     "time=%0t: 6th stage, bth.psn=%h", $time, bth.psn,
         //     ", bth.opcode=", fshow(bth.opcode),
         //     ", respAction=", fshow(respAction),
         //     ", wcReqType=", fshow(wcReqType),
@@ -901,7 +901,7 @@ module mkRespHandleSQ#(
                 retryReason, wrAckType, wcReqType
             ));
             // $display(
-            //     "time=%0d: 1st error flush stage", $time,
+            //     "time=%0t: 1st error flush stage", $time,
             //     ", pendingWR=", fshow(pendingWR),
             //     ", rdmaRespType=", fshow(rdmaRespType),
             //     ", retryReason=", fshow(retryReason),
@@ -940,7 +940,7 @@ module mkRespHandleSQ#(
                 retryReason, wrAckType, wcReqType
             ));
             // $display(
-            //     "time=%0d: 1st discard stage, bth.psn=%h", $time, bth.psn,
+            //     "time=%0t: 1st discard stage, bth.psn=%h", $time, bth.psn,
             //     ", bth.opcode=", fshow(bth.opcode),
             //     ", rdmaRespType=", fshow(rdmaRespType),
             //     ", retryReason=", fshow(retryReason),
@@ -955,7 +955,7 @@ module mkRespHandleSQ#(
         cntrl.isRTS && !hasErrOccuredReg &&
         respHandleStateReg == SQ_RETRY_FLUSH
     );
-        dynAssert(
+        immAssert(
             pendingWorkReqPipeIn.notEmpty,
             "pendingWR notEmpty assertion @ mkRespHandleSQ",
             $format(
@@ -969,7 +969,7 @@ module mkRespHandleSQ#(
         if (retryHandler.isRetrying) begin
             respHandleStateReg <= SQ_HANDLE_RESP_HEADER;
             $display(
-                "time=%0d:", $time,
+                "time=%0t:", $time,
                 " retry flush done, pendingWorkReqPipeIn.notEmpty=",
                 fshow(pendingWorkReqPipeIn.notEmpty)
             );
@@ -1011,7 +1011,7 @@ module mkRespHandleSQ#(
                 retryReason, wrAckType, wcReqType
             ));
             $display(
-                "time=%0d: 1st retry flush stage, bth.psn=%h", $time, bth.psn,
+                "time=%0t: 1st retry flush stage, bth.psn=%h", $time, bth.psn,
                 ", bth.opcode=", fshow(bth.opcode),
                 // ", WR ID=%h", pendingWR.wr.id,
                 ", rdmaRespType=", fshow(rdmaRespType),
@@ -1020,7 +1020,7 @@ module mkRespHandleSQ#(
                 ", wcReqType=", fshow(wcReqType)
             );
         end
-        // $display("time=%0d: retryFlushPktMetaDataAndPayload", $time);
+        // $display("time=%0t: retryFlushPktMetaDataAndPayload", $time);
     endrule
 
     interface payloadConReqPipeOut = convertFifo2PipeOut(payloadConReqOutQ);

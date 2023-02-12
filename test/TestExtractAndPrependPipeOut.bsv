@@ -45,7 +45,7 @@ module mkTestHeaderAndDataStreamConversion(Empty);
         let refHeaderMetaData = headerMetaDataPipeOut4Ref.first;
         headerMetaDataPipeOut4Ref.deq;
 
-        dynAssert(
+        immAssert(
             headerMetaData == refHeaderMetaData,
             "headerMetaData assertion @ mkTestHeaderAndDataStreamConversion",
             $format(
@@ -62,7 +62,7 @@ module mkTestHeaderAndDataStreamConversion(Empty);
         let refDataStream = dataStreamPipeOut4Ref.first;
         dataStreamPipeOut4Ref.deq;
 
-        dynAssert(
+        immAssert(
             headerDataStream == refDataStream,
             "headerDataStream assertion @ mkTestHeaderAndDataStreamConversion",
             $format(
@@ -108,7 +108,7 @@ module mkTestPrependHeaderBeforeEmptyDataStream(Empty);
         let refDataStream = headerDataStreamPipeOut4Ref.first;
         headerDataStreamPipeOut4Ref.deq;
 
-        dynAssert(
+        immAssert(
             dataStreamAfterPrepend == refDataStream,
             "dataStreamAfterPrepend assertion @ mkTestPrependHeaderToEmptyDataStream",
             $format(
@@ -172,7 +172,7 @@ module mkTestExtractHeaderWithLessThanOneFragPayload(Empty);
         let refDataStream = dataStreamPipeOut4Ref.first;
         dataStreamPipeOut4Ref.deq;
 
-        dynAssert(
+        immAssert(
             prependHeaderDataStream == refDataStream,
             "prependHeaderDataStream assertion @ mkTestExtractHeaderWithLessThanOneFragPayload",
             $format(
@@ -213,7 +213,7 @@ module mkTestExtractHeaderLongerThanDataStream(Empty);
         let refDataStream = refDataStreamPipeOut.first;
         refDataStreamPipeOut.deq;
 
-        dynAssert(
+        immAssert(
             headerDataStream == refDataStream,
             "headerDataStream assertion @ mkTestExtractHeaderLongerThanDataStream",
             $format(
@@ -227,7 +227,7 @@ module mkTestExtractHeaderLongerThanDataStream(Empty);
         let payloadDataStream = extractHeaderFromPipeOut.payload.first;
         extractHeaderFromPipeOut.payload.deq;
 
-        dynAssert(
+        immAssert(
             isZero(payloadDataStream.byteEn),
             "payloadDataStream.byteEn assertion @ mkTestExtractHeaderLongerThanDataStream",
             $format(
@@ -235,7 +235,7 @@ module mkTestExtractHeaderLongerThanDataStream(Empty);
                 payloadDataStream.byteEn
             )
         );
-        // $display("time=%0d: payloadDataStream=", $time, fshow(payloadDataStream));
+        // $display("time=%0t: payloadDataStream=", $time, fshow(payloadDataStream));
     endrule
 endmodule
 
@@ -270,7 +270,7 @@ module mkTestExtractAndPrependHeader(Empty);
         let refDataStream = refDataStreamPipeOut.first;
         refDataStreamPipeOut.deq;
 
-        dynAssert(
+        immAssert(
             prependHeaderDataStream == refDataStream,
             "prependHeaderDataStream assertion @ mkTestExtractAndPrependHeader",
             $format(

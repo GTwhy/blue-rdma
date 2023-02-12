@@ -36,7 +36,7 @@ module mkSimGenRdmaReqAndSendWritePayloadPipeOut#(
     );
 
     rule noErrWC;
-        dynAssert(
+        immAssert(
             !reqGenSQ.workCompGenReqPipeOut.notEmpty,
             "No error WC assertion @ mkSimGenRdmaReq",
             $format(
@@ -295,9 +295,9 @@ module mkSimGenRdmaRespHeaderAndDataStream#(
     rule deqWorkReqPipeOut if (!busyReg);
         let curPendingWR = pendingWorkReqPipeIn.first;
         pendingWorkReqPipeIn.deq;
-        // $display("time=%0d: received PendingWorkReq=", $time, fshow(curPendingWR));
+        // $display("time=%0t: received PendingWorkReq=", $time, fshow(curPendingWR));
 
-        dynAssert(
+        immAssert(
             curPendingWR.wr.sqpn == cntrl.getSQPN,
             "curPendingWR.wr.sqpn assertion @ mkSimGenRdmaRespHeaderAndDataStream",
             $format(
@@ -305,7 +305,7 @@ module mkSimGenRdmaRespHeaderAndDataStream#(
                 curPendingWR.wr.sqpn, cntrl.getSQPN
             )
         );
-        dynAssert(
+        immAssert(
             isValid(curPendingWR.startPSN) &&
             isValid(curPendingWR.endPSN) &&
             isValid(curPendingWR.pktNum) &&
@@ -330,7 +330,7 @@ module mkSimGenRdmaRespHeaderAndDataStream#(
         msnReg <= msn;
 
         let maybeFirstOrOnlyHeader = genFirstOrOnlyRespHeader(curPendingWR, cntrl, hasOnlyRespPkt, msn);
-        dynAssert(
+        immAssert(
             isValid(maybeFirstOrOnlyHeader),
             "maybeFirstOrOnlyHeader assertion @ mkSimGenRdmaRespHeaderAndDataStream",
             $format(
@@ -361,7 +361,7 @@ module mkSimGenRdmaRespHeaderAndDataStream#(
             busyReg <= !hasOnlyRespPkt;
 
             // $display(
-            //     "time=%0d: msnReg=%0d, PendingWorkReq=", $time, msnReg, fshow(curPendingWR),
+            //     "time=%0t: msnReg=%0d, PendingWorkReq=", $time, msnReg, fshow(curPendingWR),
             //     ", hasOnlyRespPkt=", fshow(hasOnlyRespPkt), ", busyReg=", fshow(busyReg),
             //     ", output header=", fshow(firstOrOnlyHeader)
             // );
@@ -381,7 +381,7 @@ module mkSimGenRdmaRespHeaderAndDataStream#(
         let maybeMiddleOrLastHeader = genMiddleOrLastRespHeader(
             curPendingWorkReqReg, cntrl, curPsnReg, isLastRespPkt, msn
         );
-        dynAssert(
+        immAssert(
             isValid(maybeMiddleOrLastHeader),
             "maybeMiddleOrLastHeader assertion @ mkSimGenRdmaRespHeaderAndDataStream",
             $format(
@@ -395,7 +395,7 @@ module mkSimGenRdmaRespHeaderAndDataStream#(
         end
 
         // $display(
-        //     "time=%0d: pktNumReg=%0d, msnReg=%0d, isLastRespPkt=%b, busyReg=",
+        //     "time=%0t: pktNumReg=%0d, msnReg=%0d, isLastRespPkt=%b, busyReg=",
         //     $time, pktNumReg, msnReg, isLastRespPkt, fshow(busyReg)
         // );
     endrule
@@ -439,7 +439,7 @@ module mkGenNormalOrErrOrRetryRdmaRespAck#(
 
     rule genRespAck;
         let maybeTrans  = qpType2TransType(cntrl.getQpType);
-        dynAssert(
+        immAssert(
             isValid(maybeTrans),
             "maybeTrans assertion @ mkGenErrRdmaResp",
             $format(
@@ -448,7 +448,7 @@ module mkGenNormalOrErrOrRetryRdmaRespAck#(
             )
         );
         let transType = unwrapMaybe(maybeTrans);
-        dynAssert(
+        immAssert(
             transType == TRANS_TYPE_RC || transType == TRANS_TYPE_XRC,
             "transType assertion @ mkGenErrRdmaResp",
             $format(
@@ -460,7 +460,7 @@ module mkGenNormalOrErrOrRetryRdmaRespAck#(
         let pendingWR = pendingWorkReqPipeIn.first;
         pendingWorkReqPipeIn.deq;
 
-        dynAssert(
+        immAssert(
             isValid(pendingWR.startPSN),
             "pendingWR.startPSN assertion @ mkGenErrRdmaResp",
             $format(
@@ -527,7 +527,7 @@ module mkGenNormalOrErrOrRetryRdmaRespAck#(
         );
         headerQ.enq(respHeader);
         // $display(
-        //     "time=%0d: genRespAck", $time,
+        //     "time=%0t: genRespAck", $time,
         //     ", BTH=", fshow(bth), ", AETH=", fshow(aeth),
         //     ", pendingWR.wr.id=%h", pendingWR.wr.id
         // );
@@ -595,12 +595,12 @@ module mkTestSimGenRdmaResp(Empty);
         let { transType, rdmaOpCode } =
             extractTranTypeAndRdmaOpCode(rdmaHeader.headerData);
         let bth = extractBTH(rdmaHeader.headerData);
-        // $display("time=%0d: BTH=", $time, fshow(bth));
+        // $display("time=%0t: BTH=", $time, fshow(bth));
 
         let refHeader = rdmaRespHeaderPipeOut4HeaderCmpRef.first;
         rdmaRespHeaderPipeOut4HeaderCmpRef.deq;
 
-        dynAssert(
+        immAssert(
             rdmaHeader.headerByteEn == refHeader.headerByteEn,
             "rdmaHeader.headerByteEn assertion @ mkTestRdmaRespGenInSim",
             $format(
@@ -609,7 +609,7 @@ module mkTestSimGenRdmaResp(Empty);
             )
         );
 
-        dynAssert(
+        immAssert(
             compareRdmaHeaderDataInSim(
                 rdmaHeader.headerData,
                 refHeader.headerData,
@@ -635,7 +635,7 @@ module mkTestSimGenRdmaResp(Empty);
         let aeth = extractAETH(rdmaHeader.headerData);
         let msn = isLastOrOnlyRdmaOpCode(bth.opcode) ? (curMsnReg + 1) : curMsnReg;
         curMsnReg <= msn;
-        // $display("time=%0d: BTH=", $time, fshow(bth), ", AETH=", fshow(aeth));
+        // $display("time=%0t: BTH=", $time, fshow(bth), ", AETH=", fshow(aeth));
 
         let refPendingWR = pendingWorkReqPipeOut4Ref.first;
         let wrStartPSN = unwrapMaybe(refPendingWR.startPSN);
@@ -645,7 +645,7 @@ module mkTestSimGenRdmaResp(Empty);
         if (isOnlyRdmaOpCode(rdmaOpCode)) begin
             pendingWorkReqPipeOut4Ref.deq;
 
-            dynAssert(
+            immAssert(
                 bth.psn == wrEndPSN,
                 "bth.psn only response packet assertion @ mkTestRdmaRespGenInSim",
                 $format(
@@ -659,14 +659,14 @@ module mkTestSimGenRdmaResp(Empty);
         else if (isLastRdmaOpCode(rdmaOpCode)) begin
             pendingWorkReqPipeOut4Ref.deq;
 
-            dynAssert(
+            immAssert(
                 bth.psn == wrEndPSN,
                 "bth.psn last response packet assertion @ mkTestRdmaRespGenInSim",
                 $format("bth.psn=%h shoud == wrEndPSN=%h", bth.psn, wrEndPSN)
             );
         end
         else if (isFirstRdmaOpCode(rdmaOpCode)) begin
-            dynAssert(
+            immAssert(
                 bth.psn == wrStartPSN,
                 "bth.psn first response packet assertion @ mkTestRdmaRespGenInSim",
                 $format("bth.psn=%h shoud == wrStartPSN=%h", bth.psn, wrStartPSN)
@@ -675,14 +675,14 @@ module mkTestSimGenRdmaResp(Empty);
         else begin
             respHasAeth = False; // Middle responses have no AETH
 
-            dynAssert(
+            immAssert(
                 isMiddleRdmaOpCode(rdmaOpCode),
                 "rdmaOpCode middle packet assertion @ mkTestRdmaRespGenInSim",
                 $format(
                     "rdmaOpCode=", fshow(rdmaOpCode), " should be middle RDMA response opcode"
                 )
             );
-            dynAssert(
+            immAssert(
                 psnInRangeExclusive(bth.psn, wrStartPSN, wrEndPSN),
                 "bth.psn between wrStartPSN and wrEndPSN assertion @ mkTestRdmaRespGenInSim",
                 $format(
@@ -695,14 +695,14 @@ module mkTestSimGenRdmaResp(Empty);
         end
 
         if (respHasAeth) begin
-            dynAssert(
+            immAssert(
                 aeth.msn == msn,
                 "aeth.msn assertion @ mkTestRdmaRespGenInSim",
                 $format("aeth.msn=%h should == msn=%h", aeth.msn, msn)
             );
         end
 
-        dynAssert(
+        immAssert(
             transTypeMatchQpType(transType, qpType),
             "transTypeMatchQpType assertion @ mkTestRdmaRespGenInSim",
             $format(
@@ -710,7 +710,7 @@ module mkTestSimGenRdmaResp(Empty);
                 " should match qpType=", fshow(qpType)
             )
         );
-        dynAssert(
+        immAssert(
             rdmaRespOpCodeMatchWorkReqOpCode(rdmaOpCode, refPendingWR.wr.opcode),
             "rdmaRespOpCodeMatchWorkReqOpCode assertion @ mkTestRdmaRespGenInSim",
             $format(
@@ -728,7 +728,7 @@ module mkTestSimGenRdmaResp(Empty);
         segDataStreamPipeOut4Ref.deq;
 
         // $display(
-        //     "time=%0d: payloadDataStream=", $time, fshow(payloadDataStream),
+        //     "time=%0t: payloadDataStream=", $time, fshow(payloadDataStream),
         //     " should == refDataStream=", fshow(refDataStream)
         // );
 
@@ -739,12 +739,12 @@ module mkTestSimGenRdmaResp(Empty);
             let lastFragByteEnWithPadding = genByteEn(lastFragValidByteNumWithPadding);
 
             // $display(
-            //     "time=%0d: refDataStream.byteEn=%h, padCnt=%0d",
+            //     "time=%0t: refDataStream.byteEn=%h, padCnt=%0d",
             //     $time, refDataStream.byteEn, padCnt
             // );
             refDataStream.byteEn = lastFragByteEnWithPadding;
         end
-        dynAssert(
+        immAssert(
             payloadDataStream == refDataStream,
             "payloadDataStream assertion @ mkTestRdmaRespGenInSim",
             $format(

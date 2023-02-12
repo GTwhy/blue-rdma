@@ -76,7 +76,7 @@ module mkTestReqGenNormalCase(Empty);
         let refWorkReq = workReqPipeOut4Ref.first;
         workReqPipeOut4Ref.deq;
 
-        dynAssert(
+        immAssert(
             pendingWR.wr.id == refWorkReq.id &&
             pendingWR.wr.opcode == refWorkReq.opcode,
             "pendingWR.wr assertion @ mkTestReqGenNormalCase",
@@ -85,7 +85,7 @@ module mkTestReqGenNormalCase(Empty);
                 " should == refWorkReq=", fshow(refWorkReq)
             )
         );
-        // $display("time=%0d: WR=", $time, fshow(pendingWR.wr));
+        // $display("time=%0t: WR=", $time, fshow(pendingWR.wr));
     endrule
 
     rule compareRdmaReqHeader;
@@ -95,12 +95,12 @@ module mkTestReqGenNormalCase(Empty);
         let { transType, rdmaOpCode } =
             extractTranTypeAndRdmaOpCode(rdmaHeader.headerData);
         let bth = extractBTH(rdmaHeader.headerData);
-        // $display("time=%0d: BTH=", $time, fshow(bth));
+        // $display("time=%0t: BTH=", $time, fshow(bth));
 
         if (validPsnReg) begin
             curPsnReg <= curPsnReg + 1;
 
-            dynAssert(
+            immAssert(
                 bth.psn == curPsnReg,
                 "bth.psn correctness assertion @ mkTestReqGenNormalCase",
                 $format("bth.psn=%h shoud == curPsnReg=%h", bth.psn, curPsnReg)
@@ -119,7 +119,7 @@ module mkTestReqGenNormalCase(Empty);
 
             let isReadWR = isReadWorkReq(refPendingWR.wr.opcode);
             if (isReadWR) begin
-                dynAssert(
+                immAssert(
                     bth.psn == wrStartPSN,
                     "bth.psn read request packet assertion @ mkTestReqGenNormalCase",
                     $format(
@@ -129,7 +129,7 @@ module mkTestReqGenNormalCase(Empty);
                 );
             end
             else begin
-                dynAssert(
+                immAssert(
                     bth.psn == wrStartPSN && bth.psn == wrEndPSN,
                     "bth.psn only request packet assertion @ mkTestReqGenNormalCase",
                     $format(
@@ -144,28 +144,28 @@ module mkTestReqGenNormalCase(Empty);
         else if (isLastRdmaOpCode(rdmaOpCode)) begin
             pendingWorkReqPipeOut4Ref.deq;
 
-            dynAssert(
+            immAssert(
                 bth.psn == wrEndPSN,
                 "bth.psn last request packet assertion @ mkTestReqGenNormalCase",
                 $format("bth.psn=%h shoud == wrEndPSN=%h", bth.psn, wrEndPSN)
             );
         end
         else if (isFirstRdmaOpCode(rdmaOpCode)) begin
-            dynAssert(
+            immAssert(
                 bth.psn == wrStartPSN,
                 "bth.psn first request packet assertion @ mkTestReqGenNormalCase",
                 $format("bth.psn=%h shoud == wrStartPSN=%h", bth.psn, wrStartPSN)
             );
         end
         else begin
-            dynAssert(
+            immAssert(
                 isMiddleRdmaOpCode(rdmaOpCode),
                 "rdmaOpCode middle request packet assertion @ mkTestReqGenNormalCase",
                 $format(
                     "rdmaOpCode=", fshow(rdmaOpCode), " should be middle RDMA request opcode"
                 )
             );
-            dynAssert(
+            immAssert(
                 psnInRangeExclusive(bth.psn, wrStartPSN, wrEndPSN),
                 "bth.psn between wrStartPSN and wrEndPSN assertion @ mkTestReqGenNormalCase",
                 $format(
@@ -177,7 +177,7 @@ module mkTestReqGenNormalCase(Empty);
             );
         end
 
-        dynAssert(
+        immAssert(
             transTypeMatchQpType(transType, qpType),
             "transTypeMatchQpType assertion @ mkTestReqGenNormalCase",
             $format(
@@ -185,7 +185,7 @@ module mkTestReqGenNormalCase(Empty);
                 " should match qpType=", fshow(qpType)
             )
         );
-        dynAssert(
+        immAssert(
             rdmaReqOpCodeMatchWorkReqOpCode(rdmaOpCode, refPendingWR.wr.opcode),
             "rdmaReqOpCodeMatchWorkReqOpCode assertion @ mkTestReqGenNormalCase",
             $format(
@@ -202,7 +202,7 @@ module mkTestReqGenNormalCase(Empty);
         let refDataStream = segDataStreamPipeOut4Ref.first;
         segDataStreamPipeOut4Ref.deq;
 
-        dynAssert(
+        immAssert(
             payloadDataStream == refDataStream,
             "payloadDataStream assertion @ mkTestReqGenNormalCase",
             $format(

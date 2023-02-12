@@ -513,7 +513,7 @@ module mkReqHandleRQ#(
             endcase
         end
 
-        dynAssert(
+        immAssert(
             reqStatus != RDMA_REQ_ST_UNKNOWN,
             "reqStatus assertion @ mkReqHandleRQ",
             $format(
@@ -522,7 +522,7 @@ module mkReqHandleRQ#(
         );
         supportedReqOpCodeCheckQ.enq(tuple3(curPktMetaData, reqStatus, reqPktInfo));
         $display(
-            "time=%0d: 1st stage, bth.opcode=", $time, fshow(bth.opcode),
+            "time=%0t: 1st stage, bth.opcode=", $time, fshow(bth.opcode),
             ", bth.psn=%h, ePSN=%h, epoch=%h", bth.psn, expectedPSN, epoch,
             ", reqStatus=", fshow(reqStatus)
         );
@@ -559,13 +559,13 @@ module mkReqHandleRQ#(
             reqStatus = RDMA_REQ_ST_DISCARD;
 
             $display(
-                "time=%0d: epoch mismatch in 2nd stage, epoch=", $time, fshow(epoch),
+                "time=%0t: epoch mismatch in 2nd stage, epoch=", $time, fshow(epoch),
                 ", cntrl.contextRQ.getEpoch=", fshow(cntrl.contextRQ.getEpoch)
             );
         end
         reqOpCodeSeqCheckQ.enq(tuple3(pktMetaData, reqStatus, reqPktInfo));
         // $display(
-        //     "time=%0d: 2nd stage, bth.opcode=", $time, fshow(bth.opcode),
+        //     "time=%0t: 2nd stage, bth.opcode=", $time, fshow(bth.opcode),
         //     ", bth.psn=%h, epoch=%h", bth.psn, epoch,
         //     ", isSupportedReqOpCode=", fshow(isSupportedReqOpCode),
         //     ", reqStatus=", fshow(reqStatus)
@@ -599,14 +599,14 @@ module mkReqHandleRQ#(
             reqStatus = RDMA_REQ_ST_DISCARD;
 
             $display(
-                "time=%0d: epoch mismatch in 3rd stage, epoch=", $time, fshow(epoch),
+                "time=%0t: epoch mismatch in 3rd stage, epoch=", $time, fshow(epoch),
                 ", cntrl.contextRQ.getEpoch=", fshow(cntrl.contextRQ.getEpoch)
             );
         end
 
         rnrCheckQ.enq(tuple4(pktMetaData, reqStatus, preOpCode, reqPktInfo));
         // $display(
-        //     "time=%0d: 3rd stage, bth.opcode=", $time, fshow(bth.opcode),
+        //     "time=%0t: 3rd stage, bth.opcode=", $time, fshow(bth.opcode),
         //     ", bth.psn=%h, epoch=%h", bth.psn, epoch,
         //     ", preOpCode=", fshow(preOpCode),
         //     ", reqStatus=", fshow(reqStatus)
@@ -672,7 +672,7 @@ module mkReqHandleRQ#(
                         recvReqBuf.deq;
 
                         if (isZeroPayloadLen) begin
-                            dynAssert(
+                            immAssert(
                                 isOnlyRdmaOpCode(bth.opcode),
                                 "isOnlyRdmaOpCode assertion @ mkReqHandleRQ",
                                 $format(
@@ -730,14 +730,14 @@ module mkReqHandleRQ#(
             reqStatus = RDMA_REQ_ST_DISCARD;
 
             $display(
-                "time=%0d: epoch mismatch in 4th stage, epoch=", $time, fshow(epoch),
+                "time=%0t: epoch mismatch in 4th stage, epoch=", $time, fshow(epoch),
                 ", cntrl.contextRQ.getEpoch=", fshow(cntrl.contextRQ.getEpoch)
             );
         end
 
         reqPermQueryQ.enq(tuple4(pktMetaData, reqStatus, curPermCheckInfo, reqPktInfo));
         // $display(
-        //     "time=%0d: 4th stage, bth.opcode=", $time, fshow(bth.opcode),
+        //     "time=%0t: 4th stage, bth.opcode=", $time, fshow(bth.opcode),
         //     ", bth.psn=%h, epoch=%h", bth.psn, epoch,
         //     ", reqStatus=", fshow(reqStatus)
         // );
@@ -762,7 +762,7 @@ module mkReqHandleRQ#(
             pktMetaData, reqStatus, permCheckInfo, reqPktInfo, expectPermCheckResp
         ));
         // $display(
-        //     "time=%0d: 5th stage, bth.opcode=", $time, fshow(bth.opcode),
+        //     "time=%0t: 5th stage, bth.opcode=", $time, fshow(bth.opcode),
         //     ", bth.psn=%h", bth.psn, ", reqStatus=", fshow(reqStatus)
         // );
     endrule
@@ -795,7 +795,7 @@ module mkReqHandleRQ#(
                     if (!isAligned) begin
                         reqStatus = getInvReqStatusByTransType(bth.trans);
                     end
-                    // $display("time=%0d: atomicEth.va=%h", $time, atomicEth.va);
+                    // $display("time=%0t: atomicEth.va=%h", $time, atomicEth.va);
                 end
             end
             else begin
@@ -805,7 +805,7 @@ module mkReqHandleRQ#(
 
         dupReadReqPermQueryQ.enq(tuple4(pktMetaData, reqStatus, permCheckInfo, reqPktInfo));
         $display(
-            "time=%0d: 6th stage, bth.opcode=", $time, fshow(bth.opcode),
+            "time=%0t: 6th stage, bth.opcode=", $time, fshow(bth.opcode),
             ", bth.psn=%h", bth.psn, ", reqStatus=", fshow(reqStatus)
         );
     endrule
@@ -837,7 +837,7 @@ module mkReqHandleRQ#(
             pktMetaData, reqStatus, permCheckInfo, reqPktInfo, expectDupReadCheckResp
         ));
         $display(
-            "time=%0d: 7th stage, bth.opcode=", $time, fshow(bth.opcode),
+            "time=%0t: 7th stage, bth.opcode=", $time, fshow(bth.opcode),
             ", bth.psn=%h", bth.psn, ", reqStatus=", fshow(reqStatus)
         );
     endrule
@@ -874,7 +874,7 @@ module mkReqHandleRQ#(
             pktMetaData, reqStatus, permCheckInfo, reqPktInfo, dupReadReqStartState
         ));
         $display(
-            "time=%0d: 8th stage, bth.opcode=", $time, fshow(bth.opcode),
+            "time=%0t: 8th stage, bth.opcode=", $time, fshow(bth.opcode),
             ", bth.psn=%h", bth.psn, ", reqStatus=", fshow(reqStatus)
         );
     endrule
@@ -955,7 +955,7 @@ module mkReqHandleRQ#(
                 cntrl.contextRQ.setSendWriteReqPktNum(sendWriteReqPktNum);
 
                 // $display(
-                //     "time=%0d: remainingDmaWriteLen=%h, totalDmaWriteLen=%h, nextDmaWriteAddr=%h, sendWriteReqPktNum=%0d, enoughDmaSpace=",
+                //     "time=%0t: remainingDmaWriteLen=%h, totalDmaWriteLen=%h, nextDmaWriteAddr=%h, sendWriteReqPktNum=%0d, enoughDmaSpace=",
                 //     $time, remainingDmaWriteLen, totalDmaWriteLen, nextDmaWriteAddr, sendWriteReqPktNum, fshow(enoughDmaSpace)
                 // );
 
@@ -980,7 +980,7 @@ module mkReqHandleRQ#(
             reqPktInfo, curDmaWriteAddr, dupReadReqStartState
         ));
         // $display(
-        //     "time=%0d: 9th stage, bth.opcode=", $time, fshow(bth.opcode),
+        //     "time=%0t: 9th stage, bth.opcode=", $time, fshow(bth.opcode),
         //     ", bth.psn=%h", bth.psn, ", reqStatus=", fshow(reqStatus)
         // );
     endrule
@@ -1090,7 +1090,7 @@ module mkReqHandleRQ#(
             pktMetaData, reqStatus, permCheckInfo, reqPktInfo, respPktGenInfo
         ));
         // $display(
-        //     "time=%0d: 10th stage, bth.opcode=", $time, fshow(bth.opcode),
+        //     "time=%0t: 10th stage, bth.opcode=", $time, fshow(bth.opcode),
         //     ", bth.psn=%h", bth.psn, ", reqStatus=", fshow(reqStatus)
         // );
     endrule
@@ -1208,7 +1208,7 @@ module mkReqHandleRQ#(
             end
         end
         // $display(
-        //     "time=%0d: maxUnackedWorkReqCnt=%0d", $time, maxUnackedWorkReqCnt,
+        //     "time=%0t: maxUnackedWorkReqCnt=%0d", $time, maxUnackedWorkReqCnt,
         //     ", reloadMaxUnackedWorkReqCnt=", fshow(reloadMaxUnackedWorkReqCnt),
         //     ", decrMaxUnackedWorkReqCnt=", fshow(decrMaxUnackedWorkReqCnt)
         // );
@@ -1228,7 +1228,7 @@ module mkReqHandleRQ#(
             pktMetaData, reqStatus, permCheckInfo, reqPktInfo, respPktGenInfo
         ));
         $display(
-            "time=%0d: 11th stage, bth.opcode=", $time, fshow(bth.opcode),
+            "time=%0t: 11th stage, bth.opcode=", $time, fshow(bth.opcode),
             ", bth.psn=%h", bth.psn, ", bth.ackReq=", fshow(bth.ackReq),
             ", shouldDiscard=", fshow(shouldDiscard),
             ", shouldGenResp=", fshow(shouldGenResp),
@@ -1264,7 +1264,7 @@ module mkReqHandleRQ#(
             pktMetaData, reqStatus, permCheckInfo, reqPktInfo, respPktGenInfo
         ));
         $display(
-            "time=%0d: 12th stage, bth.opcode=", $time, fshow(bth.opcode),
+            "time=%0t: 12th stage, bth.opcode=", $time, fshow(bth.opcode),
             ", bth.psn=%h", bth.psn, ", reqStatus=", fshow(reqStatus)
         );
     endrule
@@ -1301,7 +1301,7 @@ module mkReqHandleRQ#(
             pktMetaData, reqStatus, permCheckInfo, reqPktInfo, respPktGenInfo
         ));
         $display(
-            "time=%0d: 13th stage, bth.opcode=", $time, fshow(bth.opcode),
+            "time=%0t: 13th stage, bth.opcode=", $time, fshow(bth.opcode),
             ", bth.psn=%h", bth.psn, ", reqStatus=", fshow(reqStatus)
         );
     endrule
@@ -1320,12 +1320,12 @@ module mkReqHandleRQ#(
         let errReqStatus = isErrReqStatus(reqStatus);
         if (errReqStatus && !isErrRespGenReg) begin
             isErrRespGenReg <= True;
-            // $display("time=%0d: first fatal error response, reqStatus=", $time, fshow(reqStatus));
+            // $display("time=%0t: first fatal error response, reqStatus=", $time, fshow(reqStatus));
         end
         workCompReqQ.enq(tuple4(pktMetaData, reqStatus, permCheckInfo, reqPktInfo));
 
         if (isErrRespGenReg || errReqStatus) begin
-            dynAssert(
+            immAssert(
                 !respPktGenInfo.expectReadRespPayload &&
                 !respPktGenInfo.expectAtomicRespOrig  &&
                 !respPktGenInfo.expectDupAtomicCheckResp,
@@ -1348,7 +1348,7 @@ module mkReqHandleRQ#(
             if (
                 respPktGenInfo.dupReadReqStartState == DUP_READ_REQ_START_FROM_MIDDLE
             ) begin
-                dynAssert(
+                immAssert(
                     isReadReq && reqStatus == RDMA_REQ_ST_DUP,
                     "isReadReq and reqStatus assertion @ mkReqHandleRQ",
                     $format(
@@ -1388,7 +1388,7 @@ module mkReqHandleRQ#(
                     cntrl, bth.psn, msn, isOnlyRespPkt
                 );
                 if (respPktGenInfo.shouldGenResp) begin
-                    dynAssert(
+                    immAssert(
                         isValid(maybeFirstOrOnlyHeader),
                         "maybeFirstOrOnlyHeader assertion @ mkReqHandleRQ",
                         $format(
@@ -1404,7 +1404,7 @@ module mkReqHandleRQ#(
                         isAtomicReq &&
                         (reqStatus == RDMA_REQ_ST_NORMAL || reqStatus == RDMA_REQ_ST_DUP)
                     ) begin
-                        dynAssert(
+                        immAssert(
                             isValid(respPktGenInfo.atomicAckOrig),
                             "atomicAckOrig assertion @ mkReqHandleRQ",
                             $format(
@@ -1423,7 +1423,7 @@ module mkReqHandleRQ#(
             end
         end
         $display(
-            "time=%0d: 14th stage, bth.opcode=", $time, fshow(bth.opcode),
+            "time=%0t: 14th stage, bth.opcode=", $time, fshow(bth.opcode),
             ", bth.psn=%h", bth.psn, ", bth.ackReq=", fshow(bth.ackReq),
             ", isOnlyRespPkt=", fshow(isOnlyRespPkt),
             ", shouldGenResp=", fshow(respPktGenInfo.shouldGenResp),
@@ -1443,7 +1443,7 @@ module mkReqHandleRQ#(
         let bth = reqPktInfo.bth;
         let isLastRespPkt = isZero(cntrl.contextRQ.getRespPktNum);
 
-        dynAssert(
+        immAssert(
             reqStatus == RDMA_REQ_ST_NORMAL || reqStatus == RDMA_REQ_ST_DUP,
             "reqStatus assertion @ mkReqHandleRQ",
             $format(
@@ -1452,7 +1452,7 @@ module mkReqHandleRQ#(
                 fshow(isGenMultiPktRespReg)
             )
         );
-        dynAssert(
+        immAssert(
             respPktGenInfo.shouldGenResp,
             "shouldGenResp assertion @ mkReqHandleRQ",
             $format(
@@ -1461,7 +1461,7 @@ module mkReqHandleRQ#(
                 fshow(isGenMultiPktRespReg)
             )
         );
-        dynAssert(
+        immAssert(
             bth.opcode == RDMA_READ_REQUEST,
             "bth.opcode assertion @ mkReqHandleRQ",
             $format(
@@ -1488,7 +1488,7 @@ module mkReqHandleRQ#(
             bth.opcode, reqStatus, permCheckInfo.totalLen, cntrl,
             cntrl.contextRQ.getCurRespPsn, msn, isLastRespPkt
         );
-        dynAssert(
+        immAssert(
             isValid(maybeMiddleOrLastHeader),
             "maybeMiddleOrLastHeader assertion @ mkReqHandleRQ",
             $format(
@@ -1501,7 +1501,7 @@ module mkReqHandleRQ#(
 
         isGenMultiPktRespReg <= !isLastRespPkt;
         $display(
-            "time=%0d: 15th stage, bth.opcode=", $time, fshow(bth.opcode),
+            "time=%0t: 15th stage, bth.opcode=", $time, fshow(bth.opcode),
             ", bth.psn=%h", bth.psn, ", bth.ackReq=", fshow(bth.ackReq),
             ", curRespPsn=%h", cntrl.contextRQ.getCurRespPsn,
             ", isLastRespPkt=", fshow(isLastRespPkt),
@@ -1539,7 +1539,7 @@ module mkReqHandleRQ#(
             workCompGenReqOutQ.enq(workCompReq);
         end
         // $display(
-        //     "time=%0d: 16th stage, bth.opcode=", $time, fshow(bth.opcode),
+        //     "time=%0t: 16th stage, bth.opcode=", $time, fshow(bth.opcode),
         //     ", bth.psn=%h", bth.psn, ", bth.ackReq=", fshow(bth.ackReq),
         //     ", immDt=%h, ieth=%h", immDt, ieth,
         //     ", hasImmDt=", fshow(hasImmDt),
@@ -1669,7 +1669,7 @@ module mkReqHandleRQ#(
             ));
         end
         // $display(
-        //     "time=%0d: 1st error flush stage, bth.opcode=", $time, fshow(bth.opcode),
+        //     "time=%0t: 1st error flush stage, bth.opcode=", $time, fshow(bth.opcode),
         //     ", bth.psn=%h", bth.psn, ", bth.ackReq=", fshow(bth.ackReq),
         //     ", reqStatus=", fshow(reqStatus)
         // );
@@ -1699,7 +1699,7 @@ module mkReqHandleRQ#(
                 retryFlushStateReg <= RQ_NOT_RETRY;
             end
             // $display(
-            //     "time=%0d:", $time, " retryDoneWire=", fshow(retryDoneWire)
+            //     "time=%0t:", $time, " retryDoneWire=", fshow(retryDoneWire)
             // );
         end
     endrule
@@ -1725,7 +1725,7 @@ module mkReqHandleRQ#(
             );
             retryDoneWire <= retryDone;
             // $display(
-            //     "time=%0d:", $time,
+            //     "time=%0t:", $time,
             //     " retryDone=", fshow(retryDone),
             //     ", bth.psn=%h", bth.psn,
             //     ", ePSN=%h", cntrl.contextRQ.getEPSN
@@ -1776,7 +1776,7 @@ module mkReqHandleRQ#(
                 ));
             end
             // $display(
-            //     "time=%0d: 1st retry flush stage, bth.opcode=", $time, fshow(bth.opcode),
+            //     "time=%0t: 1st retry flush stage, bth.opcode=", $time, fshow(bth.opcode),
             //     ", bth.psn=%h", bth.psn, ", bth.ackReq=", fshow(bth.ackReq),
             //     ", reqStatus=", fshow(reqStatus)
             // );
