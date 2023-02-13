@@ -127,8 +127,9 @@ module mkSimDmaReadSrvAndReqRespPipeOut(DmaReadSrvAndReqRespPipeOut);
         end
 
         let resp = DmaReadResp {
-            sqpn: curReqReg.sqpn,
-            wrID: curReqReg.wrID,
+            isRespErr : False,
+            sqpn      : curReqReg.sqpn,
+            wrID      : curReqReg.wrID,
             dataStream: dataStream
         };
         dmaReadRespQ.enq(resp);
@@ -193,8 +194,9 @@ module mkSimDmaWriteSrvAndReqRespPipeOut(DmaWriteSrvAndReqRespPipeOut);
     function Action genDmaWriteResp(DmaWriteMetaData metaData);
         action
             let dmaWriteResp = DmaWriteResp {
-                sqpn: metaData.sqpn,
-                psn : metaData.psn
+                isRespErr: False,
+                sqpn     : metaData.sqpn,
+                psn      : metaData.psn
             };
             // $display("time=%0t: dmaWriteResp=", $time, fshow(dmaWriteResp));
 

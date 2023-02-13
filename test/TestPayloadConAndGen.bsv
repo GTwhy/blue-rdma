@@ -37,16 +37,16 @@ module mkTestPayloadConAndGenNormalCase(Empty);
     let payloadGenerator <- mkPayloadGenerator(
         cntrl, simDmaReadSrv.dmaReadSrv, convertFifo2PipeOut(payloadGenReqQ)
     );
-    let payloadDataStreamPipeOut <- mkFunc2Pipe(
-        getDataStreamFromPayloadGenRespPipeOut,
-        payloadGenerator.respPipeOut
-    );
+    // let payloadDataStreamPipeOut <- mkFunc2Pipe(
+    //     getDataStreamFromPayloadGenRespPipeOut,
+    //     payloadGenerator.respPipeOut
+    // );
 
     let simDmaWriteSrv <- mkSimDmaWriteSrvAndDataStreamPipeOut;
     let simDmaWriteSrvDataStreamPipeOut = simDmaWriteSrv.dataStream;
     let payloadConsumer <- mkPayloadConsumer(
         cntrl,
-        payloadDataStreamPipeOut,
+        payloadGenerator.payloadDataStreamPipeOut,
         simDmaWriteSrv.dmaWriteSrv,
         convertFifo2PipeOut(payloadConReqQ)
     );
@@ -55,7 +55,7 @@ module mkTestPayloadConAndGenNormalCase(Empty);
     // - pktLenPipeOut4Gen
     // - pktLenPipeOut4Con
     // - payloadGenerator.respPipeOut
-    // - payloadDataStreamPipeOut
+    // - payloadGenerator.payloadDataStreamPipeOut
     // - simDmaReadSrvDataStreamPipeOut
     // - simDmaWriteSrvDataStreamPipeOut
     // - payloadConsumer.respPipeOut
@@ -77,7 +77,20 @@ module mkTestPayloadConAndGenNormalCase(Empty);
             }
         };
         payloadGenReqQ.enq(payloadGenReq);
-        // payloadGenerator.request(payloadGenReq);
+    endrule
+
+    rule recvPayloadGenResp if (cntrl.isNonErr);
+        let payloadGenResp = payloadGenerator.respPipeOut.first;
+        payloadGenerator.respPipeOut.deq;
+
+        immAssert(
+            !payloadGenResp.isRespErr,
+            "payloadGenResp error assertion @ mkTestPayloadConAndGenNormalCase",
+            $format(
+                "payloadGenResp.isRespErr=", fshow(payloadGenResp.isRespErr),
+                " should be false"
+            )
+        );
     endrule
 
     rule genPayloadConReq if (cntrl.isNonErr);

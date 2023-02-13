@@ -458,35 +458,40 @@ module mkReqGenSQ#(
 )(ReqGenSQ);
     FIFOF#(PayloadGenReq)     payloadGenReqOutQ <- mkFIFOF;
     FIFOF#(PendingWorkReq)   pendingWorkReqOutQ <- mkFIFOF;
+    // FIFOF#(WorkCompGenReqSQ)  errWorkReqHandleQ <- mkFIFOF;
+    // FIFOF#(WorkCompGenReqSQ)    errDmaReadRespQ <- mkFIFOF;
     FIFOF#(WorkCompGenReqSQ) workCompGenReqOutQ <- mkFIFOF;
+    // FIFOF#(DataStream)       payloadDataStreamQ <- mkFIFOF;
 
     FIFOF#(PendingWorkReq) pendingReqGenQ <- mkFIFOF;
-    FIFOF#(RdmaHeader)         reqHeaderQ <- mkFIFOF;
+    FIFOF#(Tuple3#(PendingWorkReq, Maybe#(RdmaHeader), PSN)) pendingReqHeaderQ <- mkFIFOF;
+    FIFOF#(RdmaHeader)      reqHeaderOutQ <- mkFIFOF;
 
     Reg#(PktNum)         pktNumReg <- mkRegU;
     Reg#(PSN)            curPsnReg <- mkRegU;
     Reg#(Bool) isGenMultiPktReqReg <- mkReg(False);
+    Reg#(Bool)    isNormalStateReg <- mkReg(True);
 
     let payloadGenerator <- mkPayloadGenerator(
         cntrl, dmaReadSrv, convertFifo2PipeOut(payloadGenReqOutQ)
     );
-    let payloadDataStreamPipeOut <- mkFunc2Pipe(
-        getDataStreamFromPayloadGenRespPipeOut,
-        payloadGenerator.respPipeOut
-    );
+    // let payloadDataStreamPipeOut <- mkFunc2Pipe(
+    //     getDataStreamFromPayloadGenRespPipeOut,
+    //     payloadGenerator.respPipeOut
+    // );
 
     // Generate header DataStream
     let headerDataStreamAndMetaDataPipeOut <- mkHeader2DataStream(
-        convertFifo2PipeOut(reqHeaderQ)
+        convertFifo2PipeOut(reqHeaderOutQ)
     );
     // Prepend header to payload if any
     let rdmaReqPipeOut <- mkPrependHeader2PipeOut(
         headerDataStreamAndMetaDataPipeOut.headerDataStream,
         headerDataStreamAndMetaDataPipeOut.headerMetaData,
-        payloadDataStreamPipeOut
+        payloadGenerator.payloadDataStreamPipeOut
     );
 
-    rule deqWorkReqPipeOut if (cntrl.isRTS);
+    rule deqWorkReqPipeOut if (cntrl.isRTS && isNormalStateReg);
         let qpType = cntrl.getQpType;
         immAssert(
             qpType == IBV_QPT_RC || qpType == IBV_QPT_UC ||
@@ -500,7 +505,7 @@ module mkReqGenSQ#(
         let shouldDeqPendingWR = False;
         let curPendingWR = pendingWorkReqPipeIn.first;
         if (
-            cntrl.isSQD ||
+            cntrl.isSQD || // SQ Drain
             compareWorkReqFlags(curPendingWR.wr.flags, IBV_SEND_FENCE)
         ) begin
             if (pendingWorkReqBufNotEmpty) begin
@@ -599,42 +604,41 @@ module mkReqGenSQ#(
         end
     endrule
 
-    rule genFirstOrOnlyReqHeader if (cntrl.isRTS && !isGenMultiPktReqReg);
-        let pendingWorkReq = pendingReqGenQ.first;
+    rule genFirstOrOnlyReqHeader if (cntrl.isRTS && !isGenMultiPktReqReg && isNormalStateReg);
+        let pendingWR = pendingReqGenQ.first;
 
-        PSN startPSN = unwrapMaybe(pendingWorkReq.startPSN);
-        PktNum pktNum = unwrapMaybe(pendingWorkReq.pktNum);
-        Bool isOnlyReqPkt = unwrapMaybe(pendingWorkReq.isOnlyReqPkt);
-        if (isOnlyReqPkt) begin
-            pendingReqGenQ.deq;
-        end
-        else begin
-            // curPendingWorkReqReg <= pendingWorkReq;
-            curPsnReg <= startPSN + 1;
-            // Current cycle output first/only packet,
-            // so the remaining pktNum = totalPktNum - 2
-            pktNumReg <= pktNum - 2;
-        end
-
+        let startPSN = unwrapMaybe(pendingWR.startPSN);
+        let pktNum = unwrapMaybe(pendingWR.pktNum);
+        let isOnlyReqPkt = unwrapMaybe(pendingWR.isOnlyReqPkt);
         let qpType = cntrl.getQpType;
-        let maybeFirstOrOnlyHeader = genFirstOrOnlyReqHeader(
-            pendingWorkReq.wr, cntrl, startPSN, isOnlyReqPkt
-        );
-        // TODO: remove this assertion, just report error by WC
-        immAssert(
-            isValid(maybeFirstOrOnlyHeader),
-            "maybeFirstOrOnlyHeader assertion @ mkReqGenSQ",
-            $format(
-                "maybeFirstOrOnlyHeader=", fshow(maybeFirstOrOnlyHeader),
-                " is not valid, and current WR=", fshow(pendingWorkReq)
-            )
-        );
+        // Check WR length cannot be larger than PMTU for UD
+        let isValidRdmaReq = qpType == IBV_QPT_UD ? isOnlyReqPkt : True;
+        if (isValidRdmaReq) begin
+            if (isOnlyReqPkt) begin
+                pendingReqGenQ.deq;
+            end
+            else begin
+                curPsnReg <= startPSN + 1;
+                // Current cycle output first/only packet,
+                // so the remaining pktNum = totalPktNum - 2
+                pktNumReg <= pktNum - 2;
+            end
 
-        if (maybeFirstOrOnlyHeader matches tagged Valid .firstOrOnlyHeader) begin
-            // Check WR length cannot be larger than PMTU for UD
-            let isValidRdmaReq = qpType == IBV_QPT_UD ? isOnlyReqPkt : True;
-            if (isValidRdmaReq) begin
-                if (workReqNeedDmaReadSQ(pendingWorkReq.wr)) begin
+            let maybeFirstOrOnlyHeader = genFirstOrOnlyReqHeader(
+                pendingWR.wr, cntrl, startPSN, isOnlyReqPkt
+            );
+            // TODO: remove this assertion, just report error by WC
+            immAssert(
+                isValid(maybeFirstOrOnlyHeader),
+                "maybeFirstOrOnlyHeader assertion @ mkReqGenSQ",
+                $format(
+                    "maybeFirstOrOnlyHeader=", fshow(maybeFirstOrOnlyHeader),
+                    " is not valid, and current WR=", fshow(pendingWR)
+                )
+            );
+
+            if (maybeFirstOrOnlyHeader matches tagged Valid .firstOrOnlyHeader) begin
+                if (workReqNeedDmaReadSQ(pendingWR.wr)) begin
                     let payloadGenReq = PayloadGenReq {
                         initiator    : OP_INIT_SQ_RD,
                         addPadding   : True,
@@ -642,49 +646,50 @@ module mkReqGenSQ#(
                         pmtu         : cntrl.getPMTU,
                         dmaReadReq   : DmaReadReq {
                             sqpn     : cntrl.getSQPN,
-                            startAddr: pendingWorkReq.wr.laddr,
-                            len      : pendingWorkReq.wr.len,
-                            wrID     : pendingWorkReq.wr.id
+                            startAddr: pendingWR.wr.laddr,
+                            len      : pendingWR.wr.len,
+                            wrID     : pendingWR.wr.id
                         }
                     };
                     payloadGenReqOutQ.enq(payloadGenReq);
-                    // payloadGenerator.request(payloadGenReq);
                 end
 
-                reqHeaderQ.enq(firstOrOnlyHeader);
+                // reqHeaderQ.enq(firstOrOnlyHeader);
                 isGenMultiPktReqReg <= !isOnlyReqPkt;
 
                 // $display(
-                //     "time=%0t: output PendingWorkReq=", $time, fshow(pendingWorkReq),
+                //     "time=%0t: output PendingWorkReq=", $time, fshow(pendingWR),
                 //     ", output header=", fshow(firstOrOnlyHeader)
                 // );
             end
-            else begin
-                $info(
-                    "time=%0t: discard PendingWorkReq with length=%0d",
-                    $time, pendingWorkReq.wr.len,
-                    " larger than PMTU when QpType=", fshow(qpType)
-                );
-            end
+            // else begin
+            //     let wcWaitDmaResp     = False;
+            //     // Partial WR ACK because this WR has inserted into pending WR buffer.
+            //     let wcReqType         = WC_REQ_TYPE_PARTIAL_ACK;
+            //     let wcStatus          = IBV_WC_LOC_QP_OP_ERR;
+            //     let errWorkCompGenReq = WorkCompGenReqSQ {
+            //         wr           : pendingWR.wr,
+            //         wcWaitDmaResp: wcWaitDmaResp,
+            //         wcReqType    : wcReqType,
+            //         triggerPSN   : startPSN,
+            //         wcStatus     : wcStatus
+            //     };
+            //     errWorkReqHandleQ.enq(errWorkCompGenReq);
+            //     isNormalStateReg[0] <= False;
+            // end
+            pendingReqHeaderQ.enq(tuple3(pendingWR, maybeFirstOrOnlyHeader, startPSN));
         end
         else begin
-            let wcWaitDmaResp     = False;
-            // Partial WR ACK because this WR has inserted into pending WR buffer.
-            let wcReqType         = WC_REQ_TYPE_PARTIAL_ACK;
-            let wcStatus          = IBV_WC_LOC_QP_OP_ERR;
-            let errWorkCompGenReq = WorkCompGenReqSQ {
-                pendingWR    : pendingWorkReq,
-                wcWaitDmaResp: wcWaitDmaResp,
-                wcReqType    : wcReqType,
-                triggerPSN   : startPSN,
-                wcStatus     : wcStatus
-            };
-            workCompGenReqOutQ.enq(errWorkCompGenReq);
+            $info(
+                "time=%0t: discard PendingWorkReq with length=%0d",
+                $time, pendingWR.wr.len,
+                " larger than PMTU when QpType=", fshow(qpType)
+            );
         end
     endrule
 
-    rule genMiddleOrLastReqHeader if (cntrl.isRTS && isGenMultiPktReqReg);
-        let pendingWorkReq = pendingReqGenQ.first;
+    rule genMiddleOrLastReqHeader if (cntrl.isRTS && isGenMultiPktReqReg && isNormalStateReg);
+        let pendingWR = pendingReqGenQ.first;
 
         let qpType = cntrl.getQpType;
         immAssert(
@@ -702,33 +707,35 @@ module mkReqGenSQ#(
         let isLastReqPkt = isZero(pktNumReg);
 
         let maybeMiddleOrLastHeader = genMiddleOrLastReqHeader(
-            pendingWorkReq.wr, cntrl, curPsnReg, isLastReqPkt
+            pendingWR.wr, cntrl, curPsnReg, isLastReqPkt
         );
         immAssert(
             isValid(maybeMiddleOrLastHeader),
             "maybeMiddleOrLastHeader assertion @ mkReqGenSQ",
             $format(
                 "maybeMiddleOrLastHeader=", fshow(maybeMiddleOrLastHeader),
-                " is not valid, and current WR=", fshow(pendingWorkReq)
+                " is not valid, and current WR=", fshow(pendingWR)
             )
         );
-        if (maybeMiddleOrLastHeader matches tagged Valid .middleOrLastHeader) begin
-            reqHeaderQ.enq(middleOrLastHeader);
-        end
-        else begin
-            let wcWaitDmaResp     = False;
-            // Partial WR ACK because this WR has inserted into pending WR buffer.
-            let wcReqType         = WC_REQ_TYPE_PARTIAL_ACK;
-            let wcStatus          = IBV_WC_LOC_QP_OP_ERR;
-            let errWorkCompGenReq = WorkCompGenReqSQ {
-                pendingWR    : pendingWorkReq,
-                wcWaitDmaResp: wcWaitDmaResp,
-                wcReqType    : wcReqType,
-                triggerPSN   : nextPSN,
-                wcStatus     : wcStatus
-            };
-            workCompGenReqOutQ.enq(errWorkCompGenReq);
-        end
+        // if (maybeMiddleOrLastHeader matches tagged Valid .middleOrLastHeader) begin
+        //     reqHeaderQ.enq(middleOrLastHeader);
+        // end
+        // else begin
+        //     let wcWaitDmaResp     = False;
+        //     // Partial WR ACK because this WR has inserted into pending WR buffer.
+        //     let wcReqType         = WC_REQ_TYPE_PARTIAL_ACK;
+        //     let wcStatus          = IBV_WC_LOC_QP_OP_ERR;
+        //     let errWorkCompGenReq = WorkCompGenReqSQ {
+        //         wr           : pendingWR.wr,
+        //         wcWaitDmaResp: wcWaitDmaResp,
+        //         wcReqType    : wcReqType,
+        //         triggerPSN   : curPsnReg,
+        //         wcStatus     : wcStatus
+        //     };
+        //     errWorkReqHandleQ.enq(errWorkCompGenReq);
+        //     isNormalStateReg[0] <= False;
+        // end
+        pendingReqHeaderQ.enq(tuple3(pendingWR, maybeMiddleOrLastHeader, curPsnReg));
         // $display(
         //     "time=%0t: curPsnReg=%h, pktNumReg=%0d, isLastReqPkt=%b",
         //     $time, curPsnReg, pktNumReg, isLastReqPkt
@@ -737,18 +744,75 @@ module mkReqGenSQ#(
         if (isLastReqPkt) begin
             pendingReqGenQ.deq;
             isGenMultiPktReqReg <= !isLastReqPkt;
-            let endPSN = unwrapMaybe(pendingWorkReq.endPSN);
+            let endPSN = unwrapMaybe(pendingWR.endPSN);
             immAssert(
                 curPsnReg == endPSN,
                 "endPSN assertion @ mkWorkReq2Headers",
                 $format(
-                    "curPsnReg=%h should == pendingWorkReq.endPSN=%h",
+                    "curPsnReg=%h should == pendingWR.endPSN=%h",
                     curPsnReg, endPSN,
-                    ", pendingWorkReq=", fshow(pendingWorkReq)
+                    ", pendingWR=", fshow(pendingWR)
                 )
             );
         end
     endrule
+
+    rule recvPayloadGenRespAndGenErrWorkComp if (cntrl.isRTS && isNormalStateReg);
+        let { pendingWR, maybeReqHeader, triggerPSN } = pendingReqHeaderQ.first;
+        pendingReqHeaderQ.deq;
+
+        // Partial WR ACK because this WR has inserted into pending WR buffer.
+        let wcReqType         = WC_REQ_TYPE_PARTIAL_ACK;
+        let wcStatus          = IBV_WC_LOC_QP_OP_ERR;
+        let wcWaitDmaResp     = False;
+        let errWorkCompGenReq = WorkCompGenReqSQ {
+            wr           : pendingWR.wr,
+            wcWaitDmaResp: wcWaitDmaResp,
+            wcReqType    : wcReqType,
+            triggerPSN   : triggerPSN,
+            wcStatus     : wcStatus
+        };
+
+        if (maybeReqHeader matches tagged Valid .reqHeader) begin
+            if (workReqNeedDmaReadSQ(pendingWR.wr)) begin
+                let payloadGenResp = payloadGenerator.respPipeOut.first;
+                payloadGenerator.respPipeOut.deq;
+
+                if (payloadGenResp.isRespErr) begin
+                    workCompGenReqOutQ.enq(errWorkCompGenReq);
+                    isNormalStateReg <= False;
+                end
+                else begin
+                    reqHeaderOutQ.enq(reqHeader);
+                end
+            end
+            else begin
+                reqHeaderOutQ.enq(reqHeader);
+            end
+        end
+        else begin // Illegal RDMA request headers
+            workCompGenReqOutQ.enq(errWorkCompGenReq);
+            isNormalStateReg <= False;
+        end
+    endrule
+
+    // rule mergeErrWorkCompGenReq if (cntrl.isRTS && !isNormalStateReg[0]);
+    //     // Error DMA response has higher priority than error WR
+    //     if (errDmaReadRespQ.notEmpty) begin
+    //         let errWorkCompGenReq = errDmaReadRespQ.first;
+    //         errDmaReadRespQ.deq;
+
+    //         workCompGenReqOutQ.enq(errWorkCompGenReq);
+    //         // Only generate one error WC request
+    //         errWorkReqHandleQ.clear;
+    //     end
+    //     else if (errWorkReqHandleQ.notEmpty) begin
+    //         let errWorkCompGenReq = errWorkReqHandleQ.first;
+    //         errWorkReqHandleQ.deq;
+
+    //         workCompGenReqOutQ.enq(errWorkCompGenReq);
+    //     end
+    // endrule
 
     interface pendingWorkReqPipeOut    = convertFifo2PipeOut(pendingWorkReqOutQ);
     interface rdmaReqDataStreamPipeOut = rdmaReqPipeOut;

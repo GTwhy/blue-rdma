@@ -265,9 +265,10 @@ module mkSimGenRdmaRespHeaderAndDataStream#(
     DmaReadSrv dmaReadSrv,
     PipeOut#(PendingWorkReq) pendingWorkReqPipeIn
 )(RdmaRespHeaderAndDataStreamPipeOut);
+    FIFOF#(Tuple2#(PendingWorkReq, RdmaHeader)) pendingReqHeaderQ <- mkFIFOF;
+    FIFOF#(RdmaHeader)     respHeaderOutQ <- mkFIFOF;
+    FIFOF#(RdmaHeader) respHeaderOutQ4Ref <- mkFIFOF;
     FIFOF#(PayloadGenReq) payloadGenReqQ <- mkFIFOF;
-    FIFOF#(RdmaHeader)           headerQ <- mkFIFOF;
-    FIFOF#(RdmaHeader)        headerOutQ <- mkFIFOF;
 
     Reg#(PendingWorkReq) curPendingWorkReqReg <- mkRegU;
     Reg#(PktNum)                    pktNumReg <- mkRegU;
@@ -278,17 +279,17 @@ module mkSimGenRdmaRespHeaderAndDataStream#(
     let payloadGenerator <- mkPayloadGenerator(
         cntrl, dmaReadSrv, convertFifo2PipeOut(payloadGenReqQ)
     );
-    let payloadDataStreamPipeOut <- mkFunc2Pipe(
-        getDataStreamFromPayloadGenRespPipeOut,
-        payloadGenerator.respPipeOut
-    );
+    // let payloadDataStreamPipeOut <- mkFunc2Pipe(
+    //     getDataStreamFromPayloadGenRespPipeOut,
+    //     payloadGenerator.respPipeOut
+    // );
     let headerDataStreamAndMetaDataPipeOut <- mkHeader2DataStream(
-        convertFifo2PipeOut(headerQ)
+        convertFifo2PipeOut(respHeaderOutQ)
     );
     let rdmaRespPipeOut <- mkPrependHeader2PipeOut(
         headerDataStreamAndMetaDataPipeOut.headerDataStream,
         headerDataStreamAndMetaDataPipeOut.headerMetaData,
-        payloadDataStreamPipeOut
+        payloadGenerator.payloadDataStreamPipeOut
     );
 
     // (* fire_when_enabled *)
@@ -342,22 +343,22 @@ module mkSimGenRdmaRespHeaderAndDataStream#(
             // TODO: generate atomic WR response payload
             if (isNonZeroReadWorkReq(curPendingWR.wr)) begin
                 let payloadGenReq = PayloadGenReq {
-                    initiator : OP_INIT_SQ_RD,
-                    addPadding: True,
-                    segment   : True,
-                    pmtu      : cntrl.getPMTU,
-                    dmaReadReq: DmaReadReq {
-                        sqpn: cntrl.getSQPN,
+                    initiator    : OP_INIT_SQ_RD,
+                    addPadding   : True,
+                    segment      : True,
+                    pmtu         : cntrl.getPMTU,
+                    dmaReadReq   : DmaReadReq {
+                        sqpn     : cntrl.getSQPN,
                         startAddr: curPendingWR.wr.laddr,
-                        len: curPendingWR.wr.len,
-                        wrID: curPendingWR.wr.id
+                        len      : curPendingWR.wr.len,
+                        wrID     : curPendingWR.wr.id
                     }
                 };
                 payloadGenReqQ.enq(payloadGenReq);
             end
 
-            headerQ.enq(firstOrOnlyHeader);
-            headerOutQ.enq(firstOrOnlyHeader);
+            pendingReqHeaderQ.enq(tuple2(curPendingWR, firstOrOnlyHeader));
+            // headerOutQ.enq(firstOrOnlyHeader);
             busyReg <= !hasOnlyRespPkt;
 
             // $display(
@@ -390,8 +391,8 @@ module mkSimGenRdmaRespHeaderAndDataStream#(
             )
         );
         if (maybeMiddleOrLastHeader matches tagged Valid .middleOrLastHeader) begin
-            headerQ.enq(middleOrLastHeader);
-            headerOutQ.enq(middleOrLastHeader);
+            pendingReqHeaderQ.enq(tuple2(curPendingWorkReqReg, middleOrLastHeader));
+            // headerOutQ.enq(middleOrLastHeader);
         end
 
         // $display(
@@ -400,7 +401,30 @@ module mkSimGenRdmaRespHeaderAndDataStream#(
         // );
     endrule
 
-    interface respHeader = convertFifo2PipeOut(headerOutQ);
+    rule recvPayloadGenResp;
+        let { pendingWR, reqHeader } = pendingReqHeaderQ.first;
+        pendingReqHeaderQ.deq;
+
+        // TODO: generate atomic WR response payload
+        if (isNonZeroReadWorkReq(pendingWR.wr)) begin
+            let payloadGenResp = payloadGenerator.respPipeOut.first;
+            payloadGenerator.respPipeOut.deq;
+
+            immAssert(
+                !payloadGenResp.isRespErr,
+                "payloadGenResp error assertion @ mkSimGenRdmaRespHeaderAndDataStream",
+                $format(
+                    "payloadGenResp.isRespErr=", fshow(payloadGenResp.isRespErr),
+                    " should be false"
+                )
+            );
+        end
+
+        respHeaderOutQ.enq(reqHeader);
+        respHeaderOutQ4Ref.enq(reqHeader);
+    endrule
+
+    interface respHeader = convertFifo2PipeOut(respHeaderOutQ4Ref);
     interface rdmaResp = rdmaRespPipeOut;
 endmodule
 

@@ -218,6 +218,7 @@ typedef struct {
 } DmaReadReq deriving(Bits, FShow);
 
 typedef struct {
+    Bool isRespErr;
     QPN sqpn;
     WorkReqID wrID;
     DataStream dataStream;
@@ -236,6 +237,7 @@ typedef struct {
 } DmaWriteReq deriving(Bits, FShow);
 
 typedef struct {
+    Bool isRespErr;
     QPN sqpn;
     PSN psn;
 } DmaWriteResp deriving(Bits, FShow);
@@ -263,7 +265,8 @@ typedef struct {
     OpInitiator initiator;
     Bool addPadding;
     Bool segment;
-    DmaReadResp dmaReadResp;
+    Bool isRespErr;
+    // DmaReadResp dmaReadResp;
 } PayloadGenResp deriving(Bits, FShow);
 
 typedef union tagged {
@@ -527,7 +530,7 @@ typedef struct {
 } WorkCompGenReqRQ deriving(Bits, FShow);
 
 typedef struct {
-    PendingWorkReq pendingWR;
+    WorkReq wr;
     Bool wcWaitDmaResp;
     WorkCompReqType wcReqType;
     PSN triggerPSN;

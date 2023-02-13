@@ -15,14 +15,19 @@ import Utils :: *;
 //     interface Get#(resp_type) response;
 // endinterface: Server
 
-function DataStream getDataStreamFromPayloadGenRespPipeOut(
-    PayloadGenResp resp
-) = resp.dmaReadResp.dataStream;
+// function DataStream getDataStreamFromPayloadGenRespPipeOut(
+//     PayloadGenResp resp
+// ) = resp.dmaReadResp.dataStream;
 
 interface PayloadGenerator;
+    interface DataStreamPipeOut payloadDataStreamPipeOut;
     interface PipeOut#(PayloadGenResp) respPipeOut;
 endinterface
 
+// If segment payload DataStream, then PayloadGenResp is sent
+// at the last fragment of the segmented payload DataStream.
+// If not segment, then PayloadGenResp is sent at the first
+// fragment of the payload DataStream.
 module mkPayloadGenerator#(
     Controller cntrl,
     DmaReadSrv dmaReadSrv,
@@ -31,10 +36,15 @@ module mkPayloadGenerator#(
     FIFOF#(PayloadGenResp) payloadGenRespQ <- mkFIFOF;
     FIFOF#(Tuple3#(PayloadGenReq, ByteEn, PmtuFragNum)) pendingPayloadGenReqQ <- mkFIFOF;
 
-    Reg#(PmtuFragNum) pmtuFragCntReg <- mkRegU;
-    Reg#(Bool) shouldSetFirstReg <- mkReg(False);
+    // TODO: check payloadOutQ buffer size is enough for DMA read delay?
+    FIFOF#(DataStream) payloadBufQ <- mkSizedBRAMFIFOF(valueOf(DATA_STREAM_FRAG_BUF_SIZE));
+    // let payloadBufPipeOut <- mkConnectPipeOut2Q(payloadPipeIn, payloadBufQ);
 
-    rule recvPayloadGenReq if (cntrl.isNonErr);
+    Reg#(PmtuFragNum) pmtuFragCntReg <- mkRegU;
+    Reg#(Bool)     shouldSetFirstReg <- mkReg(False);
+    Reg#(Bool)      isNormalStateReg <- mkReg(True);
+
+    rule recvPayloadGenReq if (cntrl.isNonErr && isNormalStateReg);
         let payloadGenReq = payloadGenReqPipeIn.first;
         payloadGenReqPipeIn.deq;
         immAssert(
@@ -68,7 +78,7 @@ module mkPayloadGenerator#(
         dmaReadSrv.request.put(payloadGenReq.dmaReadReq);
     endrule
 
-    rule generatePayloadResp if (cntrl.isNonErr);
+    rule generatePayloadResp if (cntrl.isNonErr && isNormalStateReg);
         let dmaReadResp <- dmaReadSrv.response.get;
         let { payloadGenReq, lastFragByteEnWithPadding, pmtuFragNum } = pendingPayloadGenReqQ.first;
 
@@ -80,6 +90,15 @@ module mkPayloadGenerator#(
                 curData.byteEn = lastFragByteEnWithPadding;
             end
         end
+
+        // dmaReadResp.dataStream = curData;
+        let generateResp = PayloadGenResp {
+            initiator  : payloadGenReq.initiator,
+            addPadding : payloadGenReq.addPadding,
+            segment    : payloadGenReq.segment,
+            isRespErr  : dmaReadResp.isRespErr
+            // dmaReadResp: dmaReadResp
+        };
 
         if (payloadGenReq.segment) begin
             Bool isFragCntZero = isZero(pmtuFragCntReg);
@@ -95,28 +114,35 @@ module mkPayloadGenerator#(
             else if (!curData.isLast) begin
                 pmtuFragCntReg <= pmtuFragCntReg - 1;
             end
+
+            if (curData.isLast || dmaReadResp.isRespErr) begin
+                // Generate PayloadGenResp when segmented last payload fragment,
+                // or DMA read response error.
+                payloadGenRespQ.enq(generateResp);
+            end
+        end
+        else if (curData.isFirst) begin
+            // PayloadGenResp ignores any error during DMA read responses,
+            // if not segment payload DataStream.
+            payloadGenRespQ.enq(generateResp);
         end
 
-        dmaReadResp.dataStream = curData;
-        let generateResp = PayloadGenResp {
-            initiator  : payloadGenReq.initiator,
-            addPadding : payloadGenReq.addPadding,
-            segment    : payloadGenReq.segment,
-            dmaReadResp: dmaReadResp
-        };
-        payloadGenRespQ.enq(generateResp);
+        isNormalStateReg <= !dmaReadResp.isRespErr;
+        payloadBufQ.enq(curData);
         // $display("time=%0t: generateResp=", $time, fshow(generateResp));
     endrule
 
-    rule flushDmaReadResp if (cntrl.isERR);
+    rule flushDmaReadResp if (cntrl.isERR || !isNormalStateReg);
         let dmaReadResp <- dmaReadSrv.response.get;
     endrule
 
-    rule flushReqRespQ if (cntrl.isERR);
+    rule flushReqRespQ if (cntrl.isERR || !isNormalStateReg);
         pendingPayloadGenReqQ.clear;
         payloadGenRespQ.clear;
+        payloadBufQ.clear;
     endrule
 
+    interface payloadDataStreamPipeOut = convertFifo2PipeOut(payloadBufQ);
     interface respPipeOut = convertFifo2PipeOut(payloadGenRespQ);
 endmodule
 
@@ -355,10 +381,11 @@ module mkPayloadConsumer#(
         case (consumeReq.consumeInfo) matches
             tagged SendWriteReqReadRespInfo .sendWriteReqReadRespInfo: begin
                 let consumeResp = PayloadConResp {
-                    initiator   : consumeReq.initiator,
-                    dmaWriteResp: DmaWriteResp {
-                        sqpn    : sendWriteReqReadRespInfo.sqpn,
-                        psn     : sendWriteReqReadRespInfo.psn
+                    initiator    : consumeReq.initiator,
+                    dmaWriteResp : DmaWriteResp {
+                        isRespErr: dmaWriteResp.isRespErr,
+                        sqpn     : sendWriteReqReadRespInfo.sqpn,
+                        psn      : sendWriteReqReadRespInfo.psn
                     }
                 };
                 consumeRespQ.enq(consumeResp);
@@ -378,10 +405,11 @@ module mkPayloadConsumer#(
             tagged AtomicRespInfoAndPayload .atomicRespInfo: begin
                 let { atomicRespDmaWriteMetaData, atomicRespPayload } = atomicRespInfo;
                 let consumeResp = PayloadConResp {
-                    initiator   : consumeReq.initiator,
-                    dmaWriteResp: DmaWriteResp {
-                        sqpn    : atomicRespDmaWriteMetaData.sqpn,
-                        psn     : atomicRespDmaWriteMetaData.psn
+                    initiator    : consumeReq.initiator,
+                    dmaWriteResp : DmaWriteResp {
+                        isRespErr: dmaWriteResp.isRespErr,
+                        sqpn     : atomicRespDmaWriteMetaData.sqpn,
+                        psn      : atomicRespDmaWriteMetaData.psn
                     }
                 };
                 // $display("time=%0t: consumeResp=", $time, fshow(consumeResp));

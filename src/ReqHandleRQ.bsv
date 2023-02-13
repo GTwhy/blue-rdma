@@ -102,10 +102,12 @@ function Maybe#(RdmaOpCode) genFirstOrOnlyRespRdmaOpCode(
     endcase
 endfunction
 
-function Maybe#(RdmaOpCode) genMiddleOrLastRespRdmaOpCode(RdmaOpCode reqOpCode, Bool isLastRespPkt);
-    return case (reqOpCode)
-        RDMA_READ_REQUEST: tagged Valid (isLastRespPkt ? RDMA_READ_RESPONSE_LAST : RDMA_READ_RESPONSE_MIDDLE);
-        default          : tagged Invalid;
+function Maybe#(RdmaOpCode) genMiddleOrLastRespRdmaOpCode(RdmaReqStatus reqStatus, Bool isLastRespPkt);
+    return case (reqStatus)
+        RDMA_REQ_ST_NORMAL,
+        RDMA_REQ_ST_DUP   : tagged Valid (isLastRespPkt ? RDMA_READ_RESPONSE_LAST : RDMA_READ_RESPONSE_MIDDLE);
+        RDMA_REQ_ST_RMT_OP: tagged Valid ACKNOWLEDGE;
+        default           : tagged Invalid;
     endcase;
 endfunction
 
@@ -247,7 +249,7 @@ function Maybe#(RdmaHeader) genMiddleOrLastRespHeader(
     Controller cntrl, PSN psn, MSN msn, Bool isLastRespPkt
 );
     let maybeTrans  = qpType2TransType(cntrl.getQpType);
-    let maybeOpCode = genMiddleOrLastRespRdmaOpCode(reqOpCode, isLastRespPkt);
+    let maybeOpCode = genMiddleOrLastRespRdmaOpCode(reqStatus, isLastRespPkt);
     let maybeDQPN   = getMaybeDestQpnRQ(cntrl);
     let maybeAETH   = genAethByReqStatus(reqStatus, cntrl, msn);
 
@@ -275,20 +277,30 @@ function Maybe#(RdmaHeader) genMiddleOrLastRespHeader(
         };
 
         let hasPayload = True;
-        if (isLastRespPkt) begin
-            return tagged Valid genRdmaHeader(
-                zeroExtendLSB({ pack(bth), pack(aeth) }),
-                fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(AETH_BYTE_WIDTH)),
-                hasPayload
-            );
-        end
-        else begin
-            return tagged Valid genRdmaHeader(
-                zeroExtendLSB(pack(bth)),
-                fromInteger(valueOf(BTH_BYTE_WIDTH)),
-                hasPayload
-            );
-        end
+        return case (opcode)
+            ACKNOWLEDGE: begin // Error response to middle or last read responses
+                tagged Valid genRdmaHeader(
+                    zeroExtendLSB({ pack(bth), pack(aeth) }),
+                    fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(AETH_BYTE_WIDTH)),
+                    False // hasPayload
+                );
+            end
+            RDMA_READ_RESPONSE_LAST: begin
+                tagged Valid genRdmaHeader(
+                    zeroExtendLSB({ pack(bth), pack(aeth) }),
+                    fromInteger(valueOf(BTH_BYTE_WIDTH) + valueOf(AETH_BYTE_WIDTH)),
+                    hasPayload
+                );
+            end
+            RDMA_READ_RESPONSE_MIDDLE: begin
+                tagged Valid genRdmaHeader(
+                    zeroExtendLSB(pack(bth)),
+                    fromInteger(valueOf(BTH_BYTE_WIDTH)),
+                    hasPayload
+                );
+            end
+            default: tagged Invalid;
+        endcase;
     end
     else begin
         return tagged Invalid;
@@ -356,7 +368,6 @@ typedef struct {
 
 interface ReqHandleRQ;
     interface PipeOut#(PayloadConReq) payloadConReqPipeOut;
-    // interface PipeOut#(PayloadGenReq) payloadGenReqPipeOut;
     interface DataStreamPipeOut rdmaRespDataStreamPipeOut;
     interface PipeOut#(WorkCompGenReqRQ) workCompGenReqPipeOut;
 endinterface
@@ -380,17 +391,17 @@ module mkReqHandleRQ#(
     let payloadGenerator <- mkPayloadGenerator(
         cntrl, dmaReadSrv, convertFifo2PipeOut(payloadGenReqOutQ)
     );
-    let payloadDataStreamPipeOut <- mkFunc2Pipe(
-        getDataStreamFromPayloadGenRespPipeOut,
-        payloadGenerator.respPipeOut
-    );
+    // let payloadDataStreamPipeOut <- mkFunc2Pipe(
+    //     getDataStreamFromPayloadGenRespPipeOut,
+    //     payloadGenerator.respPipeOut
+    // );
     let headerDataStreamAndMetaDataPipeOut <- mkHeader2DataStream(
         convertFifo2PipeOut(headerQ)
     );
     let rdmaRespPipeOut <- mkPrependHeader2PipeOut(
         headerDataStreamAndMetaDataPipeOut.headerDataStream,
         headerDataStreamAndMetaDataPipeOut.headerMetaData,
-        payloadDataStreamPipeOut
+        payloadGenerator.payloadDataStreamPipeOut // payloadDataStreamPipeOut
     );
 
     FIFOF#(Tuple3#(RdmaPktMetaData, RdmaReqStatus, RdmaReqPktInfo)) supportedReqOpCodeCheckQ <- mkFIFOF;
@@ -818,11 +829,6 @@ module mkReqHandleRQ#(
         let rdmaHeader  = pktMetaData.pktHeader;
         let reth        = extractRETH(rdmaHeader.headerData, bth.trans);
         let isReadReq   = reqPktInfo.isReadReq;
-        // let atomicEth   = extractAtomicEth(rdmaHeader.headerData, bth.trans);
-        // let isAtomicReq = reqPktInfo.isAtomicReq;
-
-        // let isZeroDmaLen     = permCheckInfo.isZeroDmaLen;
-        // let isFirstOrOnlyPkt = reqPktInfo.isFirstOrOnlyPkt;
 
         let expectDupReadCheckResp = False;
         if (
@@ -848,13 +854,7 @@ module mkReqHandleRQ#(
         } = dupReadReqPermCheckQ.first;
         dupReadReqPermCheckQ.deq;
 
-        let bth         = reqPktInfo.bth;
-        // let rdmaHeader  = pktMetaData.pktHeader;
-        // let reth        = extractRETH(rdmaHeader.headerData, bth.trans);
-        // let atomicEth   = extractAtomicEth(rdmaHeader.headerData, bth.trans);
-        // let isReadReq   = reqPktInfo.isReadReq;
-        // let isAtomicReq = reqPktInfo.isAtomicReq;
-
+        let bth              = reqPktInfo.bth;
         let isZeroDmaLen     = permCheckInfo.isZeroDmaLen;
         let isFirstOrOnlyPkt = reqPktInfo.isFirstOrOnlyPkt;
 
@@ -953,7 +953,6 @@ module mkReqHandleRQ#(
                 cntrl.contextRQ.setTotalDmaWriteLen(totalDmaWriteLen);
                 cntrl.contextRQ.setNextDmaWriteAddr(nextDmaWriteAddr);
                 cntrl.contextRQ.setSendWriteReqPktNum(sendWriteReqPktNum);
-
                 // $display(
                 //     "time=%0t: remainingDmaWriteLen=%h, totalDmaWriteLen=%h, nextDmaWriteAddr=%h, sendWriteReqPktNum=%0d, enoughDmaSpace=",
                 //     $time, remainingDmaWriteLen, totalDmaWriteLen, nextDmaWriteAddr, sendWriteReqPktNum, fshow(enoughDmaSpace)
@@ -997,16 +996,14 @@ module mkReqHandleRQ#(
         let reth       = extractRETH(rdmaHeader.headerData, bth.trans);
         let atomicEth  = extractAtomicEth(rdmaHeader.headerData, bth.trans);
 
-        let isSendReq   = reqPktInfo.isSendReq;
-        let isWriteReq  = reqPktInfo.isWriteReq;
-        let isReadReq   = reqPktInfo.isReadReq;
-        let isAtomicReq = reqPktInfo.isAtomicReq;
-
+        let isSendReq    = reqPktInfo.isSendReq;
+        let isWriteReq   = reqPktInfo.isWriteReq;
+        let isReadReq    = reqPktInfo.isReadReq;
+        let isAtomicReq  = reqPktInfo.isAtomicReq;
         let isZeroDmaLen = permCheckInfo.isZeroDmaLen;
 
-        let expectReadRespPayload    = False;
-        let expectAtomicRespOrig     = False;
-        // let expectDupAtomicCheckResp = False;
+        let expectReadRespPayload = False;
+        let expectAtomicRespOrig  = False;
         if (!isErrFlushStateReg) begin
             case ({ pack(isSendReq), pack(isWriteReq), pack(isReadReq), pack(isAtomicReq) })
                 4'b1000, 4'b0100: begin // Send/Write requests
@@ -1059,10 +1056,6 @@ module mkReqHandleRQ#(
                         atomicOpReqQ.enq(atomicOpReq);
                         expectAtomicRespOrig = True;
                     end
-                    // else if (reqStatus == RDMA_REQ_ST_DUP) begin
-                    //     dupReadAtomicCache.searchAtomicReq(bth.opcode, atomicEth);
-                    //     expectDupAtomicCheckResp = True;
-                    // end
                 end
                 default: begin end
             endcase
@@ -1098,8 +1091,6 @@ module mkReqHandleRQ#(
     rule checkShouldGenRespAndWaitAtomicResp if (cntrl.isNonErr || cntrl.isERR); // This rule still runs at retry or error state
         let {
             pktMetaData, reqStatus, permCheckInfo, reqPktInfo, respPktGenInfo
-            // dupReadReqStartState, expectReadRespPayload,
-            // expectAtomicRespOrig, expectDupAtomicCheckResp
         } = respGenCheckQ.first;
         respGenCheckQ.deq;
 
@@ -1107,11 +1098,10 @@ module mkReqHandleRQ#(
         let rdmaHeader = pktMetaData.pktHeader;
         let atomicEth  = extractAtomicEth(rdmaHeader.headerData, bth.trans);
 
-        let isSendReq   = reqPktInfo.isSendReq;
-        let isWriteReq  = reqPktInfo.isWriteReq;
-        let isReadReq   = reqPktInfo.isReadReq;
-        let isAtomicReq = reqPktInfo.isAtomicReq;
-
+        let isSendReq       = reqPktInfo.isSendReq;
+        let isWriteReq      = reqPktInfo.isWriteReq;
+        let isReadReq       = reqPktInfo.isReadReq;
+        let isAtomicReq     = reqPktInfo.isAtomicReq;
         let isLastOrOnlyPkt = reqPktInfo.isLastOrOnlyPkt;
 
         let shouldGenResp = False;
@@ -1140,6 +1130,8 @@ module mkReqHandleRQ#(
                     end
                     4'b0001: begin // Atomic requests
                         if (respPktGenInfo.expectAtomicRespOrig) begin
+                            // TODO: move waiting for atomic operation responses to
+                            // the response generation stage
                             let atomicOpResp = atomicOpRespPipeIn.first;
                             atomicOpRespPipeIn.deq;
 
@@ -1171,13 +1163,6 @@ module mkReqHandleRQ#(
                     end
                     4'b0001: begin // Duplicate atomic requests
                         // Duplicate atomic requests will be checked in later stages
-                        // if (expectDupAtomicCheckResp) begin
-                        //     let searchResult <- dupReadAtomicCache.searchAtomicResp;
-                        //     if (searchResult matches tagged Valid .atomicCache) begin
-                        //         atomicAckOrig = tagged Valid atomicCache.atomicAckEth.orig;
-                        //         shouldGenResp = qpHasResp;
-                        //     end
-                        // end
                     end
                 endcase
             end
@@ -1218,12 +1203,7 @@ module mkReqHandleRQ#(
         // so still need send to next stage
         respPktGenInfo.shouldGenResp = shouldGenResp;
         respPktGenInfo.atomicAckOrig = atomicAckOrig;
-        // let respPktGenInfo = RespPktGenInfo {
-        //     expectReadRespPayload   : expectReadRespPayload,
-        //     expectAtomicRespOrig    : expectAtomicRespOrig,
-        //     expectDupAtomicCheckResp: False,
-        //     dupReadReqStartState    : dupReadReqStartState
-        // };
+
         dupAtomicReqPermQueryQ.enq(tuple5(
             pktMetaData, reqStatus, permCheckInfo, reqPktInfo, respPktGenInfo
         ));
@@ -1244,12 +1224,8 @@ module mkReqHandleRQ#(
 
         let bth         = reqPktInfo.bth;
         let rdmaHeader  = pktMetaData.pktHeader;
-        // let reth        = extractRETH(rdmaHeader.headerData, bth.trans);
-        // let isReadReq   = reqPktInfo.isReadReq;
         let atomicEth   = extractAtomicEth(rdmaHeader.headerData, bth.trans);
         let isAtomicReq = reqPktInfo.isAtomicReq;
-        // let isZeroDmaLen     = permCheckInfo.isZeroDmaLen;
-        // let isFirstOrOnlyPkt = reqPktInfo.isFirstOrOnlyPkt;
 
         let expectDupAtomicCheckResp = False;
         if (
@@ -1276,13 +1252,6 @@ module mkReqHandleRQ#(
         dupAtomicReqPermCheckQ.deq;
 
         let bth = reqPktInfo.bth;
-        // let rdmaHeader  = pktMetaData.pktHeader;
-        // let reth        = extractRETH(rdmaHeader.headerData, bth.trans);
-        // let atomicEth   = extractAtomicEth(rdmaHeader.headerData, bth.trans);
-        // let isReadReq   = reqPktInfo.isReadReq;
-        // let isAtomicReq = reqPktInfo.isAtomicReq;
-        // let isZeroDmaLen     = permCheckInfo.isZeroDmaLen;
-        // let isFirstOrOnlyPkt = reqPktInfo.isFirstOrOnlyPkt;
 
         let expectDupAtomicCheckResp = respPktGenInfo.expectDupAtomicCheckResp;
         if (reqStatus == RDMA_REQ_ST_DUP && expectDupAtomicCheckResp) begin
@@ -1317,29 +1286,6 @@ module mkReqHandleRQ#(
         let totalPktNum   = reqPktInfo.respPktNum;
         let isOnlyRespPkt = reqPktInfo.isOnlyRespPkt;
 
-        let errReqStatus = isErrReqStatus(reqStatus);
-        if (errReqStatus && !isErrRespGenReg) begin
-            isErrRespGenReg <= True;
-            // $display("time=%0t: first fatal error response, reqStatus=", $time, fshow(reqStatus));
-        end
-        workCompReqQ.enq(tuple4(pktMetaData, reqStatus, permCheckInfo, reqPktInfo));
-
-        if (isErrRespGenReg || errReqStatus) begin
-            immAssert(
-                !respPktGenInfo.expectReadRespPayload &&
-                !respPktGenInfo.expectAtomicRespOrig  &&
-                !respPktGenInfo.expectDupAtomicCheckResp,
-                "respPktGenInfo assertion @ mkReqHandleRQ",
-                $format(
-                    "expectReadRespPayload=", fshow(respPktGenInfo.expectReadRespPayload),
-                    ", expectAtomicRespOrig=", fshow(respPktGenInfo.expectAtomicRespOrig),
-                    ", expectDupAtomicCheckResp=", fshow(respPktGenInfo.expectDupAtomicCheckResp),
-                    ", all should be false when errReqStatus=", fshow(errReqStatus),
-                    " and isErrRespGenReg=", fshow(isErrRespGenReg)
-                )
-            );
-        end
-
         if (isErrRespGenReg) begin
             // No responses after error response
             pendingRespQ.deq;
@@ -1357,12 +1303,32 @@ module mkReqHandleRQ#(
                         " should match duplicate read requests"
                     )
                 );
+
                 cntrl.contextRQ.setCurRespPsn(bth.psn);
                 cntrl.contextRQ.setRespPktNum(totalPktNum - 1);
                 isGenMultiPktRespReg <= True;
             end
             else begin
-                if (isOnlyRespPkt) begin
+                let hasPayloadDmaReadRespErr = False;
+                if (respPktGenInfo.expectReadRespPayload) begin
+                    let payloadGenResp = payloadGenerator.respPipeOut.first;
+                    payloadGenerator.respPipeOut.deq;
+
+                    if (payloadGenResp.isRespErr) begin
+                        hasPayloadDmaReadRespErr = True;
+                        respPktGenInfo.expectReadRespPayload = False;
+
+                        if (reqStatus == RDMA_REQ_ST_NORMAL) begin
+                            reqStatus = RDMA_REQ_ST_RMT_OP;
+                        end
+                        else begin
+                            reqStatus = RDMA_REQ_ST_DISCARD;
+                            respPktGenInfo.shouldGenResp = False;
+                        end
+                    end
+                end
+
+                if (isOnlyRespPkt || hasPayloadDmaReadRespErr) begin
                     pendingRespQ.deq;
                 end
                 else begin
@@ -1372,15 +1338,15 @@ module mkReqHandleRQ#(
                     cntrl.contextRQ.setRespPktNum(totalPktNum - 2);
                 end
 
-                if (reqStatus == RDMA_REQ_ST_NORMAL || reqStatus == RDMA_REQ_ST_DUP) begin
-                    isGenMultiPktRespReg <= !isOnlyRespPkt;
-                end
-
-                let isLastOrOnlyPkt = isLastOrOnlyRdmaOpCode(bth.opcode);
+                let isLastOrOnlyReqPkt = isLastOrOnlyRdmaOpCode(bth.opcode);
                 let msn = cntrl.contextRQ.getMSN;
-                if (reqStatus == RDMA_REQ_ST_NORMAL && isLastOrOnlyPkt) begin
+                if (reqStatus == RDMA_REQ_ST_NORMAL && isLastOrOnlyReqPkt) begin
                     msn = msn + 1;
                     cntrl.contextRQ.setMSN(msn);
+                end
+
+                if (reqStatus == RDMA_REQ_ST_NORMAL || reqStatus == RDMA_REQ_ST_DUP) begin
+                    isGenMultiPktRespReg <= !isOnlyRespPkt;
                 end
 
                 let maybeFirstOrOnlyHeader = genFirstOrOnlyRespHeader(
@@ -1422,6 +1388,30 @@ module mkReqHandleRQ#(
                 end
             end
         end
+
+        let errReqStatus = isErrReqStatus(reqStatus);
+        if (errReqStatus && !isErrRespGenReg) begin
+            isErrRespGenReg <= True;
+            // $display("time=%0t: first fatal error response, reqStatus=", $time, fshow(reqStatus));
+        end
+        workCompReqQ.enq(tuple4(pktMetaData, reqStatus, permCheckInfo, reqPktInfo));
+
+        if (isErrRespGenReg || errReqStatus) begin
+            immAssert(
+                !respPktGenInfo.expectReadRespPayload &&
+                !respPktGenInfo.expectAtomicRespOrig  &&
+                !respPktGenInfo.expectDupAtomicCheckResp,
+                "respPktGenInfo assertion @ mkReqHandleRQ",
+                $format(
+                    "expectReadRespPayload=", fshow(respPktGenInfo.expectReadRespPayload),
+                    ", expectAtomicRespOrig=", fshow(respPktGenInfo.expectAtomicRespOrig),
+                    ", expectDupAtomicCheckResp=", fshow(respPktGenInfo.expectDupAtomicCheckResp),
+                    ", all should be false when errReqStatus=", fshow(errReqStatus),
+                    " and isErrRespGenReg=", fshow(isErrRespGenReg)
+                )
+            );
+        end
+
         $display(
             "time=%0t: 14th stage, bth.opcode=", $time, fshow(bth.opcode),
             ", bth.psn=%h", bth.psn, ", bth.ackReq=", fshow(bth.ackReq),
@@ -1462,6 +1452,15 @@ module mkReqHandleRQ#(
             )
         );
         immAssert(
+            respPktGenInfo.expectReadRespPayload,
+            "expectReadRespPayload assertion @ mkReqHandleRQ",
+            $format(
+                "expectReadRespPayload=", fshow(respPktGenInfo.expectReadRespPayload),
+                " must be true when isGenMultiPktRespReg=",
+                fshow(isGenMultiPktRespReg)
+            )
+        );
+        immAssert(
             bth.opcode == RDMA_READ_REQUEST,
             "bth.opcode assertion @ mkReqHandleRQ",
             $format(
@@ -1470,6 +1469,22 @@ module mkReqHandleRQ#(
                 fshow(isGenMultiPktRespReg)
             )
         );
+
+        let payloadGenResp = payloadGenerator.respPipeOut.first;
+        payloadGenerator.respPipeOut.deq;
+        if (payloadGenResp.isRespErr) begin
+            isLastRespPkt = True;
+            respPktGenInfo.expectReadRespPayload = False;
+
+            if (reqStatus == RDMA_REQ_ST_NORMAL) begin
+                reqStatus = RDMA_REQ_ST_RMT_OP;
+                isErrRespGenReg <= True;
+            end
+            else begin
+                reqStatus = RDMA_REQ_ST_DISCARD;
+                respPktGenInfo.shouldGenResp = False;
+            end
+        end
 
         let msn = cntrl.contextRQ.getMSN;
         if (isLastRespPkt) begin
@@ -1488,16 +1503,23 @@ module mkReqHandleRQ#(
             bth.opcode, reqStatus, permCheckInfo.totalLen, cntrl,
             cntrl.contextRQ.getCurRespPsn, msn, isLastRespPkt
         );
-        immAssert(
-            isValid(maybeMiddleOrLastHeader),
-            "maybeMiddleOrLastHeader assertion @ mkReqHandleRQ",
-            $format(
-                "maybeMiddleOrLastHeader=", fshow(maybeMiddleOrLastHeader),
-                " must be valid"
-            )
-        );
-        let middleOrLastHeader = unwrapMaybe(maybeMiddleOrLastHeader);
-        headerQ.enq(middleOrLastHeader);
+        if (
+            reqStatus == RDMA_REQ_ST_NORMAL ||
+            reqStatus == RDMA_REQ_ST_DUP    ||
+            reqStatus == RDMA_REQ_ST_RMT_OP
+        ) begin
+            immAssert(
+                isValid(maybeMiddleOrLastHeader),
+                "maybeMiddleOrLastHeader assertion @ mkReqHandleRQ",
+                $format(
+                    "maybeMiddleOrLastHeader=", fshow(maybeMiddleOrLastHeader),
+                    " must be valid when reqStatus=", fshow(reqStatus)
+                )
+            );
+        end
+        if (maybeMiddleOrLastHeader matches tagged Valid .middleOrLastHeader) begin
+            headerQ.enq(middleOrLastHeader);
+        end
 
         isGenMultiPktRespReg <= !isLastRespPkt;
         $display(

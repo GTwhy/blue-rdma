@@ -832,7 +832,7 @@ module mkRespHandleSQ#(
             );
 
             let wcGenReq = WorkCompGenReqSQ {
-                pendingWR    : pendingWR,
+                wr           : pendingWR.wr,
                 wcWaitDmaResp: wcWaitDmaResp,
                 wcReqType    : wcReqType,
                 triggerPSN   : bth.psn,

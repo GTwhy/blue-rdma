@@ -14,7 +14,7 @@ import Utils :: *;
 function Maybe#(WorkComp) genWorkComp4WorkReq(
     Controller cntrl, WorkCompGenReqSQ wcGenReqSQ
 );
-    let wr = wcGenReqSQ.pendingWR.wr;
+    let wr = wcGenReqSQ.wr;
     let maybeWorkCompOpCode = workReqOpCode2WorkCompOpCode4SQ(wr.opcode);
     // TODO: how to set WC flags in SQ?
     // let wcFlags = workReqOpCode2WorkCompFlags(wr.opcode);
@@ -122,11 +122,6 @@ module mkWorkCompGenSQ#(
         end
     endrule
 
-    rule discardPayloadConResp if (workCompGenStateReg == WC_GEN_ST_ERR_FLUSH);
-        let payloadConResp = payloadConRespPipeIn.first;
-        payloadConRespPipeIn.deq;
-    endrule
-
     rule genWorkCompNormalCase if (
         cntrl.isRTS && workCompGenStateReg == WC_GEN_ST_NORMAL
     );
@@ -140,7 +135,7 @@ module mkWorkCompGenSQ#(
         let maybeWorkComp = genWorkComp4WorkReq(cntrl, wcGenReqSQ);
         let needWorkCompWhenNormal =
             wcGenReqSQ.wcReqType == WC_REQ_TYPE_FULL_ACK &&
-            (workReqNeedWorkCompSQ(wcGenReqSQ.pendingWR.wr) || cntrl.getSigAll);
+            (workReqNeedWorkCompSQ(wcGenReqSQ.wr) || cntrl.getSigAll);
 
         immAssert(
             isValid(maybeWorkComp),
@@ -199,7 +194,7 @@ module mkWorkCompGenSQ#(
             workCompGenStateReg <= WC_GEN_ST_ERR_FLUSH;
             isFirstErrPartialAckWorkReqReg <=
                 wcGenReqSQ.wcReqType == WC_REQ_TYPE_PARTIAL_ACK;
-            firstErrPartialAckWorkReqIdReg <= wcGenReqSQ.pendingWR.wr.id;
+            firstErrPartialAckWorkReqIdReg <= wcGenReqSQ.wr.id;
             // $display(
             //     "time=%0t: hasErrWorkCompOrCompQueueFullSQ=",
             //     $time, fshow(hasErrWorkCompOrCompQueueFullSQ),
@@ -223,7 +218,7 @@ module mkWorkCompGenSQ#(
             )
         );
 
-        let maybeErrFlushWC = genErrFlushWorkComp4WorkReq(cntrl, wcGenReqSQ.pendingWR.wr);
+        let maybeErrFlushWC = genErrFlushWorkComp4WorkReq(cntrl, wcGenReqSQ.wr);
         immAssert(
             isValid(maybeErrFlushWC),
             "maybeErrFlushWC assertion @ mkWorkCompGenSQ",
@@ -238,11 +233,11 @@ module mkWorkCompGenSQ#(
             // since the WR has generated error WC.
             isFirstErrPartialAckWorkReqReg <= False;
             immAssert(
-                wcGenReqSQ.pendingWR.wr.id == firstErrPartialAckWorkReqIdReg,
-                "wcGenReqSQ.pendingWR.wr.id assertion @ mkWorkCompGenSQ",
+                wcGenReqSQ.wr.id == firstErrPartialAckWorkReqIdReg,
+                "wcGenReqSQ.wr.id assertion @ mkWorkCompGenSQ",
                 $format(
-                    "wcGenReqSQ.pendingWR.wr.id=%h should == firstErrPartialAckWorkReqIdReg=%h",
-                    wcGenReqSQ.pendingWR.wr.id, firstErrPartialAckWorkReqIdReg,
+                    "wcGenReqSQ.wr.id=%h should == firstErrPartialAckWorkReqIdReg=%h",
+                    wcGenReqSQ.wr.id, firstErrPartialAckWorkReqIdReg,
                     ", when error flush and isFirstErrPartialAckWorkReqReg=",
                     fshow(isFirstErrPartialAckWorkReqReg)
                 )
@@ -258,6 +253,11 @@ module mkWorkCompGenSQ#(
         //     "time=%0t: flush pendingWorkCompQ4SQ, errFlushWC=",
         //     $time, fshow(errFlushWC), ", wcGenReqSQ=", fshow(wcGenReqSQ)
         // );
+    endrule
+
+    rule discardPayloadConResp if (workCompGenStateReg == WC_GEN_ST_ERR_FLUSH);
+        let payloadConResp = payloadConRespPipeIn.first;
+        payloadConRespPipeIn.deq;
     endrule
 
     return convertFifo2PipeOut(workCompOutQ4SQ);

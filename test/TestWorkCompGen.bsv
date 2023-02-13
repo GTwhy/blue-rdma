@@ -76,8 +76,9 @@ module mkTestWorkCompGenSQ#(Bool isNormalCase)(Empty);
             let payloadConResp = PayloadConResp {
                 initiator: dontCareValue,
                 dmaWriteResp: DmaWriteResp {
-                    sqpn: cntrl.getSQPN,
-                    psn : endPSN
+                    isRespErr: False,
+                    sqpn     : cntrl.getSQPN,
+                    psn      : endPSN
                 }
             };
             if (isNormalCase) begin
@@ -100,7 +101,7 @@ module mkTestWorkCompGenSQ#(Bool isNormalCase)(Empty);
         let wcStatus = isNormalCase ? IBV_WC_SUCCESS : IBV_WC_WR_FLUSH_ERR;
 
         let wcGenReq = WorkCompGenReqSQ {
-            pendingWR    : pendingWR,
+            wr           : pendingWR.wr,
             wcWaitDmaResp: wcWaitDmaResp,
             wcReqType    : wcReqType,
             triggerPSN   : triggerPSN,
@@ -231,8 +232,9 @@ module mkTestWorkCompGenRQ#(Bool isNormalCase)(Empty);
                 let payloadConResp = PayloadConResp {
                     initiator: dontCareValue,
                     dmaWriteResp: DmaWriteResp {
-                        sqpn: cntrl.getSQPN,
-                        psn : endPSN
+                        isRespErr: False,
+                        sqpn     : cntrl.getSQPN,
+                        psn      : endPSN
                     }
                 };
                 if (isNormalCase) begin
