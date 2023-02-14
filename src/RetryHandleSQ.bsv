@@ -86,7 +86,9 @@ module mkRetryHandleSQ#(
     function Action decRetryCntByReason(RetryReason retryReason);
         action
             case (retryReason)
-                RETRY_REASON_SEQ_ERR, RETRY_REASON_IMPLICIT, RETRY_REASON_TIMEOUT: begin
+                RETRY_REASON_SEQ_ERR ,
+                RETRY_REASON_IMPLICIT,
+                RETRY_REASON_TIMEOUT : begin
                     if (!disableRetryCntReg) begin
                         if (!isZero(retryCntReg)) begin
                             retryCntReg <= retryCntReg - 1;
@@ -100,7 +102,12 @@ module mkRetryHandleSQ#(
                         end
                     end
                 end
-                default: begin end
+                default: begin
+                    immFail(
+                        "unreachible case in decRetryCntByReason() @ mkRetryHandleSQ",
+                        $format("retryReason=", fshow(retryReason))
+                    );
+                end
             endcase
         endaction
     endfunction

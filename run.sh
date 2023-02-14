@@ -47,6 +47,7 @@ make -j8 TESTFILE=TestReqHandleRQ.bsv TOP=mkTestReqHandleNormalReqCase 2>&1 | te
 make -j8 TESTFILE=TestReqHandleRQ.bsv TOP=mkTestReqHandleDupReqCase 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=TestReqHandleRQ.bsv TOP=mkTestReqHandleReqErrCase 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=TestReqHandleRQ.bsv TOP=mkTestReqHandlePermCheckFailCase 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestReqHandleRQ.bsv TOP=mkTestReqHandleDmaReadErrCase 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=TestReqHandleRQ.bsv TOP=mkTestReqHandleRnrCase 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=TestReqHandleRQ.bsv TOP=mkTestReqHandleSeqErrCase 2>&1 | tee -a $RUN_LOG
 

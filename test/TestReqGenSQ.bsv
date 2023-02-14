@@ -69,6 +69,8 @@ module mkTestReqGenNormalCase(Empty);
     Reg#(PSN)    curPsnReg <- mkRegU;
     Reg#(Bool) validPsnReg <- mkReg(False);
 
+    let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
+
     rule compareWorkReq;
         let pendingWR = pendingWorkReqPipeOut4Comp.first;
         pendingWorkReqPipeOut4Comp.deq;
@@ -210,5 +212,7 @@ module mkTestReqGenNormalCase(Empty);
                 " should == refDataStream=", fshow(refDataStream)
             )
         );
+
+        countDown.decr;
     endrule
 endmodule

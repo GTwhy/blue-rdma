@@ -392,8 +392,8 @@ module mkPermCheckMR#(MetaDataPDs pdMetaData)(PermCheckMR);
 
     function Bool checkPermByMR(PermCheckInfo permCheckInfo, MemRegion mr);
         let keyMatch = case (permCheckInfo.localOrRmtKey)
-            True   : (truncate(permCheckInfo.lkey) == mr.lkeyPart);
-            default: (isValid(mr.rkeyPart) ?
+            True : (truncate(permCheckInfo.lkey) == mr.lkeyPart);
+            False: (isValid(mr.rkeyPart) ?
                 truncate(permCheckInfo.rkey) == unwrapMaybe(mr.rkeyPart) : False);
         endcase;
 

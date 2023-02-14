@@ -21,160 +21,7 @@ import SimGenRdmaReqAndResp :: *;
 import Utils :: *;
 import Utils4Test :: *;
 import WorkCompGen :: *;
-/*
-(* synthesize *)
-module mkTestRespHandleNormalCase(Empty);
-    let minDmaLength = 1;
-    let maxDmaLength = 2048;
-    let qpType = IBV_QPT_XRC_SEND;
-    let pmtu = IBV_MTU_256;
 
-    let qpMetaData <- mkSimMetaDataQPs(qpType, pmtu);
-    let qpn = dontCareValue;
-    let cntrl = qpMetaData.getCntrl(qpn);
-    // let cntrl <- mkSimController(qpType, pmtu);
-
-    // WorkReq generation
-    PendingWorkReqBuf pendingWorkReqBuf <- mkScanFIFOF;
-    Vector#(1, PipeOut#(WorkReq)) workReqPipeOutVec <-
-        mkRandomWorkReq(minDmaLength, maxDmaLength);
-    Vector#(3, PipeOut#(PendingWorkReq)) existingPendingWorkReqPipeOutVec <-
-        mkPendingWorkReqPipeOut(workReqPipeOutVec[0], pmtu);
-    let pendingWorkReqPipeOut4RespGen = existingPendingWorkReqPipeOutVec[0];
-    let pendingWorkReqPipeOut4PendingQ = existingPendingWorkReqPipeOutVec[1];
-    let pendingWorkReqPipeOut4WorkComp <- mkBufferN(32, existingPendingWorkReqPipeOutVec[2]);
-    let pendingWorkReq2Q <- mkConnectPendingWorkReqPipeOut2PendingWorkReqQ(
-        pendingWorkReqPipeOut4PendingQ, pendingWorkReqBuf
-    );
-    // Payload DataStream generation
-    let simDmaReadSrv <- mkSimDmaReadSrvAndDataStreamPipeOut;
-    let simDmaReadSrvDataStreamPipeOut <- mkBufferN(32, simDmaReadSrv.dataStream);
-    let pmtuPipeOut <- mkConstantPipeOut(cntrl.getPMTU);
-    let segSimDmaReadSrvDataStreamPipeOut <- mkSegmentDataStreamByPmtuAndAddPadCnt(
-        simDmaReadSrvDataStreamPipeOut, pmtuPipeOut
-    );
-    // Generate RDMA responses
-    let rdmaRespAndHeaderPipeOut <- mkSimGenRdmaRespHeaderAndDataStream(
-        cntrl, simDmaReadSrv.dmaReadSrv, pendingWorkReqPipeOut4RespGen
-    );
-    // Extract header DataStream, HeaderMetaData and payload DataStream
-    let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
-        rdmaRespAndHeaderPipeOut.rdmaResp
-    );
-    // Build RdmaPktMetaData and payload DataStream
-    let pktMetaDataAndPayloadPipeOut <- mkInputRdmaPktBufAndHeaderValidation(
-        headerAndMetaDataAndPayloadPipeOut, qpMetaData
-    );
-    // Retry handler
-    let retryHandler <- mkRetryHandleSQ(cntrl, pendingWorkReqBuf.scanIfc);
-
-    // MR permission check
-    let mrCheckPassOrFail = True;
-    let permCheckMR <- mkSimPermCheckMR(mrCheckPassOrFail);
-
-    // DUT
-    let dut <- mkRespHandleSQ(
-        cntrl,
-        retryHandler,
-        permCheckMR,
-        convertFifo2PipeOut(pendingWorkReqBuf.fifoIfc),
-        pktMetaDataAndPayloadPipeOut.pktMetaData
-    );
-    // PayloadConsumer
-    let simDmaWriteSrv <- mkSimDmaWriteSrvAndDataStreamPipeOut;
-    let simDmaWriteSrvDataStreamPipeOut = simDmaWriteSrv.dataStream;
-    let payloadConsumer <- mkPayloadConsumer(
-        cntrl,
-        pktMetaDataAndPayloadPipeOut.payload,
-        simDmaWriteSrv.dmaWriteSrv,
-        dut.payloadConReqPipeOut
-    );
-    // WorkCompGenSQ
-    FIFOF#(WorkCompGenReqSQ) wcGenReqQ4ReqGenInSQ <- mkFIFOF;
-    FIFOF#(WorkCompStatus) workCompStatusQFromRQ <- mkFIFOF;
-    let workCompPipeOut <- mkWorkCompGenSQ(
-        cntrl,
-        payloadConsumer.respPipeOut,
-        // convertFifo2PipeOut(pendingWorkReqBuf.fifoIfc),
-        convertFifo2PipeOut(wcGenReqQ4ReqGenInSQ),
-        dut.workCompGenReqPipeOut,
-        convertFifo2PipeOut(workCompStatusQFromRQ)
-    );
-
-    // PipeOut need to handle:
-    // - pendingWorkReqPipeOut4WorkComp
-    // - pendingWorkReqPipeOut4RespGen
-    // - convertFifo2PipeOut(pendingWorkReqBuf.fifoIfc)
-    // - segSimDmaReadSrvDataStreamPipeOut
-    // - rdmaRespAndHeaderPipeOut.respHeader
-    // - rdmaRespAndHeaderPipeOut.rdmaResp
-    // - headerAndMetaDataAndPayloadPipeOut.headerAndMetaData.headerDataStream
-    // - headerAndMetaDataAndPayloadPipeOut.headerAndMetaData.headerMetaData
-    // - headerAndMetaDataAndPayloadPipeOut.payload
-    // - pktMetaDataAndPayloadPipeOut.pktMetaData
-    // - pktMetaDataAndPayloadPipeOut.payload
-    // - dut.payloadConReqPipeOut
-    // - dut.workCompGenReqPipeOut
-    // - simDmaWriteSrvDataStreamPipeOut
-    // - payloadConsumer.respPipeOut
-    // - workCompPipeOut
-
-    rule compareWorkReqAndWorkComp;
-        let pendingWR = pendingWorkReqPipeOut4WorkComp.first;
-        pendingWorkReqPipeOut4WorkComp.deq;
-
-        if (workReqNeedWorkCompSQ(pendingWR.wr)) begin
-            let workComp = workCompPipeOut.first;
-            workCompPipeOut.deq;
-
-            immAssert(
-                workCompMatchWorkReqInSQ(workComp, pendingWR.wr),
-                "workCompMatchWorkReqInSQ assertion @ mkTestRespHandleSQ",
-                $format("WC=", fshow(workComp), " not match WR=", fshow(pendingWR.wr))
-            );
-            // $display(
-            //     "time=%0t: WC=", $time, fshow(workComp), " not match WR=", fshow(pendingWR.wr)
-            // );
-        end
-    endrule
-
-    rule compareReadRespPayloadDataStream;
-        let respHeader = rdmaRespAndHeaderPipeOut.respHeader.first;
-        let bth = extractBTH(respHeader.headerData);
-
-        if (isReadRespRdmaOpCode(bth.opcode)) begin // Read responses
-            let payloadDataStream = simDmaWriteSrvDataStreamPipeOut.first;
-            simDmaWriteSrvDataStreamPipeOut.deq;
-
-            let refDataStream = segSimDmaReadSrvDataStreamPipeOut.first;
-            segSimDmaReadSrvDataStreamPipeOut.deq;
-
-            immAssert(
-                payloadDataStream == refDataStream,
-                "payloadDataStream assertion @ mkTestRespHandleNormalCase",
-                $format(
-                    "payloadDataStream=", fshow(payloadDataStream),
-                    " should == refDataStream=", fshow(refDataStream)
-                )
-            );
-
-            if (payloadDataStream.isLast) begin
-                rdmaRespAndHeaderPipeOut.respHeader.deq;
-            end
-        end
-        else if (isAtomicRespRdmaOpCode(bth.opcode)) begin
-            // No DMA read when generate atomic responses
-            rdmaRespAndHeaderPipeOut.respHeader.deq;
-            simDmaWriteSrvDataStreamPipeOut.deq;
-        end
-        else begin
-            // No DMA read or write when generate send/write/zero-length read responses
-            rdmaRespAndHeaderPipeOut.respHeader.deq;
-        end
-        // $display("time=%0t: respHeader=", $time, fshow(respHeader));
-    endrule
-endmodule
-*/
 typedef enum {
     TEST_RESP_HANDLE_NORMAL_RESP,
     TEST_RESP_HANDLE_DUP_RESP,
@@ -259,6 +106,7 @@ module mkSimGenNormalOrErrOrRetryRdmaResp#(
                 TEST_RESP_HANDLE_ERROR_RESP     : GEN_RDMA_RESP_ACK_ERROR;
                 TEST_RESP_HANDLE_RETRY_LIMIT_EXC: GEN_RDMA_RESP_ACK_RNR;
                 TEST_RESP_HANDLE_PERM_CHECK_FAIL: GEN_RDMA_RESP_ACK_NORMAL;
+                default                         : GEN_RDMA_RESP_ACK_ERROR;
             endcase;
             let rdmaAbnormalRespAckPipeOut <- mkGenNormalOrErrOrRetryRdmaRespAck(
                 cntrl, genAckType, pendingWorkReqPipeOut4ErrRespGen
@@ -345,17 +193,10 @@ module mkTestRespHandleNormalOrDupOrGhostRespCase#(
         respType, cntrl, simDmaReadSrv.dmaReadSrv, pendingWorkReqPipeOut4RespGen
     );
     // Build RdmaPktMetaData and payload DataStream
-    let isRespPkt = True;
+    let isRespPktPipeIn = True;
     let pktMetaDataAndPayloadPipeOut <- mkSimInputPktBuf(
-        isRespPkt, rdmaRespDataStreamPipeOut, qpMetaData
+        isRespPktPipeIn, rdmaRespDataStreamPipeOut, qpMetaData
     );
-    // // Extract header DataStream, HeaderMetaData and payload DataStream
-    // let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
-    //     rdmaRespDataStreamPipeOut
-    // );
-    // let pktMetaDataAndPayloadPipeOut <- mkInputRdmaPktBufAndHeaderValidation(
-    //     headerAndMetaDataAndPayloadPipeOut, qpMetaData
-    // );
     Vector#(2, PipeOut#(RdmaPktMetaData)) pktMetaDataPipeOutVec <-
         mkForkVector(pktMetaDataAndPayloadPipeOut.pktMetaData);
     let pktMetaDataPipeOut4RespHandle = pktMetaDataPipeOutVec[0];
@@ -396,6 +237,8 @@ module mkTestRespHandleNormalOrDupOrGhostRespCase#(
         dut.workCompGenReqPipeOut,
         convertFifo2PipeOut(workCompStatusQFromRQ)
     );
+
+    let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
 
     // PipeOut need to handle:
     // - pendingWorkReqPipeOut4WorkComp
@@ -505,6 +348,8 @@ module mkTestRespHandleNormalOrDupOrGhostRespCase#(
                 normalOrDupReqSelPipeOut4ReadResp.deq;
             end
         end
+
+        countDown.decr;
         // $display("time=%0t: respHeader=", $time, fshow(respHeader));
     endrule
 endmodule
@@ -542,7 +387,6 @@ module mkTestRespHandleAbnormalCase#(TestRespHandleRespType respType)(Empty);
     Vector#(1, PipeOut#(WorkReq)) workReqPipeOutVec <-
         mkRandomWorkReq(minDmaLength, maxDmaLength);
     let workReqPipeOut = workReqPipeOutVec[0];
-    // let workReqPipeOut <- mkRandomReadOrAtomicWorkReq(minDmaLength, maxDmaLength);
     Vector#(3, PipeOut#(PendingWorkReq)) existingPendingWorkReqPipeOutVec <-
         mkExistingPendingWorkReqPipeOut(cntrl, workReqPipeOut);
     let pendingWorkReqPipeOut4RespGen = existingPendingWorkReqPipeOutVec[0];
@@ -559,9 +403,9 @@ module mkTestRespHandleAbnormalCase#(TestRespHandleRespType respType)(Empty);
     );
 
     // Build RdmaPktMetaData and payload DataStream
-    let isRespPkt = True;
+    let isRespPktPipeIn = True;
     let pktMetaDataAndPayloadPipeOut <- mkSimInputPktBuf(
-        isRespPkt, rdmaRespDataStreamPipeOut, qpMetaData
+        isRespPktPipeIn, rdmaRespDataStreamPipeOut, qpMetaData
     );
     // // Extract header DataStream, HeaderMetaData and payload DataStream
     // let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
@@ -612,6 +456,8 @@ module mkTestRespHandleAbnormalCase#(TestRespHandleRespType respType)(Empty);
 
     Reg#(Bool) firstErrWorkCompGenReg <- mkReg(False);
 
+    let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
+
     // let sinkPendingWR4PendingQ <- mkSink(pendingWorkReqPipeOut4PendingQ);
     // let sinkPendingWorkReqBuf <- mkSink(convertFifo2PipeOut(pendingWorkReqBuf.fifoIfc));
     // let sinkRdmaResp <- mkSink(rdmaRespDataStreamPipeOut);
@@ -645,6 +491,8 @@ module mkTestRespHandleAbnormalCase#(TestRespHandleRespType respType)(Empty);
             //     "time=%0t: WC=", $time, fshow(workComp), " not match WR=", fshow(pendingWR.wr)
             // );
         end
+
+        countDown.decr;
     endrule
 endmodule
 
@@ -731,9 +579,9 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
     );
 
     // Build RdmaPktMetaData and payload DataStream
-    let isRespPkt = True;
+    let isRespPktPipeIn = True;
     let pktMetaDataAndPayloadPipeOut <- mkSimInputPktBuf(
-        isRespPkt, rdmaRespDataStreamPipeOut, qpMetaData
+        isRespPktPipeIn, rdmaRespDataStreamPipeOut, qpMetaData
     );
     // // Extract header DataStream, HeaderMetaData and payload DataStream
     // let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(

@@ -246,7 +246,7 @@ module mkInputRdmaPktBufAndHeaderValidation#(
                 // $display(
                 //     "time=%0t: bth=", $time, fshow(bth),
                 //     ", headerMetaData=", fshow(rdmaHeader.headerMetaData),
-                //     "\ntime=%0d: payloadFrag=", $time, fshow(payloadFrag)
+                //     "\ntime=%0t: payloadFrag=", $time, fshow(payloadFrag)
                 // );
             end
             else begin

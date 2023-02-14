@@ -15,10 +15,11 @@ import RetryHandleSQ :: *;
 import Settings :: *;
 import Utils :: *;
 
-typedef 60000 MAX_CMP_CNT;
+typedef 10000 MAX_CMP_CNT;
 
 interface CountDown;
     method Action decr();
+    method int   _read();
 endinterface
 
 module mkCountDown#(Integer maxValue)(CountDown);
@@ -38,6 +39,8 @@ module mkCountDown#(Integer maxValue)(CountDown);
             $finish(0);
         end
     endmethod
+
+    method int _read() = cnt;
 endmodule
 
 function Bool filterEmptyDataStream(DataStream ds) = !isZero(ds.byteEn);
@@ -304,7 +307,8 @@ endmodule
 module mkRandomValueInRangePipeOut#(
     // Both min and max are inclusive
     anytype min, anytype max
-)(Vector#(vSz, PipeOut#(anytype))) provisos (Bits#(anytype, anysize), Bounded#(anytype));
+)(Vector#(vSz, PipeOut#(anytype)))
+provisos (Bits#(anytype, anysize), Bounded#(anytype), FShow#(anytype), Ord#(anytype));
     Randomize#(anytype) randomVal <- mkConstrainedRandomizer(min, max);
     FIFOF#(anytype) randomValQ <- mkFIFOF;
     let resultPipeOutVec <- mkForkVector(convertFifo2PipeOut(randomValQ));
@@ -312,6 +316,13 @@ module mkRandomValueInRangePipeOut#(
     Reg#(Bool) initializedReg <- mkReg(False);
 
     rule init if (!initializedReg);
+        immAssert(
+            max >= min,
+            "max >= min assertion @",
+            $format(
+                "max=", fshow(max), " should >= min=", fshow(min)
+            )
+        );
         randomVal.cntrl.init;
         initializedReg <= True;
     endrule
@@ -334,6 +345,13 @@ module mkRandomLenPipeOut#(
     Reg#(Bool) initializedReg <- mkReg(False);
 
     rule init if (!initializedReg);
+        immAssert(
+            maxLength >= minLength,
+            "maxLength >= minLength assertion @",
+            $format(
+                "maxLength=%h should >= minLength=%h", minLength, maxLength
+            )
+        );
         randomLen.cntrl.init;
         initializedReg <= True;
     endrule
@@ -556,6 +574,17 @@ module mkRandomSendWorkReq#(
         workReqOpCodeVec, minLength, maxLength
     );
     return resultPipeOutVec;
+endmodule
+
+module mkRandomReadWorkReq#(
+    Length minLength, Length maxLength
+)(PipeOut#(WorkReq));
+    PipeOut#(WorkReqOpCode) readWorkReqOpCodePipeOut <-
+        mkConstantPipeOut(IBV_WR_RDMA_READ);
+    Vector#(1, PipeOut#(WorkReq)) resultPipeOutVec <- mkSimGenWorkReqByOpCode(
+        readWorkReqOpCodePipeOut, minLength, maxLength
+    );
+    return resultPipeOutVec[0];
 endmodule
 
 module mkRandomReadOrAtomicWorkReq#(
@@ -902,7 +931,7 @@ module mkExistingPendingWorkReqPipeOut#(
 endmodule
 
 module mkSimInputPktBuf#(
-    Bool isRespPkt,
+    Bool isRespPktPipeIn,
     DataStreamPipeOut rdmaPktPipeIn,
     MetaDataQPs qpMetaData
 )(RdmaPktMetaDataAndPayloadPipeOut);
@@ -916,7 +945,7 @@ module mkSimInputPktBuf#(
     let respPktMetaDataAndPayloadPipeOut = inputRdmaPktBuf.respPktPipeOut;
 
     rule checkEmpty;
-        if (isRespPkt) begin
+        if (isRespPktPipeIn) begin
             immAssert(
                 !reqPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty &&
                 !reqPktMetaDataAndPayloadPipeOut.payload.notEmpty,
@@ -956,7 +985,17 @@ module mkSimInputPktBuf#(
         );
     endrule
 
-    return isRespPkt ? respPktMetaDataAndPayloadPipeOut : reqPktMetaDataAndPayloadPipeOut;
+    return isRespPktPipeIn ? respPktMetaDataAndPayloadPipeOut : reqPktMetaDataAndPayloadPipeOut;
+endmodule
+
+// PipeOut related
+
+module mkActionValueFunc2Pipe#(
+    function ActionValue#(tb) avfn(ta inputVal), PipeOut#(ta) pipeIn
+)(PipeOut #(tb)) provisos (Bits #(ta, taSz), Bits #(tb, tbSz));
+    // let resultPipeOut <- mkTap(avfn, pipeIn); // No delay
+    let resultPipeOut <- mkAVFn_to_Pipe(avfn, pipeIn); // One cycle delay
+    return resultPipeOut;
 endmodule
 
 module mkDebugSink#(PipeOut#(anytype) pipeIn)(Empty) provisos(FShow#(anytype));

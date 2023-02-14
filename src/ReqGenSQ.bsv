@@ -69,25 +69,28 @@ endfunction
 
 function Maybe#(RETH) genRETH(WorkReq wr);
     return case (wr.opcode)
-        IBV_WR_RDMA_WRITE, IBV_WR_RDMA_WRITE_WITH_IMM, IBV_WR_RDMA_READ: tagged Valid RETH {
+        IBV_WR_RDMA_WRITE         ,
+        IBV_WR_RDMA_WRITE_WITH_IMM,
+        IBV_WR_RDMA_READ          : tagged Valid RETH {
             va: wr.raddr,
             rkey: wr.rkey,
             dlen: wr.len
         };
-        default: tagged Invalid;
+        default                   : tagged Invalid;
     endcase;
 endfunction
 
 function Maybe#(AtomicEth) genAtomicEth(WorkReq wr);
     if (wr.swap matches tagged Valid .swap &&& wr.comp matches tagged Valid .comp) begin
         return case (wr.opcode)
-            IBV_WR_ATOMIC_CMP_AND_SWP, IBV_WR_ATOMIC_FETCH_AND_ADD: tagged Valid AtomicEth {
+            IBV_WR_ATOMIC_CMP_AND_SWP  ,
+            IBV_WR_ATOMIC_FETCH_AND_ADD: tagged Valid AtomicEth {
                 va: wr.raddr,
                 rkey: wr.rkey,
                 swap: swap,
                 comp: comp
             };
-            default: tagged Invalid;
+            default                    : tagged Invalid;
         endcase;
     end
     else begin
@@ -97,19 +100,20 @@ endfunction
 
 function Maybe#(ImmDt) genImmDt(WorkReq wr);
     return case (wr.opcode)
-        IBV_WR_RDMA_WRITE_WITH_IMM, IBV_WR_SEND_WITH_IMM: tagged Valid ImmDt {
+        IBV_WR_RDMA_WRITE_WITH_IMM,
+        IBV_WR_SEND_WITH_IMM      : tagged Valid ImmDt {
             data: unwrapMaybe(wr.immDt)
         };
-        default: tagged Invalid;
+        default                   : tagged Invalid;
     endcase;
 endfunction
 
 function Maybe#(IETH) genIETH(WorkReq wr);
     return case (wr.opcode)
-        IBV_WR_SEND_WITH_INV: (tagged Valid IETH {
+        IBV_WR_SEND_WITH_INV: tagged Valid IETH {
             rkey: unwrapMaybe(wr.rkey2Inv)
-        });
-        default: tagged Invalid;
+        };
+        default             : tagged Invalid;
     endcase;
 endfunction
 
@@ -475,10 +479,6 @@ module mkReqGenSQ#(
     let payloadGenerator <- mkPayloadGenerator(
         cntrl, dmaReadSrv, convertFifo2PipeOut(payloadGenReqOutQ)
     );
-    // let payloadDataStreamPipeOut <- mkFunc2Pipe(
-    //     getDataStreamFromPayloadGenRespPipeOut,
-    //     payloadGenerator.respPipeOut
-    // );
 
     // Generate header DataStream
     let headerDataStreamAndMetaDataPipeOut <- mkHeader2DataStream(

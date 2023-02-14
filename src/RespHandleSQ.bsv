@@ -246,7 +246,12 @@ module mkRespHandleSQ#(
                             wcReqType = WC_REQ_TYPE_FULL_ACK;
                             deqPendingWorkReq = True;
                         end
-                        default: begin end
+                        default: begin
+                            immFail(
+                                "unreachible case @ mkRespHandleSQ",
+                                $format("rdmaRespType=", fshow(rdmaRespType))
+                            );
+                        end
                     endcase
                 end
                 4'b0100: begin // Coalesce ACK
@@ -299,7 +304,12 @@ module mkRespHandleSQ#(
                         RDMA_RESP_NORMAL: begin
                             wcReqType = WC_REQ_TYPE_PARTIAL_ACK;
                         end
-                        default: begin end
+                        default: begin
+                            immFail(
+                                "unreachible case @ mkRespHandleSQ",
+                                $format("rdmaRespType=", fshow(rdmaRespType))
+                            );
+                        end
                     endcase
                 end
                 default: begin // Duplicated responses
@@ -431,7 +441,12 @@ module mkRespHandleSQ#(
                             respAction = SQ_ACT_EXPLICIT_RESP;
                         end
                     end
-                    default: begin end
+                    default: begin
+                        immFail(
+                            "unreachible case @ mkRespHandleSQ",
+                            $format("rdmaRespType=", fshow(rdmaRespType))
+                        );
+                    end
                 endcase
             end
             WR_ACK_COALESCE_NORMAL: begin
@@ -452,7 +467,12 @@ module mkRespHandleSQ#(
             WR_ACK_ERR_FLUSH_WR: begin
                 respAction = SQ_ACT_FLUSH_WR;
             end
-            default: begin end
+            default: begin
+                immFail(
+                    "unreachible case @ mkRespHandleSQ",
+                    $format("wrAckType=", fshow(wrAckType))
+                );
+            end
         endcase
 
         immAssert(
@@ -615,7 +635,12 @@ module mkRespHandleSQ#(
                 // Discard implicite retry response payload
                 respPktInfo.shouldDiscard = True;
             end
-            default: begin end
+            default: begin
+                immFail(
+                    "unreachible case @ mkRespHandleSQ",
+                    $format("respAction=", fshow(respAction))
+                );
+            end
         endcase
 
         pendingLenCheckQ.enq(tuple6(
@@ -681,7 +706,17 @@ module mkRespHandleSQ#(
                     readRespPktNum        = readRespPktNumReg + 1;
                     isLastPayloadLenZero  = respPktInfo.isZeroPayloadLen;
                 end
-                default: begin end
+                default: begin
+                    immFail(
+                        "unreachible case @ mkRespHandleSQ",
+                        $format(
+                            "isOnlyPkt=", fshow(isOnlyPkt),
+                            "isFirstPkt=", fshow(isFirstPkt),
+                            "isMidPkt=", fshow(isMidPkt),
+                            "isLastPkt=", fshow(isLastPkt)
+                        )
+                    );
+                end
             endcase
 
             if (respAction == SQ_ACT_EXPLICIT_RESP && !hasErrOccuredReg) begin

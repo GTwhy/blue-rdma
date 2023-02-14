@@ -1509,14 +1509,6 @@ module mkFunc2Pipe#(
     return resultPipeOut;
 endmodule
 
-module mkActionValueFunc2Pipe#(
-    function ActionValue#(tb) avfn(ta inputVal), PipeOut#(ta) pipeIn
-)(PipeOut #(tb)) provisos (Bits #(ta, taSz), Bits #(tb, tbSz));
-    // let resultPipeOut <- mkTap(avfn, pipeIn); // No delay
-    let resultPipeOut <- mkAVFn_to_Pipe(avfn, pipeIn); // One cycle delay
-    return resultPipeOut;
-endmodule
-
 function PipeOut#(anytype) muxPipeOut(
     Bool sel, PipeOut#(anytype) pipeIn1, PipeOut#(anytype) pipeIn2
 );

@@ -19,6 +19,13 @@ import Utils :: *;
 //     PayloadGenResp resp
 // ) = resp.dmaReadResp.dataStream;
 
+function Bool isDiscardPayload(PayloadConInfo payloadConInfo);
+    return case (payloadConInfo) matches
+        tagged DiscardPayload: True;
+        default              : False;
+    endcase;
+endfunction
+
 interface PayloadGenerator;
     interface DataStreamPipeOut payloadDataStreamPipeOut;
     interface PipeOut#(PayloadGenResp) respPipeOut;
@@ -91,13 +98,11 @@ module mkPayloadGenerator#(
             end
         end
 
-        // dmaReadResp.dataStream = curData;
         let generateResp = PayloadGenResp {
             initiator  : payloadGenReq.initiator,
             addPadding : payloadGenReq.addPadding,
             segment    : payloadGenReq.segment,
             isRespErr  : dmaReadResp.isRespErr
-            // dmaReadResp: dmaReadResp
         };
 
         if (payloadGenReq.segment) begin
@@ -130,14 +135,28 @@ module mkPayloadGenerator#(
         isNormalStateReg <= !dmaReadResp.isRespErr;
         payloadBufQ.enq(curData);
         // $display("time=%0t: generateResp=", $time, fshow(generateResp));
+        // if (dmaReadResp.isRespErr) begin
+        //     $display(
+        //         "time=%0t:", $time, " dmaReadResp.isRespErr=", fshow(dmaReadResp.isRespErr)
+        //     );
+        // end
     endrule
 
     rule flushDmaReadResp if (cntrl.isERR || !isNormalStateReg);
         let dmaReadResp <- dmaReadSrv.response.get;
     endrule
 
-    rule flushReqRespQ if (cntrl.isERR || !isNormalStateReg);
+    rule flushPayloadGenReqPipeIn if (cntrl.isERR || !isNormalStateReg);
+        payloadGenReqPipeIn.deq;
+    endrule
+
+    rule flushPendingReqQ if (cntrl.isERR || !isNormalStateReg);
         pendingPayloadGenReqQ.clear;
+    endrule
+
+    rule flushRespQ if (cntrl.isERR);
+        // Response related queues cannot be cleared once isNormalStateReg is False,
+        // since some payload DataStream in payloadBufQ might be still under processing.
         payloadGenRespQ.clear;
         payloadBufQ.clear;
     endrule
@@ -184,7 +203,7 @@ module mkPayloadConsumer#(
         endaction
     endfunction
 
-    function Action checkIsOnlyPayloadDataStream(
+    function Action checkIsOnlyPayloadFragment(
         DataStream payload, PayloadConInfo consumeInfo
     );
         action
@@ -227,7 +246,16 @@ module mkPayloadConsumer#(
                     };
                     dmaWriteSrv.request.put(dmaWriteReq);
                 end
-                default: begin end
+                default: begin
+                    immAssert(
+                        isDiscardPayload(consumeReq.consumeInfo),
+                        "isDiscardPayload assertion @ mkPayloadConsumer",
+                        $format(
+                            "consumeReq.consumeInfo=", fshow(consumeReq.consumeInfo),
+                            " should be DiscardPayload"
+                        )
+                    );
+                end
             endcase
         endaction
     endfunction
@@ -269,7 +297,12 @@ module mkPayloadConsumer#(
                     )
                 );
             end
-            default: begin end
+            default: begin
+                immFail(
+                    "unreachible case @ mkPayloadConsumer",
+                    $format("consumeReq.consumeInfo=", fshow(consumeReq.consumeInfo))
+                );
+            end
         endcase
 
         consumeReqQ.enq(consumeReq);
@@ -285,7 +318,7 @@ module mkPayloadConsumer#(
                 payloadBufPipeOut.deq;
 
                 if (isLessOrEqOne(consumeReq.fragNum)) begin
-                    checkIsOnlyPayloadDataStream(payload, consumeReq.consumeInfo);
+                    checkIsOnlyPayloadFragment(payload, consumeReq.consumeInfo);
                     consumeReqQ.deq;
                     // pendingConReqQ.enq(consumeReq);
                 end
@@ -303,7 +336,7 @@ module mkPayloadConsumer#(
                 let payload = payloadBufPipeOut.first;
                 payloadBufPipeOut.deq;
                 if (isLessOrEqOne(consumeReq.fragNum)) begin
-                    checkIsOnlyPayloadDataStream(payload, consumeReq.consumeInfo);
+                    checkIsOnlyPayloadFragment(payload, consumeReq.consumeInfo);
                     consumeReqQ.deq;
                     pendingConReqQ.enq(consumeReq);
                     // $display(
@@ -333,7 +366,12 @@ module mkPayloadConsumer#(
 
                 sendDmaWriteReq(consumeReq, payload);
             end
-            default: begin end
+            default: begin
+                immFail(
+                    "unreachible case @ mkPayloadConsumer",
+                    $format("consumeReq.consumeInfo=", fshow(consumeReq.consumeInfo))
+                );
+            end
         endcase
     endrule
 
@@ -393,7 +431,7 @@ module mkPayloadConsumer#(
                 immAssert(
                     dmaWriteResp.sqpn == sendWriteReqReadRespInfo.sqpn &&
                     dmaWriteResp.psn  == sendWriteReqReadRespInfo.psn,
-                    "dmaWriteResp SQPN and PSN assertion @ ",
+                    "dmaWriteResp SQPN and PSN assertion @ mkPayloadConsumer",
                     $format(
                         "dmaWriteResp.sqpn=%h should == sendWriteReqReadRespInfo.sqpn=%h",
                         dmaWriteResp.sqpn, sendWriteReqReadRespInfo.sqpn,
@@ -427,7 +465,12 @@ module mkPayloadConsumer#(
                     )
                 );
             end
-            default: begin end
+            default: begin
+                immFail(
+                    "unreachible case @ mkPayloadConsumer",
+                    $format("consumeReq.consumeInfo=", fshow(consumeReq.consumeInfo))
+                );
+            end
         endcase
     endrule
 

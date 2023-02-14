@@ -27,6 +27,8 @@ module mkTestSegmentDataStream(Empty);
     let refDataStreamPipeOut <- mkBuffer_n(2, dataStreamPipeOutVec[1]);
     Reg#(PmtuFragNum) pmtuFragCntReg <- mkRegU;
 
+    let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
+
     rule segment;
         let refDataStream = refDataStreamPipeOut.first;
         refDataStreamPipeOut.deq;
@@ -63,6 +65,8 @@ module mkTestSegmentDataStream(Empty);
                 " should == refDataStream=", fshow(refDataStream)
             )
         );
+
+        countDown.decr;
         // $display(
         //     "maxPmtuFragNum=%0d, pmtuFragCntReg=%0d",
         //     maxPmtuFragNum, pmtuFragCntReg,

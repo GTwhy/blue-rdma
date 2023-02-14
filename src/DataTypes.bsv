@@ -417,7 +417,7 @@ instance FShow#(PendingWorkReq);
     function Fmt fshow(PendingWorkReq pwr);
         let pktNumFmt = case (pwr.pktNum) matches
             tagged Valid .pn: $format("tagged Valid %0d", pn);
-            tagged Invalid : $format("tagged Invalid PktNum");
+            tagged Invalid  : $format("tagged Invalid PktNum");
         endcase;
         return $format(
             "PendingWorkReq { wr=", fshow(pwr.wr),

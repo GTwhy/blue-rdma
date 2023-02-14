@@ -38,6 +38,8 @@ module mkTestHeaderAndDataStreamConversion(Empty);
     );
     let h2dsPipeOut <- mkHeader2DataStream(ds2hPipeOut);
 
+    let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
+
     rule compareHeaderMetaData;
         let headerMetaData = h2dsPipeOut.headerMetaData.first;
         h2dsPipeOut.headerMetaData.deq;
@@ -70,6 +72,8 @@ module mkTestHeaderAndDataStreamConversion(Empty);
                 " should == refDataStream=", fshow(refDataStream)
             )
         );
+
+        countDown.decr;
     endrule
 endmodule
 
@@ -101,6 +105,8 @@ module mkTestPrependHeaderBeforeEmptyDataStream(Empty);
         headerDataStreamPipeOut4Prepend, headerMetaDataPipeOut4Prepend, emptyDataStreamPipeOut
     );
 
+    let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
+
     rule compare;
         let dataStreamAfterPrepend = prependHeader2PipeOut.first;
         prependHeader2PipeOut.deq;
@@ -116,6 +122,8 @@ module mkTestPrependHeaderBeforeEmptyDataStream(Empty);
                 " should == refDataStream=", fshow(refDataStream)
             )
         );
+
+        countDown.decr;
     endrule
 endmodule
 
@@ -165,6 +173,8 @@ module mkTestExtractHeaderWithLessThanOneFragPayload(Empty);
         extractHeaderFromPipeOut.payload
     );
 
+    let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
+
     rule compare;
         let prependHeaderDataStream = prependHeader2PipeOut.first;
         prependHeader2PipeOut.deq;
@@ -180,6 +190,8 @@ module mkTestExtractHeaderWithLessThanOneFragPayload(Empty);
                 " should == refDataStream=", fshow(refDataStream)
             )
         );
+
+        countDown.decr;
     endrule
 endmodule
 
@@ -205,6 +217,8 @@ module mkTestExtractHeaderLongerThanDataStream(Empty);
         dataStreamPipeOutVec[0], headerMetaDataPipeOut
     );
     let refDataStreamPipeOut = dataStreamPipeOutVec[1];
+
+    let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
 
     rule compareHeaderDataStream;
         let headerDataStream = extractHeaderFromPipeOut.header.first;
@@ -235,6 +249,8 @@ module mkTestExtractHeaderLongerThanDataStream(Empty);
                 payloadDataStream.byteEn
             )
         );
+
+        countDown.decr;
         // $display("time=%0t: payloadDataStream=", $time, fshow(payloadDataStream));
     endrule
 endmodule
@@ -263,6 +279,8 @@ module mkTestExtractAndPrependHeader(Empty);
     );
     let refDataStreamPipeOut <- mkBufferN(2, dataStreamPipeOutVec[1]);
 
+    let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
+
     rule compare;
         let prependHeaderDataStream = prependHeader2PipeOut.first;
         prependHeader2PipeOut.deq;
@@ -278,5 +296,7 @@ module mkTestExtractAndPrependHeader(Empty);
                 " should == refDataStream=", fshow(refDataStream)
             )
         );
+
+        countDown.decr;
     endrule
 endmodule

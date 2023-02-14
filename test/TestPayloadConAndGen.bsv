@@ -37,10 +37,6 @@ module mkTestPayloadConAndGenNormalCase(Empty);
     let payloadGenerator <- mkPayloadGenerator(
         cntrl, simDmaReadSrv.dmaReadSrv, convertFifo2PipeOut(payloadGenReqQ)
     );
-    // let payloadDataStreamPipeOut <- mkFunc2Pipe(
-    //     getDataStreamFromPayloadGenRespPipeOut,
-    //     payloadGenerator.respPipeOut
-    // );
 
     let simDmaWriteSrv <- mkSimDmaWriteSrvAndDataStreamPipeOut;
     let simDmaWriteSrvDataStreamPipeOut = simDmaWriteSrv.dataStream;
@@ -50,6 +46,8 @@ module mkTestPayloadConAndGenNormalCase(Empty);
         simDmaWriteSrv.dmaWriteSrv,
         convertFifo2PipeOut(payloadConReqQ)
     );
+
+    let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
 
     // PipeOut need to handle:
     // - pktLenPipeOut4Gen
@@ -157,5 +155,7 @@ module mkTestPayloadConAndGenNormalCase(Empty);
                 " should == dmaWritePayload=", fshow(dmaWritePayload)
             )
         );
+
+        countDown.decr;
     endrule
 endmodule

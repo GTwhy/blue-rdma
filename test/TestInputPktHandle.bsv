@@ -24,7 +24,6 @@ module mkTestReceiveCNP(Empty);
     let cntrl = qpMetaData.getCntrl(qpn);
     let cnpDataStream = buildCNP(cntrl);
     let cnpDataStreamPipeIn <- mkConstantPipeOut(cnpDataStream);
-    // let dut <- mkSimInputPktBuf(cnpDataStreamPipeIn, qpMetaData);
     let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
         cnpDataStreamPipeIn
     );
@@ -110,16 +109,8 @@ module mkTestCalculatePktLen#(
     let qpMetaData <- mkSimMetaDataQPs(qpType, pmtu);
 
     // DUT
-    let isRespPkt = False;
-    let dut <- mkSimInputPktBuf(isRespPkt, rdmaReqPipeOut, qpMetaData);
-    // // Extract header DataStream, HeaderMetaData and payload DataStream
-    // let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
-    //     rdmaReqPipeOut
-    // );
-    // // DUT
-    // let dut <- mkInputRdmaPktBufAndHeaderValidation(
-    //     headerAndMetaDataAndPayloadPipeOut, qpMetaData
-    // );
+    let isRespPktPipeIn = False;
+    let dut <- mkSimInputPktBuf(isRespPktPipeIn, rdmaReqPipeOut, qpMetaData);
     let pktMetaDataPipeOut = dut.pktMetaData;
 
     // Payload sink
@@ -179,11 +170,7 @@ module mkTestCalculatePktLen#(
             )
         );
 
-        // Decrement the count down counter when zero payload length,
-        // since ReqGenSQ will not send zero payload length request to DMA.
-        if (maxPayloadLen == 0) begin
-            countDown.decr;
-        end
+        countDown.decr;
         // $display("time=%0t: pending WR=", $time, fshow(pendingWR));
     endrule
 endmodule

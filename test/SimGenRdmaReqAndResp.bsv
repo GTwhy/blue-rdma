@@ -612,6 +612,8 @@ module mkTestSimGenRdmaResp(Empty);
 
     Reg#(MSN) curMsnReg <- mkReg(0);
 
+    let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
+
     rule compareRdmaRespHeader;
         let rdmaHeader = rdmaHeaderPipeOut.first;
         rdmaHeaderPipeOut.deq;
@@ -776,5 +778,7 @@ module mkTestSimGenRdmaResp(Empty);
                 " should == refDataStream=", fshow(refDataStream)
             )
         );
+
+        countDown.decr;
     endrule
 endmodule

@@ -1,4 +1,5 @@
 import ClientServer :: *;
+import Cntrs :: *;
 import FIFOF :: *;
 import GetPut :: *;
 import PAClib :: *;
@@ -63,8 +64,8 @@ module mkSimDmaReadSrvAndReqRespPipeOut(DmaReadSrvAndReqRespPipeOut);
 
     Bool isFragCntZero = isZero(totalFragCntReg);
 
-    // Finish simulation after MAX_CMP_CNT
-    let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
+    // TODO: remove countDown here
+    // let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
 
     rule init if (!initializedReg);
         randomDataStream.cntrl.init;
@@ -145,7 +146,8 @@ module mkSimDmaReadSrvAndReqRespPipeOut(DmaReadSrvAndReqRespPipeOut);
         //     $time, totalFragCntReg, fshow(dataStream)
         // );
 
-        countDown.decr;
+        // countDown.decr;
+        // $display("time=%0t:", $time, "countDown=%0d", countDown);
     endrule
 
     interface dmaReadSrv = interface DmaReadSrv;
@@ -177,6 +179,48 @@ module mkSimDmaReadSrv(DmaReadSrv);
     let dmaReadReqSink  <- mkSink(simDmaReadSrv.dmaReadReq);
     let dmaReadRespSink <- mkSink(simDmaReadSrv.dmaReadResp);
     return simDmaReadSrv.dmaReadSrv;
+endmodule
+
+module mkSimDmaReadSrvWithErr#(
+    Bool hasRespErr, Length minErrLen, Length maxErrLen
+)(DmaReadSrv);
+    let simDmaReadSrv   <- mkSimDmaReadSrvAndReqRespPipeOut;
+    let dmaReadReqSink  <- mkSink(simDmaReadSrv.dmaReadReq);
+    let dmaReadRespSink <- mkSink(simDmaReadSrv.dmaReadResp);
+
+    let errLenPipeOut <- mkRandomLenPipeOut(minErrLen, maxErrLen);
+    FIFOF#(DmaReadResp) dmaReadRespQ <- mkFIFOF;
+    Count#(Length) payloadLenCnt <- mkCount(0);
+    Reg#(Bool) errRespGenReg <- mkReg(False);
+
+    rule genErrDmaReadRespIfNeeded;
+        let dmaReadResp <- simDmaReadSrv.dmaReadSrv.response.get;
+        let curFragLen = calcByteEnBitNumInSim(dmaReadResp.dataStream.byteEn);
+        let errLen = errLenPipeOut.first;
+
+        dmaReadResp.isRespErr = errRespGenReg;
+        if (hasRespErr) begin
+            if (!errRespGenReg) begin
+                if (payloadLenCnt >= errLen) begin
+                    payloadLenCnt <= 0;
+                    dmaReadResp.isRespErr = True;
+                    errRespGenReg <= True;
+                    errLenPipeOut.deq;
+                end
+                else begin
+                    payloadLenCnt <= payloadLenCnt + zeroExtend(curFragLen);
+                end
+            end
+
+                dmaReadRespQ.enq(dmaReadResp);
+        end
+        else begin
+            dmaReadRespQ.enq(dmaReadResp);
+        end
+    endrule
+
+    interface request = simDmaReadSrv.dmaReadSrv.request;
+    interface response = toGet(dmaReadRespQ);
 endmodule
 
 interface DmaWriteSrvAndReqRespPipeOut;
@@ -296,6 +340,8 @@ module mkTestFixedLenSimDataStreamPipeOut(Empty);
     Reg#(Length) refDmaLenReg <- mkRegU;
     Reg#(Length) totalDmaLenReg <- mkRegU;
 
+    let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
+
     rule compare;
         let curDataStreamFrag = simDataStreamPipeOutVec[0].first;
         simDataStreamPipeOutVec[0].deq;
@@ -324,5 +370,7 @@ module mkTestFixedLenSimDataStreamPipeOut(Empty);
                 $format("totalDmaLen=%0d should == refDmaLen=%0d", totalDmaLen, refDmaLen)
             );
         end
+
+        countDown.decr;
     endrule
 endmodule
