@@ -64,9 +64,6 @@ module mkSimDmaReadSrvAndReqRespPipeOut(DmaReadSrvAndReqRespPipeOut);
 
     Bool isFragCntZero = isZero(totalFragCntReg);
 
-    // TODO: remove countDown here
-    // let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
-
     rule init if (!initializedReg);
         randomDataStream.cntrl.init;
         initializedReg <= True;
@@ -145,9 +142,6 @@ module mkSimDmaReadSrvAndReqRespPipeOut(DmaReadSrvAndReqRespPipeOut);
         //     "time=%0t: mkSimDmaReadSrvAndReqRespPipeOut response, totalFragNum=%h, dataStream=",
         //     $time, totalFragCntReg, fshow(dataStream)
         // );
-
-        // countDown.decr;
-        // $display("time=%0t:", $time, "countDown=%0d", countDown);
     endrule
 
     interface dmaReadSrv = interface DmaReadSrv;

@@ -1670,14 +1670,14 @@ module mkReqHandleRQ#(
             // Wait for send/write request DMA write responses and generate WC if needed
             workCompGenReqOutQ.enq(workCompReq);
         end
-        $display(
-            "time=%0t: 16th stage, bth.opcode=", $time, fshow(bth.opcode),
-            ", bth.psn=%h", bth.psn, ", bth.ackReq=", fshow(bth.ackReq),
-            ", immDt=%h, ieth=%h", immDt, ieth,
-            ", hasImmDt=", fshow(hasImmDt),
-            ", hasIETH=", fshow(hasIETH),
-            ", reqStatus=", fshow(reqStatus)
-        );
+        // $display(
+        //     "time=%0t: 16th stage, bth.opcode=", $time, fshow(bth.opcode),
+        //     ", bth.psn=%h", bth.psn, ", bth.ackReq=", fshow(bth.ackReq),
+        //     ", immDt=%h, ieth=%h", immDt, ieth,
+        //     ", hasImmDt=", fshow(hasImmDt),
+        //     ", hasIETH=", fshow(hasIETH),
+        //     ", reqStatus=", fshow(reqStatus)
+        // );
     endrule
 
     // (* no_implicit_conditions, fire_when_enabled *)

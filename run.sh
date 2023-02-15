@@ -42,6 +42,8 @@ make -j8 TESTFILE=TestMetaData.bsv TOP=mkTestBramCache 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=TestMetaData.bsv TOP=mkTestTLB 2>&1 | tee -a $RUN_LOG
 
 make -j8 TESTFILE=TestReqGenSQ.bsv TOP=mkTestReqGenNormalCase 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestReqGenSQ.bsv TOP=mkTestReqGenZeroLenCase 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestReqGenSQ.bsv TOP=mkTestReqGenDmaReadErrCase 2>&1 | tee -a $RUN_LOG
 
 make -j8 TESTFILE=TestReqHandleRQ.bsv TOP=mkTestReqHandleNormalReqCase 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=TestReqHandleRQ.bsv TOP=mkTestReqHandleDupReqCase 2>&1 | tee -a $RUN_LOG

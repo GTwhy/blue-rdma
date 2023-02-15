@@ -462,10 +462,7 @@ module mkReqGenSQ#(
 )(ReqGenSQ);
     FIFOF#(PayloadGenReq)     payloadGenReqOutQ <- mkFIFOF;
     FIFOF#(PendingWorkReq)   pendingWorkReqOutQ <- mkFIFOF;
-    // FIFOF#(WorkCompGenReqSQ)  errWorkReqHandleQ <- mkFIFOF;
-    // FIFOF#(WorkCompGenReqSQ)    errDmaReadRespQ <- mkFIFOF;
     FIFOF#(WorkCompGenReqSQ) workCompGenReqOutQ <- mkFIFOF;
-    // FIFOF#(DataStream)       payloadDataStreamQ <- mkFIFOF;
 
     FIFOF#(PendingWorkReq) pendingReqGenQ <- mkFIFOF;
     FIFOF#(Tuple3#(PendingWorkReq, Maybe#(RdmaHeader), PSN)) pendingReqHeaderQ <- mkFIFOF;
@@ -662,21 +659,6 @@ module mkReqGenSQ#(
                 //     ", output header=", fshow(firstOrOnlyHeader)
                 // );
             end
-            // else begin
-            //     let wcWaitDmaResp     = False;
-            //     // Partial WR ACK because this WR has inserted into pending WR buffer.
-            //     let wcReqType         = WC_REQ_TYPE_PARTIAL_ACK;
-            //     let wcStatus          = IBV_WC_LOC_QP_OP_ERR;
-            //     let errWorkCompGenReq = WorkCompGenReqSQ {
-            //         wr           : pendingWR.wr,
-            //         wcWaitDmaResp: wcWaitDmaResp,
-            //         wcReqType    : wcReqType,
-            //         triggerPSN   : startPSN,
-            //         wcStatus     : wcStatus
-            //     };
-            //     errWorkReqHandleQ.enq(errWorkCompGenReq);
-            //     isNormalStateReg[0] <= False;
-            // end
             pendingReqHeaderQ.enq(tuple3(pendingWR, maybeFirstOrOnlyHeader, startPSN));
         end
         else begin
@@ -717,24 +699,7 @@ module mkReqGenSQ#(
                 " is not valid, and current WR=", fshow(pendingWR)
             )
         );
-        // if (maybeMiddleOrLastHeader matches tagged Valid .middleOrLastHeader) begin
-        //     reqHeaderQ.enq(middleOrLastHeader);
-        // end
-        // else begin
-        //     let wcWaitDmaResp     = False;
-        //     // Partial WR ACK because this WR has inserted into pending WR buffer.
-        //     let wcReqType         = WC_REQ_TYPE_PARTIAL_ACK;
-        //     let wcStatus          = IBV_WC_LOC_QP_OP_ERR;
-        //     let errWorkCompGenReq = WorkCompGenReqSQ {
-        //         wr           : pendingWR.wr,
-        //         wcWaitDmaResp: wcWaitDmaResp,
-        //         wcReqType    : wcReqType,
-        //         triggerPSN   : curPsnReg,
-        //         wcStatus     : wcStatus
-        //     };
-        //     errWorkReqHandleQ.enq(errWorkCompGenReq);
-        //     isNormalStateReg[0] <= False;
-        // end
+
         pendingReqHeaderQ.enq(tuple3(pendingWR, maybeMiddleOrLastHeader, curPsnReg));
         // $display(
         //     "time=%0t: curPsnReg=%h, pktNumReg=%0d, isLastReqPkt=%b",
@@ -795,24 +760,6 @@ module mkReqGenSQ#(
             isNormalStateReg <= False;
         end
     endrule
-
-    // rule mergeErrWorkCompGenReq if (cntrl.isRTS && !isNormalStateReg[0]);
-    //     // Error DMA response has higher priority than error WR
-    //     if (errDmaReadRespQ.notEmpty) begin
-    //         let errWorkCompGenReq = errDmaReadRespQ.first;
-    //         errDmaReadRespQ.deq;
-
-    //         workCompGenReqOutQ.enq(errWorkCompGenReq);
-    //         // Only generate one error WC request
-    //         errWorkReqHandleQ.clear;
-    //     end
-    //     else if (errWorkReqHandleQ.notEmpty) begin
-    //         let errWorkCompGenReq = errWorkReqHandleQ.first;
-    //         errWorkReqHandleQ.deq;
-
-    //         workCompGenReqOutQ.enq(errWorkCompGenReq);
-    //     end
-    // endrule
 
     interface pendingWorkReqPipeOut    = convertFifo2PipeOut(pendingWorkReqOutQ);
     interface rdmaReqDataStreamPipeOut = rdmaReqPipeOut;

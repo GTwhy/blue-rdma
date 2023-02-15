@@ -573,7 +573,7 @@ module mkTestSimGenRdmaResp(Empty);
     Vector#(1, PipeOut#(WorkReq)) workReqPipeOutVec <-
         mkRandomWorkReq(minDmaLength, maxDmaLength);
     Vector#(2, PipeOut#(PendingWorkReq)) existingPendingWorkReqPipeOutVec <-
-        mkPendingWorkReqPipeOut(workReqPipeOutVec[0], pmtu);
+        mkExistingPendingWorkReqPipeOut(cntrl, workReqPipeOutVec[0]);
     let pendingWorkReqPipeOut4RespGen = existingPendingWorkReqPipeOutVec[0];
     let pendingWorkReqPipeOut4Ref <- mkBufferN(4, existingPendingWorkReqPipeOutVec[1]);
 

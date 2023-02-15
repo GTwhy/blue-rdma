@@ -39,10 +39,12 @@ module mkTestWorkCompGenSQ#(Bool isNormalCase)(Empty);
     // WorkReq generation
     Vector#(1, PipeOut#(WorkReq)) workReqPipeOutVec <-
         mkRandomWorkReq(minDmaLength, maxDmaLength);
-    // TODO: change mkPendingWorkReqPipeOut to mkExistingPendingWorkReqPipeOut
+    // It needs extra controller to generate pending WR,
+    // since WC might change controller to error state,
+    // which prevent generating pending WR.
+    let cntrl4PendingWorkReqGen <- mkSimController(qpType, pmtu);
     Vector#(2, PipeOut#(PendingWorkReq)) existingPendingWorkReqPipeOutVec <-
-        mkPendingWorkReqPipeOut(workReqPipeOutVec[0], pmtu);
-        // mkExistingPendingWorkReqPipeOut(cntrl, workReqPipeOutVec[0]);
+        mkExistingPendingWorkReqPipeOut(cntrl4PendingWorkReqGen, workReqPipeOutVec[0]);
     let pendingWorkReqPipeOut4WorkCompReq = existingPendingWorkReqPipeOutVec[0];
     let pendingWorkReqPipeOut4DmaResp = existingPendingWorkReqPipeOutVec[1];
     FIFOF#(PendingWorkReq) pendingWorkReqPipeOut4Ref <- mkFIFOF;
@@ -170,9 +172,12 @@ module mkTestWorkCompGenRQ#(Bool isNormalCase)(Empty);
     Vector#(1, PipeOut#(WorkReq)) workReqPipeOutVec <- mkRandomWorkReq(
         minPayloadLen, maxPayloadLen
     );
-    let cntrl4PendingWR <- mkSimController(qpType, pmtu);
+    // It needs extra controller to generate pending WR,
+    // since WC might change controller to error state,
+    // which prevent generating pending WR.
+    let cntrl4PendingWorkReqGen <- mkSimController(qpType, pmtu);
     Vector#(1, PipeOut#(PendingWorkReq)) pendingWorkReqPipeOutVec <-
-        mkExistingPendingWorkReqPipeOut(cntrl4PendingWR, workReqPipeOutVec[0]);
+        mkExistingPendingWorkReqPipeOut(cntrl4PendingWorkReqGen, workReqPipeOutVec[0]);
 
     let pendingWorkReqPipeOut = pendingWorkReqPipeOutVec[0];
 

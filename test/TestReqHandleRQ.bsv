@@ -21,24 +21,6 @@ import Utils :: *;
 import Utils4Test :: *;
 import WorkCompGen :: *;
 
-function Rules genNoPendingWorkReqOutRule(PipeOut#(PendingWorkReq) pendingWorkReqPipeOut);
-    return (
-        rules
-            rule noPendingWorkReqOut;
-                immAssert(
-                    !pendingWorkReqPipeOut.notEmpty,
-                    "pendingWorkReqPipeOut empty assertion @ genNoPendingWorkReqOutRule",
-                    $format(
-                        "pendingWorkReqPipeOut.notEmpty=",
-                        fshow(pendingWorkReqPipeOut.notEmpty),
-                        " should be empty"
-                    )
-                );
-            endrule
-        endrules
-    );
-endfunction
-
 (* synthesize *)
 module mkTestReqHandleNormalReqCase(Empty);
     let normalOrDupReq = True;
@@ -133,9 +115,10 @@ module mkTestReqHandleNormalAndDupReqCase#(Bool normalOrDupReq)(Empty);
     );
     let rdmaReqPipeOut = simReqGen.rdmaReqDataStreamPipeOut;
     // Add rule to check no pending WR output
-    let addNoPendingWorkReqOutRule <- addRules(
-        genNoPendingWorkReqOutRule(simReqGen.pendingWorkReqPipeOut)
-    );
+    let addNoPendingWorkReqOutRule <- addRules(genEmptyPipeOutRule(
+        simReqGen.pendingWorkReqPipeOut,
+        "simReqGen.pendingWorkReqPipeOut empty assertion @ mkTestReqHandleNormalAndDupReqCase"
+    ));
     // Segment send/write payload DMA read DataStream
     let normalSendWriteReqPayloadPipeOut <- mkNonZeroSendWriteReqPayloadPipeOut(
         normalOrDupReqSelPipeOut4SendWriteReq,
@@ -484,7 +467,7 @@ module mkTestReqHandleAbnormalCase#(ReqHandleErrType errType)(Empty);
     let illegalAtomicWorkReqPipeOut <- mkGenIllegalAtomicWorkReq;
     let workReqPipeOut = case (errType)
         REQ_HANDLE_PERM_CHECK_FAIL: normalWorkReqPipeOutVec[0];
-        REQ_HANDLE_DMA_READ_ERR   : readAtomicWorkReqPipeOut;
+        REQ_HANDLE_DMA_READ_ERR   : normalWorkReqPipeOutVec[0]; // readAtomicWorkReqPipeOut;
         default                   : muxPipeOut2(
             selectPipeOut4WorkReqGen,
             normalWorkReqPipeOutVec[0],
@@ -509,9 +492,10 @@ module mkTestReqHandleAbnormalCase#(ReqHandleErrType errType)(Empty);
     );
     let rdmaReqPipeOut = simReqGen.rdmaReqDataStreamPipeOut;
     // Add rule to check no pending WR output
-    let addNoPendingWorkReqOutRule <- addRules(
-        genNoPendingWorkReqOutRule(simReqGen.pendingWorkReqPipeOut)
-    );
+    let addNoPendingWorkReqOutRule <- addRules(genEmptyPipeOutRule(
+        simReqGen.pendingWorkReqPipeOut,
+        "simReqGen.pendingWorkReqPipeOut empty assertion @ mkTestReqHandleAbnormalCase"
+    ));
 
     // Build RdmaPktMetaData and payload DataStream
     let isRespPktPipeIn = False;
@@ -588,10 +572,10 @@ module mkTestReqHandleAbnormalCase#(ReqHandleErrType errType)(Empty);
 
     rule flushPendingWorkReqAfterFatalErr if (firstErrRdmaRespGenReg);
         pendingWorkReqPipeOut4Resp.deq;
-        $display(
-            "time=%0t:", $time,
-            " flush pendingWR after fatal error response"
-        );
+        // $display(
+        //     "time=%0t:", $time,
+        //     " flush pendingWR after fatal error response"
+        // );
 
         countDown.decr;
     endrule
@@ -777,8 +761,10 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
     );
     let rdmaReqPipeOut = simReqGen.rdmaReqDataStreamPipeOut;
     // Add rule to check no pending WR output
-    let addNoPendingWorkReqOutRule <- addRules(
-        genNoPendingWorkReqOutRule(simReqGen.pendingWorkReqPipeOut)
+    let addNoPendingWorkReqOutRule <- addRules(genEmptyPipeOutRule(
+        simReqGen.pendingWorkReqPipeOut,
+        "simReqGen.pendingWorkReqPipeOut empty assertion @ mkTestReqHandleRetryCase"
+    )
     );
     FIFOF#(DataStream) rdmaReqDataStreamQ <- mkFIFOF;
 
