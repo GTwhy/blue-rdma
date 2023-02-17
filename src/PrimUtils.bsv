@@ -53,6 +53,10 @@ function anytype2 getTupleSecond(Tuple2#(anytype1, anytype2) tupleVal);
     return tpl_2(tupleVal);
 endfunction
 
+function anytype identityFunc(anytype inputVal);
+    return inputVal;
+endfunction
+
 function Action immAssert(Bool condition, String assertName, Fmt assertFmtMsg);
     action
         let pos = printPosition(getStringPosition(assertName));

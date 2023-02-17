@@ -99,7 +99,7 @@ module mkPayloadGenerator#(
         end
 
         let generateResp = PayloadGenResp {
-            initiator  : payloadGenReq.initiator,
+            // initiator  : payloadGenReq.initiator,
             addPadding : payloadGenReq.addPadding,
             segment    : payloadGenReq.segment,
             isRespErr  : dmaReadResp.isRespErr
@@ -234,11 +234,11 @@ module mkPayloadConsumer#(
                     dmaWriteSrv.request.put(dmaWriteReq);
                 end
                 tagged AtomicRespInfoAndPayload .atomicRespInfo: begin
-                    let { atomicRespDmaWriteMetaData, atomicRespPayload } = atomicRespInfo;
+                    // let { atomicRespDmaWriteMetaData, atomicRespPayload } = atomicRespInfo;
                     let dmaWriteReq = DmaWriteReq {
-                        metaData   : atomicRespDmaWriteMetaData,
+                        metaData   : atomicRespInfo.atomicRespDmaWriteMetaData,
                         dataStream : DataStream {
-                            data   : zeroExtendLSB(atomicRespPayload),
+                            data   : zeroExtendLSB(atomicRespInfo.atomicRespPayload),
                             byteEn : genByteEn(fromInteger(valueOf(ATOMIC_WORK_REQ_LEN))),
                             isFirst: True,
                             isLast : True
@@ -277,13 +277,13 @@ module mkPayloadConsumer#(
                 );
             end
             tagged AtomicRespInfoAndPayload .atomicRespInfo: begin
-                let { atomicRespDmaWriteMetaData, atomicRespPayload } = atomicRespInfo;
+                // let { atomicRespDmaWriteMetaData, atomicRespPayload } = atomicRespInfo;
                 immAssert(
-                    atomicRespDmaWriteMetaData.len == fromInteger(valueOf(ATOMIC_WORK_REQ_LEN)),
-                    "atomicRespDmaWriteMetaData.len assertion @ mkPayloadConsumer",
+                    atomicRespInfo.atomicRespDmaWriteMetaData.len == fromInteger(valueOf(ATOMIC_WORK_REQ_LEN)),
+                    "atomicRespInfo.atomicRespDmaWriteMetaData.len assertion @ mkPayloadConsumer",
                     $format(
                         "atomicRespDmaWriteMetaData.len=%h should be %h when consumeInfo is AtomicRespInfoAndPayload",
-                        atomicRespDmaWriteMetaData.len, valueOf(ATOMIC_WORK_REQ_LEN)
+                        atomicRespInfo.atomicRespDmaWriteMetaData.len, valueOf(ATOMIC_WORK_REQ_LEN)
                     )
                 );
             end
@@ -419,8 +419,8 @@ module mkPayloadConsumer#(
         case (consumeReq.consumeInfo) matches
             tagged SendWriteReqReadRespInfo .sendWriteReqReadRespInfo: begin
                 let consumeResp = PayloadConResp {
-                    initiator    : consumeReq.initiator,
                     dmaWriteResp : DmaWriteResp {
+                        initiator: sendWriteReqReadRespInfo.initiator,
                         isRespErr: dmaWriteResp.isRespErr,
                         sqpn     : sendWriteReqReadRespInfo.sqpn,
                         psn      : sendWriteReqReadRespInfo.psn
@@ -441,27 +441,27 @@ module mkPayloadConsumer#(
                 );
             end
             tagged AtomicRespInfoAndPayload .atomicRespInfo: begin
-                let { atomicRespDmaWriteMetaData, atomicRespPayload } = atomicRespInfo;
+                // let { atomicRespDmaWriteMetaData, atomicRespPayload } = atomicRespInfo;
                 let consumeResp = PayloadConResp {
-                    initiator    : consumeReq.initiator,
                     dmaWriteResp : DmaWriteResp {
+                        initiator: atomicRespInfo.atomicRespDmaWriteMetaData.initiator,
                         isRespErr: dmaWriteResp.isRespErr,
-                        sqpn     : atomicRespDmaWriteMetaData.sqpn,
-                        psn      : atomicRespDmaWriteMetaData.psn
+                        sqpn     : atomicRespInfo.atomicRespDmaWriteMetaData.sqpn,
+                        psn      : atomicRespInfo.atomicRespDmaWriteMetaData.psn
                     }
                 };
                 // $display("time=%0t: consumeResp=", $time, fshow(consumeResp));
                 consumeRespQ.enq(consumeResp);
 
                 immAssert(
-                    dmaWriteResp.sqpn == atomicRespDmaWriteMetaData.sqpn &&
-                    dmaWriteResp.psn  == atomicRespDmaWriteMetaData.psn,
+                    dmaWriteResp.sqpn == atomicRespInfo.atomicRespDmaWriteMetaData.sqpn &&
+                    dmaWriteResp.psn  == atomicRespInfo.atomicRespDmaWriteMetaData.psn,
                     "dmaWriteResp SQPN and PSN assertion @ ",
                     $format(
-                        "dmaWriteResp.sqpn=%h should == atomicRespDmaWriteMetaData.sqpn=%h",
-                        dmaWriteResp.sqpn, atomicRespDmaWriteMetaData.sqpn,
-                        ", and dmaWriteResp.psn=%h should == atomicRespDmaWriteMetaData.psn=%h",
-                        dmaWriteResp.psn, atomicRespDmaWriteMetaData.psn
+                        "dmaWriteResp.sqpn=%h should == atomicRespInfo.atomicRespDmaWriteMetaData.sqpn=%h",
+                        dmaWriteResp.sqpn, atomicRespInfo.atomicRespDmaWriteMetaData.sqpn,
+                        ", and dmaWriteResp.psn=%h should == atomicRespInfo.atomicRespDmaWriteMetaData.psn=%h",
+                        dmaWriteResp.psn, atomicRespInfo.atomicRespDmaWriteMetaData.psn
                     )
                 );
             end
@@ -512,4 +512,102 @@ module mkAtomicOp#(
     endrule
 
     return convertFifo2PipeOut(atomicOpRespQ);
+endmodule
+
+interface DmaArbiter4QP;
+    interface DmaReadSrv  dmaReadSrv4RQ;
+    interface DmaWriteSrv dmaWriteSrv4RQ;
+    interface DmaReadSrv  dmaReadSrv4SQ;
+    interface DmaWriteSrv dmaWriteSrv4SQ;
+endinterface
+
+module mkDmaArbiterInsideQP#(
+    DmaReadSrv  dmaReadSrv,
+    DmaWriteSrv dmaWriteSrv
+)(DmaArbiter4QP);
+    FIFOF#(DmaReadReq)     dmaReadReqQ4RQ <- mkFIFOF;
+    FIFOF#(DmaReadResp)   dmaReadRespQ4RQ <- mkFIFOF;
+    FIFOF#(DmaWriteReq)   dmaWriteReqQ4RQ <- mkFIFOF;
+    FIFOF#(DmaWriteResp) dmaWriteRespQ4RQ <- mkFIFOF;
+
+    FIFOF#(DmaReadReq)     dmaReadReqQ4SQ <- mkFIFOF;
+    FIFOF#(DmaReadResp)   dmaReadRespQ4SQ <- mkFIFOF;
+    FIFOF#(DmaWriteReq)   dmaWriteReqQ4SQ <- mkFIFOF;
+    FIFOF#(DmaWriteResp) dmaWriteRespQ4SQ <- mkFIFOF;
+
+    // RQ has higher priority than SQ when issueing DMA requests
+    // and receiving DMA responses.
+    rule issueDmaReadReq;
+        if (dmaReadReqQ4RQ.notEmpty) begin
+            let rqDmaReadReq = dmaReadReqQ4RQ.first;
+            dmaReadReqQ4RQ.deq;
+            dmaReadSrv.request.put(rqDmaReadReq);
+        end
+        else if (dmaReadReqQ4SQ.notEmpty) begin
+            let sqDmaReadReq = dmaReadReqQ4SQ.first;
+            dmaReadReqQ4SQ.deq;
+            dmaReadSrv.request.put(sqDmaReadReq);
+        end
+    endrule
+
+    rule issueDmaWriteReq;
+        if (dmaWriteReqQ4RQ.notEmpty) begin
+            let rqDmaWriteReq = dmaWriteReqQ4RQ.first;
+            dmaWriteReqQ4RQ.deq;
+            dmaWriteSrv.request.put(rqDmaWriteReq);
+        end
+        else if (dmaWriteReqQ4SQ.notEmpty) begin
+            let sqDmaWriteReq = dmaWriteReqQ4SQ.first;
+            dmaWriteReqQ4SQ.deq;
+            dmaWriteSrv.request.put(sqDmaWriteReq);
+        end
+    endrule
+
+    rule recvDmaReadResp;
+        let dmaReadResp <- dmaReadSrv.response.get;
+        case (dmaReadResp.initiator)
+            DMA_INIT_RQ_RD    ,
+            DMA_INIT_RQ_WR    ,
+            DMA_INIT_RQ_DUP_RD,
+            DMA_INIT_RQ_ATOMIC: dmaReadRespQ4RQ.enq(dmaReadResp);
+            default           : dmaReadRespQ4SQ.enq(dmaReadResp);
+        endcase
+    endrule
+
+    rule recvDmaWriteResp;
+        let dmaWriteResp <- dmaWriteSrv.response.get;
+        case (dmaWriteResp.initiator)
+            DMA_INIT_RQ_RD    ,
+            DMA_INIT_RQ_WR    ,
+            DMA_INIT_RQ_DUP_RD,
+            DMA_INIT_RQ_ATOMIC: dmaWriteRespQ4RQ.enq(dmaWriteResp);
+            default           : dmaWriteRespQ4SQ.enq(dmaWriteResp);
+        endcase
+    endrule
+
+    interface dmaReadSrv4RQ  = toGPServer(dmaReadReqQ4RQ,  dmaReadRespQ4RQ);
+    interface dmaWriteSrv4RQ = toGPServer(dmaWriteReqQ4RQ, dmaWriteRespQ4RQ);
+    interface dmaReadSrv4SQ  = toGPServer(dmaReadReqQ4SQ,  dmaReadRespQ4SQ);
+    interface dmaWriteSrv4SQ = toGPServer(dmaWriteReqQ4SQ, dmaWriteRespQ4SQ);
+endmodule
+
+interface ServerProxy#(type reqType, type respType);
+    interface Server#(reqType, respType) server ;
+    interface Client#(reqType, respType) client;
+endinterface
+
+module mkServerProxy(ServerProxy#(reqType, respType))
+provisos(Bits#(reqType, reqSz), Bits#(respType, respSz));
+    FIFOF#(reqType) reqQ <- mkFIFOF;
+    FIFOF#(respType) respQ <- mkFIFOF;
+
+    interface client = interface Client#(reqType, respType);
+        interface request  = toGet(reqQ);
+        interface response = toPut(respQ);
+    endinterface;
+
+    interface server = interface Server#(reqType, respType);
+        interface request  = toPut(reqQ);
+        interface response = toGet(respQ);
+    endinterface;
 endmodule

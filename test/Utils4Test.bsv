@@ -991,44 +991,6 @@ endmodule
 
 // PipeOut related
 
-function Rules genEmptyPipeOutRule(
-    PipeOut#(anytype) inputPipeOut, String assertMsg
-);
-    return (
-        rules
-            rule checkEmptyPipeIn;
-                immAssert(
-                    !inputPipeOut.notEmpty,
-                    assertMsg,
-                    $format(
-                        "inputPipeOut.notEmpty=",
-                        fshow(inputPipeOut.notEmpty),
-                        " should be empty"
-                    )
-                );
-            endrule
-        endrules
-    );
-endfunction
-
-// function Rules genNoPendingWorkReqOutRule(PipeOut#(PendingWorkReq) pendingWorkReqPipeOut);
-//     return (
-//         rules
-//             rule noPendingWorkReqOut;
-//                 immAssert(
-//                     !pendingWorkReqPipeOut.notEmpty,
-//                     "pendingWorkReqPipeOut empty assertion @ genNoPendingWorkReqOutRule",
-//                     $format(
-//                         "pendingWorkReqPipeOut.notEmpty=",
-//                         fshow(pendingWorkReqPipeOut.notEmpty),
-//                         " should be empty"
-//                     )
-//                 );
-//             endrule
-//         endrules
-//     );
-// endfunction
-
 module mkActionValueFunc2Pipe#(
     function ActionValue#(tb) avfn(ta inputVal), PipeOut#(ta) pipeIn
 )(PipeOut #(tb)) provisos (Bits #(ta, taSz), Bits #(tb, tbSz));

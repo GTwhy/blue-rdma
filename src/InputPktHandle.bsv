@@ -217,8 +217,6 @@ module mkInputRdmaPktBufAndHeaderValidation#(
         let rdmaHeader = rdmaHeaderPipeOut.first;
         let bth        = extractBTH(rdmaHeader.headerData);
         let aeth       = extractAETH(rdmaHeader.headerData);
-        // let reth       = extractRETH(rdmaHeader.headerData, bth.trans);
-        // let atomicEth  = extractAtomicEth(rdmaHeader.headerData, bth.trans);
 
         let bthCheckResult = checkZeroFields4BTH(bth);
         let headerCheckResult =

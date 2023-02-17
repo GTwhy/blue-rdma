@@ -125,9 +125,10 @@ module mkSimDmaReadSrvAndReqRespPipeOut(DmaReadSrvAndReqRespPipeOut);
         end
 
         let resp = DmaReadResp {
-            isRespErr : False,
+            initiator : curReqReg.initiator,
             sqpn      : curReqReg.sqpn,
             wrID      : curReqReg.wrID,
+            isRespErr : False,
             dataStream: dataStream
         };
         dmaReadRespQ.enq(resp);
@@ -232,9 +233,10 @@ module mkSimDmaWriteSrvAndReqRespPipeOut(DmaWriteSrvAndReqRespPipeOut);
     function Action genDmaWriteResp(DmaWriteMetaData metaData);
         action
             let dmaWriteResp = DmaWriteResp {
-                isRespErr: False,
+                initiator: metaData.initiator,
                 sqpn     : metaData.sqpn,
-                psn      : metaData.psn
+                psn      : metaData.psn,
+                isRespErr: False
             };
             // $display("time=%0t: dmaWriteResp=", $time, fshow(dmaWriteResp));
 
@@ -298,7 +300,7 @@ module mkFixedLenSimDataStreamPipeOut#(
         dmaLenPipeOut.deq;
 
         let dmaReq = DmaReadReq {
-            // initiator: dontCareValue,
+            initiator: dontCareValue,
             sqpn     : dontCareValue,
             startAddr: dontCareValue,
             len      : dmaLength,

@@ -31,6 +31,7 @@ typedef enum {
     RETRY_ST_RNR_WAIT,
     RETRY_ST_PARTIAL_RETRY_WR,
     RETRY_ST_FULL_RETRY_WR,
+    RETRY_ST_WAIT_WR_OUT_Q_EMPTY,
     RETRY_ST_RETRY_LIMIT_EXC
 } RetryHandleState deriving(Bits, Eq, FShow);
 
@@ -69,8 +70,6 @@ module mkRetryHandleSQ#(
     let retryErr    = retryHandleStateReg[0] == RETRY_ST_RETRY_LIMIT_EXC;
     // Retry restart conflicts with partial retry state
     let retryingWR  = retryHandleStateReg[0] == RETRY_ST_FULL_RETRY_WR;
-
-    let retryPendingWorkReqPipeOut = convertFifo2PipeOut(retryPendingWorkReqOutQ);
 
     function Bool retryCntExceedLimit(RetryReason retryReason);
         return case (retryReason)
@@ -154,8 +153,8 @@ module mkRetryHandleSQ#(
         end
         else if (
             !disableTimeOutReg          &&
-            !pendingWorkReqScan.isEmpty &&               // No timeout when no pending WR
-            retryHandleStateReg[1] == RETRY_ST_NOT_RETRY // No timeout when in retry
+            !pendingWorkReqScan.isEmpty &&               // Disable timeout when no pending WR
+            retryHandleStateReg[1] == RETRY_ST_NOT_RETRY // Disable timeout when in retry
         ) begin
             if (isZero(timeOutCntReg)) begin
                 hasTimeOutRetry = True;
@@ -366,6 +365,10 @@ module mkRetryHandleSQ#(
         end
     endrule
 
+    rule cleanWorkReqOutQ if (cntrl.isERR);
+        retryPendingWorkReqOutQ.clear;
+    endrule
+
     method Bool hasRetryErr() = retryErr;
     method Bool isRetryDone() = notRetrying;
     method Bool  isRetrying() = retryingWR;
@@ -403,5 +406,5 @@ module mkRetryHandleSQ#(
         end
     endmethod
 
-    interface retryWorkReqPipeOut = retryPendingWorkReqPipeOut;
+    interface retryWorkReqPipeOut = convertFifo2PipeOut(retryPendingWorkReqOutQ);
 endmodule

@@ -1,5 +1,5 @@
 import ClientServer :: *;
-import CompletionBuffer :: *;
+// import CompletionBuffer :: *;
 import PAClib :: *;
 
 import Headers :: *;
@@ -107,12 +107,11 @@ typedef PipeOut#(DataStream) DataStreamPipeOut;
 
 typedef Server#(DmaReadReq, DmaReadResp)   DmaReadSrv;
 typedef Server#(DmaWriteReq, DmaWriteResp) DmaWriteSrv;
+typedef Client#(DmaReadReq, DmaReadResp)   DmaReadClt;
+typedef Client#(DmaWriteReq, DmaWriteResp) DmaWriteClt;
 
 typedef ScanFIFOF#(MAX_QP_WR, PendingWorkReq) PendingWorkReqBuf;
 typedef PipeOut#(RecvReq)                     RecvReqBuf;
-
-// typedef UInt#(TLog#(TLB_CACHE_SIZE)) AddrTLB;
-// typedef Bit#(TLB_CACHE_PA_DATA_WIDTH) DataTLB;
 
 typedef struct {
     Bit#(TLB_CACHE_PA_DATA_WIDTH) data;
@@ -211,6 +210,7 @@ typedef struct {
 } PermCheckInfo deriving(Bits, FShow);
 
 typedef struct {
+    DmaReqInitiator initiator;
     QPN sqpn;
     ADDR startAddr;
     Length len;
@@ -218,13 +218,15 @@ typedef struct {
 } DmaReadReq deriving(Bits, FShow);
 
 typedef struct {
-    Bool isRespErr;
+    DmaReqInitiator initiator;
     QPN sqpn;
     WorkReqID wrID;
+    Bool isRespErr;
     DataStream dataStream;
 } DmaReadResp deriving(Bits, FShow);
 
 typedef struct {
+    DmaReqInitiator initiator;
     QPN sqpn;
     ADDR startAddr;
     PktLen len;
@@ -237,24 +239,24 @@ typedef struct {
 } DmaWriteReq deriving(Bits, FShow);
 
 typedef struct {
-    Bool isRespErr;
+    DmaReqInitiator initiator;
     QPN sqpn;
     PSN psn;
+    Bool isRespErr;
 } DmaWriteResp deriving(Bits, FShow);
 
 typedef enum {
-    OP_INIT_RQ_RD,
-    OP_INIT_RQ_WR,
-    OP_INIT_RQ_DUP_RD,
-    OP_INIT_RQ_ATOMIC,
-    OP_INIT_SQ_RD,
-    OP_INIT_SQ_WR,
-    OP_INIT_SQ_ATOMIC,
-    OP_INIT_SQ_DISCARD
-} OpInitiator deriving(Bits, Eq, FShow);
+    DMA_INIT_RQ_RD,
+    DMA_INIT_RQ_WR,
+    DMA_INIT_RQ_DUP_RD,
+    DMA_INIT_RQ_ATOMIC,
+    DMA_INIT_SQ_RD,
+    DMA_INIT_SQ_WR,
+    DMA_INIT_SQ_ATOMIC
+    // DMA_INIT_SQ_DISCARD
+} DmaReqInitiator deriving(Bits, Eq, FShow);
 
 typedef struct {
-    OpInitiator initiator;
     Bool addPadding;
     Bool segment;
     PMTU pmtu;
@@ -262,32 +264,31 @@ typedef struct {
 } PayloadGenReq deriving(Bits, FShow);
 
 typedef struct {
-    OpInitiator initiator;
     Bool addPadding;
     Bool segment;
     Bool isRespErr;
-    // DmaReadResp dmaReadResp;
 } PayloadGenResp deriving(Bits, FShow);
 
 typedef union tagged {
     void DiscardPayload;
-    Tuple2#(DmaWriteMetaData, Long) AtomicRespInfoAndPayload;
+    struct {
+        DmaWriteMetaData atomicRespDmaWriteMetaData;
+        Long atomicRespPayload;
+     } AtomicRespInfoAndPayload;
     DmaWriteMetaData SendWriteReqReadRespInfo;
 } PayloadConInfo deriving(Bits, Eq, FShow);
 
 typedef struct {
-    OpInitiator initiator;
     PmtuFragNum fragNum;
     PayloadConInfo consumeInfo;
 } PayloadConReq deriving(Bits, FShow);
 
 typedef struct {
-    OpInitiator initiator;
     DmaWriteResp dmaWriteResp;
 } PayloadConResp deriving(Bits, FShow);
 
 typedef struct {
-    OpInitiator initiator;
+    DmaReqInitiator initiator;
     Bool casOrFetchAdd;
     ADDR startAddr;
     Long compData;
@@ -297,7 +298,7 @@ typedef struct {
 } AtomicOpReq deriving(Bits);
 
 typedef struct {
-    OpInitiator initiator;
+    DmaReqInitiator initiator;
     Long original;
     QPN sqpn;
     PSN psn;

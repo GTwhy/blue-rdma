@@ -63,11 +63,11 @@ module mkTestPayloadConAndGenNormalCase(Empty);
         pktLenPipeOut4Gen.deq;
 
         let payloadGenReq = PayloadGenReq {
-            initiator    : OP_INIT_SQ_RD,
             addPadding   : False,
             segment      : False,
             pmtu         : pmtu,
             dmaReadReq   : DmaReadReq {
+                initiator: DMA_INIT_SQ_RD,
                 sqpn     : cntrl.getSQPN,
                 startAddr: dontCareValue,
                 len      : zeroExtend(pktLen),
@@ -107,9 +107,9 @@ module mkTestPayloadConAndGenNormalCase(Empty);
             calcTotalFragNumByLength(zeroExtend(pktLen));
 
         let payloadConReq = PayloadConReq {
-            initiator    : OP_INIT_SQ_WR,
             fragNum      : truncate(totalFragNum),
             consumeInfo  : tagged SendWriteReqReadRespInfo DmaWriteMetaData {
+                initiator: DMA_INIT_SQ_WR,
                 sqpn     : cntrl.getSQPN,
                 startAddr: dontCareValue,
                 len      : pktLen,

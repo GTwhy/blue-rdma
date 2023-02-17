@@ -343,11 +343,11 @@ module mkSimGenRdmaRespHeaderAndDataStream#(
             // TODO: generate atomic WR response payload
             if (isNonZeroReadWorkReq(curPendingWR.wr)) begin
                 let payloadGenReq = PayloadGenReq {
-                    initiator    : OP_INIT_SQ_RD,
                     addPadding   : True,
                     segment      : True,
                     pmtu         : cntrl.getPMTU,
                     dmaReadReq   : DmaReadReq {
+                        initiator: DMA_INIT_SQ_RD,
                         sqpn     : cntrl.getSQPN,
                         startAddr: curPendingWR.wr.laddr,
                         len      : curPendingWR.wr.len,

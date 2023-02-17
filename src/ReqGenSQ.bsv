@@ -637,11 +637,11 @@ module mkReqGenSQ#(
             if (maybeFirstOrOnlyHeader matches tagged Valid .firstOrOnlyHeader) begin
                 if (workReqNeedDmaReadSQ(pendingWR.wr)) begin
                     let payloadGenReq = PayloadGenReq {
-                        initiator    : OP_INIT_SQ_RD,
                         addPadding   : True,
                         segment      : True,
                         pmtu         : cntrl.getPMTU,
                         dmaReadReq   : DmaReadReq {
+                            initiator: DMA_INIT_SQ_RD,
                             sqpn     : cntrl.getSQPN,
                             startAddr: pendingWR.wr.laddr,
                             len      : pendingWR.wr.len,
@@ -758,6 +758,29 @@ module mkReqGenSQ#(
         else begin // Illegal RDMA request headers
             workCompGenReqOutQ.enq(errWorkCompGenReq);
             isNormalStateReg <= False;
+        end
+    endrule
+
+    rule errFlush if (cntrl.isERR || !isNormalStateReg);
+        let curPendingWR = pendingWorkReqPipeIn.first;
+        pendingWorkReqPipeIn.deq;
+
+        immAssert(
+            !isValid(curPendingWR.startPSN) ||
+            !isValid(curPendingWR.endPSN)   ||
+            !isValid(curPendingWR.pktNum)   ||
+            !isValid(curPendingWR.isOnlyReqPkt),
+            "curPendingWR assertion @ mkWorkReq2Headers",
+            $format(
+                "curPendingWR should have invalid PSN and PktNum when error flushing, curPendingWR=",
+                fshow(curPendingWR)
+            )
+        );
+
+        let qpType = cntrl.getQpType;
+        // Only for RC and XRC output new WR as pending WR to generate WC
+        if (qpType == IBV_QPT_RC || qpType == IBV_QPT_XRC_SEND) begin
+            pendingWorkReqOutQ.enq(curPendingWR);
         end
     endrule
 

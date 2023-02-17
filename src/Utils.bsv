@@ -1,3 +1,4 @@
+import ClientServer :: *;
 import FIFOF :: *;
 import GetPut :: *;
 import PAClib :: *;
@@ -1626,6 +1627,22 @@ function Tuple2#(PipeOut#(anytype), PipeOut#(anytype)) deMuxPipeOut2(
     return tuple2(p1, p2);
 endfunction
 
-function anytype identityFunc(anytype inputVal);
-    return inputVal;
+function Rules genEmptyPipeOutRule(
+    PipeOut#(anytype) inputPipeOut, String assertMsg
+);
+    return (
+        rules
+            rule checkEmptyPipeIn;
+                immAssert(
+                    !inputPipeOut.notEmpty,
+                    assertMsg,
+                    $format(
+                        "inputPipeOut.notEmpty=",
+                        fshow(inputPipeOut.notEmpty),
+                        " should be empty"
+                    )
+                );
+            endrule
+        endrules
+    );
 endfunction

@@ -419,7 +419,7 @@ module mkReqHandleRQ#(
     FIFOF#(Tuple4#(RdmaPktMetaData, RdmaReqStatus, PermCheckInfo, RdmaReqPktInfo)) dupReadReqPermQueryQ <- mkFIFOF;
     FIFOF#(Tuple5#(RdmaPktMetaData, RdmaReqStatus, PermCheckInfo, RdmaReqPktInfo, Bool)) dupReadReqPermCheckQ <- mkFIFOF;
     FIFOF#(Tuple5#(RdmaPktMetaData, RdmaReqStatus, PermCheckInfo, RdmaReqPktInfo, DupReadReqStartState)) reqLenCalcQ <- mkFIFOF;
-    FIFOF#(Tuple6#(RdmaPktMetaData, RdmaReqStatus, PermCheckInfo, RdmaReqPktInfo, ADDR, DupReadReqStartState)) initDmaReqQ <- mkFIFOF;
+    FIFOF#(Tuple6#(RdmaPktMetaData, RdmaReqStatus, PermCheckInfo, RdmaReqPktInfo, ADDR, DupReadReqStartState)) issueDmaReqQ <- mkFIFOF;
     FIFOF#(Tuple5#(RdmaPktMetaData, RdmaReqStatus, PermCheckInfo, RdmaReqPktInfo, RespPktGenInfo)) respGenCheckQ <- mkFIFOF;
     FIFOF#(Tuple5#(RdmaPktMetaData, RdmaReqStatus, PermCheckInfo, RdmaReqPktInfo, RespPktGenInfo)) dupAtomicReqPermQueryQ <- mkFIFOF;
     FIFOF#(Tuple5#(RdmaPktMetaData, RdmaReqStatus, PermCheckInfo, RdmaReqPktInfo, RespPktGenInfo)) dupAtomicReqPermCheckQ <- mkFIFOF;
@@ -442,7 +442,7 @@ module mkReqHandleRQ#(
         action
             if (!isZero(fragNum)) begin
                 let discardReq = PayloadConReq {
-                    initiator  : OP_INIT_SQ_DISCARD,
+                    // initiator  : DMA_INIT_SQ_DISCARD,
                     fragNum    : fragNum,
                     consumeInfo: tagged DiscardPayload
                 };
@@ -1009,7 +1009,7 @@ module mkReqHandleRQ#(
             end
         end
 
-        initDmaReqQ.enq(tuple6(
+        issueDmaReqQ.enq(tuple6(
             pktMetaData, reqStatus, curPermCheckInfo,
             reqPktInfo, curDmaWriteAddr, dupReadReqStartState
         ));
@@ -1019,12 +1019,12 @@ module mkReqHandleRQ#(
         // );
     endrule
 
-    rule initDmaReqOrDiscard if (cntrl.isNonErr || cntrl.isERR); // This rule still runs at retry or error state
+    rule issueDmaReqOrDiscard if (cntrl.isNonErr || cntrl.isERR); // This rule still runs at retry or error state
         let {
             pktMetaData, reqStatus, permCheckInfo,
             reqPktInfo, curDmaWriteAddr, dupReadReqStartState
-        } = initDmaReqQ.first;
-        initDmaReqQ.deq;
+        } = issueDmaReqQ.first;
+        issueDmaReqQ.deq;
 
         let bth        = reqPktInfo.bth;
         let rdmaHeader = pktMetaData.pktHeader;
@@ -1044,9 +1044,9 @@ module mkReqHandleRQ#(
                 4'b1000, 4'b0100: begin // Send/Write requests
                     if (reqStatus == RDMA_REQ_ST_NORMAL && !isZeroDmaLen) begin
                         let payloadConReq = PayloadConReq {
-                            initiator    : OP_INIT_RQ_WR,
                             fragNum      : pktMetaData.pktFragNum,
                             consumeInfo  : tagged SendWriteReqReadRespInfo DmaWriteMetaData {
+                                initiator: DMA_INIT_RQ_WR,
                                 sqpn     : cntrl.getSQPN,
                                 startAddr: curDmaWriteAddr,
                                 len      : pktMetaData.pktPayloadLen,
@@ -1062,11 +1062,11 @@ module mkReqHandleRQ#(
                         (reqStatus == RDMA_REQ_ST_NORMAL || reqStatus == RDMA_REQ_ST_DUP)
                     ) begin
                         let payloadGenReq = PayloadGenReq {
-                            initiator    : OP_INIT_RQ_RD,
                             addPadding   : True,
                             segment      : True,
                             pmtu         : cntrl.getPMTU,
                             dmaReadReq   : DmaReadReq {
+                                initiator: DMA_INIT_RQ_RD,
                                 sqpn     : cntrl.getSQPN,
                                 startAddr: reth.va,
                                 len      : reth.dlen,
@@ -1080,7 +1080,7 @@ module mkReqHandleRQ#(
                 4'b0001: begin // Atomic requests
                     if (reqStatus == RDMA_REQ_ST_NORMAL) begin
                         let atomicOpReq = AtomicOpReq {
-                            initiator    : OP_INIT_RQ_ATOMIC,
+                            initiator    : DMA_INIT_RQ_ATOMIC,
                             casOrFetchAdd: bth.opcode == COMPARE_SWAP,
                             startAddr    : atomicEth.va,
                             compData     : atomicEth.comp,

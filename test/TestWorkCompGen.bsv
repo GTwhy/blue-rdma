@@ -76,11 +76,11 @@ module mkTestWorkCompGenSQ#(Bool isNormalCase)(Empty);
         if (workReqNeedDmaWriteRespSQ(pendingWR)) begin
             let endPSN = unwrapMaybe(pendingWR.endPSN);
             let payloadConResp = PayloadConResp {
-                initiator: dontCareValue,
                 dmaWriteResp: DmaWriteResp {
-                    isRespErr: False,
+                    initiator: dontCareValue,
                     sqpn     : cntrl.getSQPN,
-                    psn      : endPSN
+                    psn      : endPSN,
+                    isRespErr: False
                 }
             };
             if (isNormalCase) begin
@@ -235,11 +235,11 @@ module mkTestWorkCompGenRQ#(Bool isNormalCase)(Empty);
             let endPSN = unwrapMaybe(pendingWR.endPSN);
             if (!isZeroLen) begin
                 let payloadConResp = PayloadConResp {
-                    initiator: dontCareValue,
                     dmaWriteResp: DmaWriteResp {
-                        isRespErr: False,
+                        initiator: dontCareValue,
                         sqpn     : cntrl.getSQPN,
-                        psn      : endPSN
+                        psn      : endPSN,
+                        isRespErr: False
                     }
                 };
                 if (isNormalCase) begin

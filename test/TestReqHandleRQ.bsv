@@ -467,7 +467,7 @@ module mkTestReqHandleAbnormalCase#(ReqHandleErrType errType)(Empty);
     let illegalAtomicWorkReqPipeOut <- mkGenIllegalAtomicWorkReq;
     let workReqPipeOut = case (errType)
         REQ_HANDLE_PERM_CHECK_FAIL: normalWorkReqPipeOutVec[0];
-        REQ_HANDLE_DMA_READ_ERR   : normalWorkReqPipeOutVec[0]; // readAtomicWorkReqPipeOut;
+        REQ_HANDLE_DMA_READ_ERR   : readAtomicWorkReqPipeOut;
         default                   : muxPipeOut2(
             selectPipeOut4WorkReqGen,
             normalWorkReqPipeOutVec[0],

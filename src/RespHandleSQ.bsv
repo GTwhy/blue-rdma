@@ -135,7 +135,7 @@ module mkRespHandleSQ#(
         action
             if (!isZero(fragNum)) begin
                 let discardReq = PayloadConReq {
-                    initiator  : OP_INIT_SQ_DISCARD,
+                    // initiator  : DMA_INIT_SQ_DISCARD,
                     fragNum    : fragNum,
                     consumeInfo: tagged DiscardPayload
                 };
@@ -781,9 +781,9 @@ module mkRespHandleSQ#(
         if (respAction == SQ_ACT_EXPLICIT_RESP && !hasErrOccuredReg) begin
             if (isReadResp && !isZeroPayloadLen) begin
                 let payloadConReq = PayloadConReq {
-                    initiator    : OP_INIT_SQ_WR,
                     fragNum      : pktMetaData.pktFragNum,
                     consumeInfo  : tagged SendWriteReqReadRespInfo DmaWriteMetaData {
+                        initiator: DMA_INIT_SQ_WR,
                         sqpn     : cntrl.getSQPN,
                         startAddr: nextReadRespWriteAddr,
                         len      : pktMetaData.pktPayloadLen,
@@ -795,17 +795,17 @@ module mkRespHandleSQ#(
             end
             else if (isAtomicResp) begin
                 let atomicWriteReq = PayloadConReq {
-                    initiator  : OP_INIT_SQ_ATOMIC,
                     fragNum    : 0,
-                    consumeInfo: tagged AtomicRespInfoAndPayload tuple2(
-                        DmaWriteMetaData {
+                    consumeInfo: tagged AtomicRespInfoAndPayload {
+                        atomicRespDmaWriteMetaData: DmaWriteMetaData {
+                            initiator: DMA_INIT_SQ_ATOMIC,
                             sqpn     : cntrl.getSQPN,
                             startAddr: pendingWR.wr.laddr,
                             len      : truncate(pendingWR.wr.len),
                             psn      : bth.psn
                         },
-                        atomicAckAeth.orig
-                    )
+                        atomicRespPayload: atomicAckAeth.orig
+                    }
                 };
                 payloadConReqOutQ.enq(atomicWriteReq);
                 wcWaitDmaResp = True;

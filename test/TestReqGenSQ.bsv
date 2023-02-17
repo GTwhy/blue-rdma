@@ -459,9 +459,10 @@ module mkTestReqGenDmaReadErrCase(Empty);
     // WorkReq generation
     Vector#(1, PipeOut#(WorkReq)) workReqPipeOutVec <-
         mkRandomWorkReq(minDmaLength, maxDmaLength);
-    let { workReqPipeOut4Flush, workReqPipeOut4Dut } = deMuxPipeOut(
-        genErrWorkCompReg, workReqPipeOutVec[0]
-    );
+    // let { workReqPipeOut4Flush, workReqPipeOut4Dut } = deMuxPipeOut(
+    //     genErrWorkCompReg, workReqPipeOutVec[0]
+    // );
+    let workReqPipeOut4Dut = workReqPipeOutVec[0];
     Vector#(2, PipeOut#(WorkReq)) workReqPipeOutVec4Dut <-
         mkForkVector(workReqPipeOut4Dut);
     let newPendingWorkReqPipeOut <-
@@ -489,22 +490,37 @@ module mkTestReqGenDmaReadErrCase(Empty);
     let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
 
     rule checkErrWorkComp;
-        let errWorkCompReq = errWorkCompGenReqPipeOut.first;
-        errWorkCompGenReqPipeOut.deq;
+        if (genErrWorkCompReg) begin
+            immAssert(
+                !errWorkCompGenReqPipeOut.notEmpty,
+                "errWorkCompGenReqPipeOut empty assertion @ mkTestReqGenDmaReadErrCase",
+                $format(
+                    "errWorkCompGenReqPipeOut.notEmpty=",
+                    fshow(errWorkCompGenReqPipeOut.notEmpty),
+                    " should be false"
+                )
+            );
 
-        genErrWorkCompReg <= True;
+            countDown.decr;
+        end
+        else begin
+            let errWorkCompReq = errWorkCompGenReqPipeOut.first;
+            errWorkCompGenReqPipeOut.deq;
 
-        immAssert(
-            errWorkCompReq.wcStatus == IBV_WC_LOC_QP_OP_ERR,
-            "errWorkCompReq status assertion @ mkTestReqGenDmaReadErrCase",
-            $format(
-                "errWorkCompReq.wcStatus=", fshow(errWorkCompReq.wcStatus),
-                " should be IBV_WC_LOC_QP_OP_ERR"
-            )
-        );
+            genErrWorkCompReg <= True;
+
+            immAssert(
+                errWorkCompReq.wcStatus == IBV_WC_LOC_QP_OP_ERR,
+                "errWorkCompReq status assertion @ mkTestReqGenDmaReadErrCase",
+                $format(
+                    "errWorkCompReq.wcStatus=", fshow(errWorkCompReq.wcStatus),
+                    " should be IBV_WC_LOC_QP_OP_ERR"
+                )
+            );
+        end
         // $display("time=%0t: error WC request=", $time, fshow(errWorkCompReq));
     endrule
-
+/*
     rule flushWorkReqAfterFatalErr if (genErrWorkCompReg);
         workReqPipeOut4Flush.deq;
 
@@ -520,8 +536,8 @@ module mkTestReqGenDmaReadErrCase(Empty);
 
         countDown.decr;
     endrule
-
-    rule compareWorkReqBeforeFatalErr if (!genErrWorkCompReg);
+*/
+    rule compareWorkReq; // BeforeFatalErr if (!genErrWorkCompReg);
         let pendingWR = pendingWorkReqPipeOut4Comp.first;
         pendingWorkReqPipeOut4Comp.deq;
 
