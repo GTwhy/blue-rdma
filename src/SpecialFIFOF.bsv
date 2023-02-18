@@ -1,23 +1,14 @@
 import Cntrs :: *;
 import FIFOF :: *;
 import PAClib :: *;
-import Vector :: *;
-
 import PrimUtils :: *;
-
-// function PipeOut#(anytype) scanQ2PipeOut(ScanIfc scanQ);
-//     return interface PipeOut;
-//         method anytype first() = scanQ.current;
-//         method Action deq() = scanQ.scanNext;
-//         method Bool notEmpty() = !scanQ.scanDone;
-//     endinterface;
-// endfunction
-
+import Vector :: *;
+/*
 interface ScanIfc#(type anytype);
     method Action scanStart();
     method Action scanRestart();
     method anytype current();
-    method Action scanNext();
+    method Action next();
     method Bool scanDone();
     method Bool isEmpty();
 endinterface
@@ -193,7 +184,7 @@ module mkScanFIFOF(ScanFIFOF#(qSz, anytype)) provisos(
             return dataVec[removeMSB(scanPtrReg)];
         endmethod
 
-        method Action scanNext if (scanModeReg);
+        method Action next if (scanModeReg);
             scanNextReg[0] <= True;
             // $display(
             //     "time=%0t: scanPtrReg=%0d, nextScanPtr=%0d, enqPtrReg=%0d, deqPtrReg=%0d, scanModeReg=",
@@ -207,6 +198,359 @@ module mkScanFIFOF(ScanFIFOF#(qSz, anytype)) provisos(
     endinterface;
 
     method UInt#(cntSz) count = itemCnt;
+endmodule
+*/
+interface ScanOutIfc#(type anytype);
+    method anytype current();
+    method Action next();
+    // method Bool isEmpty();
+endinterface
+
+interface ScanCntrlIfc#(type anytype);
+    method anytype getHead();
+    method Action modifyHead(anytype head);
+    method Action preScanStart();
+    method Action scanStart();
+    method Action preScanRestart();
+    // method Action scanStop();
+    method Bool isScanDone();
+    method Bool isScanMode();
+endinterface
+
+interface ScanFIFOF#(numeric type qSz, type anytype);
+    interface FIFOF#(anytype) fifoIfc;
+    interface ScanOutIfc#(anytype) scanOutIfc;
+    interface ScanCntrlIfc#(anytype) scanCntrlIfc;
+    // method UInt#(TLog#(TAdd#(qSz, 1))) count;
+endinterface
+
+typedef enum {
+    SCAN_Q_FIFOF_MODE,
+    SCAN_Q_PRE_SCAN_MODE,
+    SCAN_Q_SCAN_MODE
+} ScanState deriving(Bits, Eq, FShow);
+
+function PipeOut#(anytype) scanOut2PipeOut(ScanFIFOF#(qSz, anytype) scanQ);
+    return interface PipeOut#(anytype);
+        method anytype first();
+            return scanQ.scanOutIfc.current;
+        endmethod
+
+        method Action deq();
+            scanQ.scanOutIfc.next;
+        endmethod
+
+        method Bool notEmpty();
+            return scanQ.scanCntrlIfc.isScanMode;
+        endmethod
+    endinterface;
+endfunction
+
+function Bool isFull(Bit#(cntSz) nextEnqPtr, Bit#(cntSz) nextDeqPtr)
+provisos(Add#(1, anysize, cntSz));
+    return (getMSB(nextEnqPtr) != getMSB(nextDeqPtr)) &&
+        (removeMSB(nextEnqPtr) == removeMSB(nextDeqPtr));
+endfunction
+
+// ScanFIFOF is frozon when in SCAN_Q_PRE_SCAN_MODE,
+// and no enqueue when in SCAN_Q_SCAN_MODE.
+module mkScanFIFOF(ScanFIFOF#(qSz, anytype)) provisos(
+    Bits#(anytype, tSz),
+    NumAlias#(TLog#(qSz), qLogSz),
+    NumAlias#(TAdd#(qLogSz, 1), cntSz),
+    Add#(TLog#(qSz), 1, TLog#(TAdd#(qSz, 1))) // qSz must be power of 2
+);
+    Vector#(qSz, Reg#(anytype)) dataVec <- replicateM(mkRegU);
+    Reg#(Bit#(cntSz))         enqPtrReg <- mkReg(0);
+    Reg#(Bit#(cntSz))         deqPtrReg <- mkReg(0);
+    Reg#(Bool)                 emptyReg <- mkReg(True);
+    Reg#(Bool)                  fullReg <- mkReg(False);
+    Count#(Bit#(cntSz))        itemCnt <- mkCount(0);
+    Reg#(Bit#(cntSz))        scanPtrReg <- mkRegU;
+    Reg#(ScanState)        scanStateReg <- mkReg(SCAN_Q_FIFOF_MODE);
+
+    Reg#(Maybe#(anytype)) headReg[2] <- mkCRegU(2);
+    Reg#(Maybe#(anytype)) pushReg[2] <- mkCReg(2, tagged Invalid);
+    Reg#(Bool)             popReg[2] <- mkCReg(2, False);
+    Reg#(Bool)           clearReg[2] <- mkCReg(2, False);
+    Reg#(Bool)    preScanStartReg[2] <- mkCReg(2, False);
+    Reg#(Bool)       scanStartReg[2] <- mkCReg(2, False);
+    Reg#(Bool)  preScanRestartReg[2] <- mkCReg(2, False);
+    Reg#(Bool)        scanNextReg[2] <- mkCReg(2, False);
+
+    let inFifoMode = scanStateReg == SCAN_Q_FIFOF_MODE;
+    let inScanMode = scanStateReg == SCAN_Q_SCAN_MODE;
+    let inPreScanMode = scanStateReg == SCAN_Q_PRE_SCAN_MODE;
+
+    (* no_implicit_conditions, fire_when_enabled *)
+    rule canonicalize;
+        if (clearReg[1]) begin
+            itemCnt      <= 0;
+            enqPtrReg    <= 0;
+            deqPtrReg    <= 0;
+            emptyReg     <= True;
+            fullReg      <= False;
+            scanStateReg <= SCAN_Q_FIFOF_MODE;
+        end
+        else begin
+            let nextEnqPtr  = enqPtrReg;
+            let nextDeqPtr  = deqPtrReg;
+            let nextScanPtr = scanPtrReg;
+
+            if (pushReg[1] matches tagged Valid .pushVal) begin
+                dataVec[removeMSB(enqPtrReg)] <= pushVal;
+                nextEnqPtr = enqPtrReg + 1;
+                // $display("time=%0t: push into ScanFIFOF, enqPtrReg=%h", $time, enqPtrReg);
+            end
+
+            if (popReg[1]) begin
+                nextDeqPtr = deqPtrReg + 1;
+                // $display(
+                //     "time=%0t: pop from ScanFIFOF, deqPtrReg=%h, emptyReg=",
+                //     $time, deqPtrReg, fshow(emptyReg)
+                // );
+            end
+
+            let isEmptyNext = nextDeqPtr == nextEnqPtr;
+
+            if (preScanStartReg[1]) begin
+                immAssert(
+                    !emptyReg,
+                    "emptyReg assertion @ mkScanFIFOF",
+                    $format("cannot start pre-scan when emptyReg=", fshow(emptyReg))
+                );
+
+                headReg[1] <= tagged Invalid;
+                if (!emptyReg) begin
+                    scanStateReg <= SCAN_Q_PRE_SCAN_MODE;
+                end
+            end
+            else if (scanStartReg[1]) begin
+                immAssert(
+                    !emptyReg,
+                    "emptyReg assertion @ mkScanFIFOF",
+                    $format("cannot start scan when emptyReg=", fshow(emptyReg))
+                );
+
+                nextScanPtr = nextDeqPtr;
+                if (!emptyReg) begin
+                    scanStateReg <= SCAN_Q_SCAN_MODE;
+                end
+            end
+            else if (preScanRestartReg[1]) begin
+                immAssert(
+                    !emptyReg,
+                    "emptyReg assertion @ mkScanFIFOF",
+                    $format("cannot restart scan when emptyReg=", fshow(emptyReg))
+                );
+
+                headReg[1] <= tagged Invalid;
+                nextScanPtr = nextDeqPtr;
+                if (!emptyReg) begin
+                    scanStateReg <= SCAN_Q_PRE_SCAN_MODE;
+                end
+            end
+            else if (scanNextReg[1]) begin
+                immAssert(
+                    !emptyReg,
+                    "emptyReg assertion @ mkScanFIFOF",
+                    $format("cannot scan next when emptyReg=", fshow(emptyReg))
+                );
+
+                headReg[1] <= tagged Invalid;
+                nextScanPtr = scanPtrReg + 1;
+
+                // No enqueue during scan mode
+                let scanFinish = nextScanPtr == enqPtrReg;
+                if (scanFinish) begin
+                    scanStateReg <= SCAN_Q_FIFOF_MODE;
+                end
+            end
+
+            immAssert(
+                !(scanStartReg[1] && popReg[1]),
+                "scanStartReg and popReg assertion @ mkScanFIFOF",
+                $format(
+                    "scanStartReg=", fshow(scanStartReg[1]),
+                    ", popReg=", fshow(popReg[1]),
+                    " cannot both be true"
+                )
+            );
+            immAssert(
+                !(preScanRestartReg[1] && popReg[1]),
+                "preScanRestartReg and popReg assertion @ mkScanFIFOF",
+                $format(
+                    "preScanRestartReg=", fshow(preScanRestartReg[1]),
+                    ", popReg=", fshow(popReg[1]),
+                    " cannot both be true"
+                )
+            );
+            if (inScanMode || inPreScanMode) begin
+                immAssert(
+                    !isZero(itemCnt),
+                    "notEmpty assertion @ mkScanFIFOF",
+                    $format(
+                        "itemCnt=%0d", itemCnt,
+                        "cannot be zero when scanStateReg=",
+                        fshow(scanStateReg)
+                    )
+                );
+            end
+            if (emptyReg) begin
+                immAssert(
+                    isZero(itemCnt),
+                    "emptyReg assertion @ mkScanFIFOF",
+                    $format(
+                        "itemCnt=%0d should be zero when emptyReg=",
+                        itemCnt, fshow(emptyReg)
+                    )
+                );
+            end
+            else if (fullReg) begin
+                immAssert(
+                    itemCnt == fromInteger(valueOf(qSz)),
+                    "fullReg assertion @ mkScanFIFOF",
+                    $format(
+                        "itemCnt=%0d should == qSz=%0d when fullReg=",
+                        itemCnt, valueOf(qSz), fshow(fullReg)
+                    )
+                );
+            end
+
+            // Verify deqPtrReg cannot over pass scanPtrReg when in scan mode
+            if (inScanMode && popReg[1] && !scanNextReg[1]) begin
+                immAssert(
+                    deqPtrReg != scanPtrReg,
+                    "dequeue beyond scan assertion @ mkScanFIFOF",
+                    $format(
+                        "deqPtrReg=%0d should != scanPtrReg=%0d",
+                        deqPtrReg, scanPtrReg,
+                        " when scanStateReg=", fshow(scanStateReg),
+                        ", popReg=", fshow(popReg[1]),
+                        ", scanNextReg=", fshow(scanNextReg[1])
+                    )
+                );
+            end
+
+            if (isValid(pushReg[1]) && !popReg[1]) begin
+                itemCnt.incr(1);
+                // $display("time=%0d: itemCnt.incr(1)", $time);
+            end
+            else if (!isValid(pushReg[1]) && popReg[1]) begin
+                itemCnt.decr(1);
+                // $display("time=%0d: itemCnt.decr(1)", $time);
+            end
+
+            fullReg  <= isFull(nextEnqPtr, nextDeqPtr);
+            emptyReg <= isEmptyNext;
+
+            enqPtrReg  <= nextEnqPtr;
+            deqPtrReg  <= nextDeqPtr;
+            scanPtrReg <= nextScanPtr;
+            // $display(
+            //     "time=%0t: enqPtrReg=%0d, deqPtrReg=%0d", $time, enqPtrReg, deqPtrReg,
+            //     ", fullReg=", fshow(fullReg), ", emptyReg=", fshow(emptyReg)
+            // );
+        end
+
+        clearReg[1]          <= False;
+        pushReg[1]           <= tagged Invalid;
+        popReg[1]            <= False;
+        preScanStartReg[1]   <= False;
+        preScanRestartReg[1] <= False;
+        scanStartReg[1]      <= False;
+        scanNextReg[1]       <= False;
+    endrule
+
+    interface fifoIfc = interface FIFOF#(qSz, anytype);
+        method anytype first() if (!emptyReg);
+            return dataVec[removeMSB(deqPtrReg)];
+        endmethod
+
+        method Bool notEmpty() = !emptyReg;
+        method Bool notFull()  = !fullReg;
+
+        method Action enq(anytype inputVal) if (!fullReg && inFifoMode);
+            pushReg[0] <= tagged Valid inputVal;
+        endmethod
+
+        // It can dequeue when inFifoMode or inScanMode
+        method Action deq() if (!emptyReg && (inFifoMode || inScanMode));
+            // Make sure no dequeue when scan start or scan restart
+            immAssert(
+                !scanStartReg[1] && !preScanRestartReg[1],
+                "dequeue assertion @ mkScanFIFOF",
+                $format(
+                    "cannot dequeue when scanStartReg=", fshow(scanStartReg[1]),
+                    " or preScanRestartReg=", fshow(preScanRestartReg[1])
+                )
+            );
+
+            popReg[0] <= True;
+        endmethod
+
+        method Action clear() if (inFifoMode);
+            clearReg[0] <= True;
+        endmethod
+    endinterface;
+
+    interface scanOutIfc = interface ScanOutIfc#(qSz, anytype);
+        method anytype current() if (inScanMode);
+            return case (headReg[0]) matches
+                tagged Valid .head: head;
+                default           : dataVec[removeMSB(scanPtrReg)];
+            endcase;
+        endmethod
+
+        method Action next if (inScanMode);
+            scanNextReg[0] <= True;
+            // $display(
+            //     "time=%0t: scanPtrReg=%0d, nextScanPtr=%0d, enqPtrReg=%0d, deqPtrReg=%0d, scanStateReg=",
+            //     $time, scanPtrReg, nextScanPtr, enqPtrReg, deqPtrReg, fshow(scanStateReg)
+            // );
+        endmethod
+
+        // method Bool isEmpty() if (inScanMode) = emptyReg;
+    endinterface;
+
+    interface scanCntrlIfc = interface ScanCntrlIfc;
+        method anytype getHead() if (inPreScanMode);
+            return dataVec[removeMSB(deqPtrReg)];
+        endmethod
+
+        method Action modifyHead(anytype head) if (inPreScanMode);
+            headReg[0] <= tagged Valid head;
+        endmethod
+
+        method Action preScanStart() if (inFifoMode);
+            preScanStartReg[0] <= True;
+        endmethod
+
+        method Action scanStart() if (inPreScanMode);
+            scanStartReg[0] <= True;
+            // $display(
+            //     "time=%0t: scanStart(), scanPtrReg=%0d, deqPtrReg=%0d, enqPtrReg=%0d",
+            //     $time, scanPtrReg, deqPtrReg, enqPtrReg,
+            //     ", scanStateReg=", fshow(scanStateReg),
+            //     ", emptyReg=", fshow(emptyReg)
+            // );
+        endmethod
+
+        method Action preScanRestart() if (inScanMode);
+            preScanRestartReg[0] <= True;
+            // immAssert(
+            //     !emptyReg,
+            //     "emptyReg assertion @ mkScanFIFOF",
+            //     $format("cannot restart scan when emptyReg=", fshow(emptyReg))
+            // );
+        endmethod
+
+        method Bool isScanDone() = inFifoMode;
+
+        method Bool isScanMode() = inScanMode;
+    endinterface;
+
+    // method UInt#(cntSz) count = itemCnt;
 endmodule
 
 interface SearchIfc#(type anytype);
@@ -239,10 +583,10 @@ module mkSearchFIFOF(SearchFIFOF#(qSz, anytype)) provisos(
         return tag[0] && searchFunc(readReg(anydata));
     endfunction
 
-    function Bool isFull(Bit#(cntSz) nextEnqPtr);
-        return (getMSB(nextEnqPtr) != getMSB(deqPtrReg[1])) &&
-            (removeMSB(nextEnqPtr) == removeMSB(deqPtrReg[1]));
-    endfunction
+    // function Bool isFull(Bit#(cntSz) nextEnqPtr);
+    //     return (getMSB(nextEnqPtr) != getMSB(deqPtrReg[1])) &&
+    //         (removeMSB(nextEnqPtr) == removeMSB(deqPtrReg[1]));
+    // endfunction
 
     function Action clearTag(Array#(Reg#(Bool)) tagReg);
         action
@@ -263,7 +607,7 @@ module mkSearchFIFOF(SearchFIFOF#(qSz, anytype)) provisos(
             tagVec[removeMSB(enqPtrReg[1])][1] <= True;
             let nextEnqPtr = enqPtrReg[1] + 1;
             enqPtrReg[1] <= nextEnqPtr;
-            fullReg[1]   <= isFull(nextEnqPtr);
+            fullReg[1]   <= isFull(nextEnqPtr, deqPtrReg[1]);
             emptyReg[1]  <= False;
         endmethod
 

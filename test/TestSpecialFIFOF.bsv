@@ -12,10 +12,12 @@ import Utils4Test :: *;
 typedef Bit#(64) ItemType;
 
 typedef enum {
-    TEST_Q_FILL,
-    TEST_Q_ACT,
-    TEST_Q_POP
-} FifoTestState deriving(Bits, Eq);
+    TEST_SCAN_Q_FILL,
+    TEST_SCAN_Q_PRE_SCAN,
+    TEST_SCAN_Q_SCAN,
+    TEST_SCAN_Q_PRE_SCAN_AGAIN,
+    TEST_SCAN_Q_SCAN_POP
+} ScanFifoTestState deriving(Bits, Eq, FShow);
 
 (* synthesize *)
 module mkTestScanFIFOF(Empty);
@@ -24,56 +26,105 @@ module mkTestScanFIFOF(Empty);
     Vector#(3, PipeOut#(ItemType)) qElemPipeOutVec <-
         mkForkVector(qElemPipeOut);
     let qElemPipeOut4Q = qElemPipeOutVec[0];
-    let qElemPipeOut4DeqRef  <- mkBufferN(valueOf(MAX_QP_WR), qElemPipeOutVec[1]);
-    let qElemPipeOut4ScanRef <- mkBufferN(valueOf(MAX_QP_WR), qElemPipeOutVec[2]);
-    Reg#(FifoTestState) scanTestStateReg <- mkReg(TEST_Q_FILL);
+    let qElemPipeOut4DeqRef       <- mkBufferN(valueOf(MAX_QP_WR), qElemPipeOutVec[1]);
+    let qElemPipeOut4ScanRef      <- mkSizedFIFOF(valueOf(MAX_QP_WR));
+    let qElemPipeOut4ScanAgainRef <- mkBufferN(valueOf(MAX_QP_WR), qElemPipeOutVec[2]);
+
+    Count#(Bit#(TAdd#(1, TLog#(MAX_QP_WR)))) scanCnt <- mkCount(0);
+    Reg#(ScanFifoTestState) scanTestStateReg <- mkReg(TEST_SCAN_Q_FILL);
 
     let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
 
-    rule fillScanQ if (scanTestStateReg == TEST_Q_FILL);
+    rule fillScanQ if (scanTestStateReg == TEST_SCAN_Q_FILL);
         if (scanQ.fifoIfc.notFull) begin
             let curEnqData = qElemPipeOut4Q.first;
             qElemPipeOut4Q.deq;
 
             scanQ.fifoIfc.enq(curEnqData);
+            qElemPipeOut4ScanRef.enq(curEnqData);
             // $display(
             //     "time=%0t: curEnqData=%h when in fill mode",
             //     $time, curEnqData
             // );
         end
         else begin
-            scanTestStateReg <= TEST_Q_ACT;
-            scanQ.scanIfc.scanStart;
+            scanQ.scanCntrlIfc.preScanStart;
+            scanTestStateReg <= TEST_SCAN_Q_PRE_SCAN;
         end
     endrule
 
-    rule compareScan if (scanTestStateReg == TEST_Q_ACT);
-        if (scanQ.scanIfc.scanDone) begin
-            scanTestStateReg <= TEST_Q_POP;
-        end
-        else begin
-            let curScanData = scanQ.scanIfc.current;
-            scanQ.scanIfc.scanNext;
-
-            let refScanData = qElemPipeOut4ScanRef.first;
-            qElemPipeOut4ScanRef.deq;
-
-            immAssert(
-                curScanData == refScanData,
-                "curScanData assertion @ mkTestScanFIFOF",
-                $format(
-                    "curScanData=%h should == refScanData=%h when in scan mode",
-                    curScanData, refScanData
-                )
-            );
-            // $display(
-            //     "time=%0t: curScanData=%h should == refScanData=%h when in scan mode",
-            //     $time, curScanData, refScanData
-            // );
-        end
+    rule preScan if (scanTestStateReg == TEST_SCAN_Q_PRE_SCAN);
+        scanQ.scanCntrlIfc.scanStart;
+        scanTestStateReg <= TEST_SCAN_Q_SCAN;
+        // Set scanCnt to half queue length
+        scanCnt <= fromInteger(valueOf(TDiv#(MAX_QP_WR, 2)));
+        // $display(
+        //     "time=%0t:", $time,
+        //     " change to state=", fshow(TEST_SCAN_Q_SCAN)
+        // );
     endrule
 
-    rule compareDeq if (scanTestStateReg == TEST_Q_POP);
+    rule compareScan if (scanTestStateReg == TEST_SCAN_Q_SCAN);
+        if (isOne(scanCnt)) begin
+            scanQ.scanCntrlIfc.preScanRestart;
+            scanTestStateReg <= TEST_SCAN_Q_PRE_SCAN_AGAIN;
+        end
+
+        let curScanData = scanQ.scanOutIfc.current;
+        scanQ.scanOutIfc.next;
+
+        let refScanData = qElemPipeOut4ScanRef.first;
+        qElemPipeOut4ScanRef.deq;
+
+        immAssert(
+            curScanData == refScanData,
+            "curScanData assertion @ mkTestScanFIFOF",
+            $format(
+                "curScanData=%h should == refScanData=%h when in scan mode",
+                curScanData, refScanData
+            )
+        );
+
+        scanCnt.decr(1);
+        // $display(
+        //     "time=%0t:", $time, " scanCnt=%0d", scanCnt,
+        //     " curScanData=%h should == refScanData=%h when in scan mode",
+        //     curScanData, refScanData
+        // );
+    endrule
+
+    rule preScanAgain if (scanTestStateReg == TEST_SCAN_Q_PRE_SCAN_AGAIN);
+        scanQ.scanCntrlIfc.scanStart;
+        scanTestStateReg <= TEST_SCAN_Q_SCAN_POP;
+        qElemPipeOut4ScanRef.clear;
+        // $display(
+        //     "time=%0t:", $time,
+        //     " change to state=", fshow(TEST_SCAN_Q_SCAN_POP)
+        // );
+    endrule
+
+    rule compareScanAgain if (scanTestStateReg == TEST_SCAN_Q_SCAN_POP);
+        let curScanData = scanQ.scanOutIfc.current;
+        scanQ.scanOutIfc.next;
+
+        let refScanData = qElemPipeOut4ScanAgainRef.first;
+        qElemPipeOut4ScanAgainRef.deq;
+
+        immAssert(
+            curScanData == refScanData,
+            "curScanData assertion @ mkTestScanFIFOF",
+            $format(
+                "curScanData=%h should == refScanData=%h when in scan mode again",
+                curScanData, refScanData
+            )
+        );
+        // $display(
+        //     "time=%0t: curScanData=%h should == refScanData=%h when in scan mode again",
+        //     $time, curScanData, refScanData
+        // );
+    endrule
+
+    rule compareDeq if (scanTestStateReg == TEST_SCAN_Q_SCAN_POP);
         if (scanQ.fifoIfc.notEmpty) begin
             countDown.decr;
 
@@ -87,20 +138,26 @@ module mkTestScanFIFOF(Empty);
                 curDeqData == refDeqData,
                 "curDeqData assertion @ mkTestScanFIFOF",
                 $format(
-                    "curDeqData=%h should == refDeqData=%h when in deq mode",
+                    "curDeqData=%h should == refDeqData=%h when dequeue",
                     curDeqData, refDeqData
                 )
             );
             // $display(
-            //     "time=%0t: curDeqData=%h should == refDeqData=%h when in deq mode",
+            //     "time=%0t: curDeqData=%h should == refDeqData=%h when dequeue",
             //     $time, curDeqData, refDeqData
             // );
         end
         else begin
-            scanTestStateReg <= TEST_Q_FILL;
+            scanTestStateReg <= TEST_SCAN_Q_FILL;
         end
     endrule
 endmodule
+
+typedef enum {
+    TEST_Q_FILL,
+    TEST_Q_ACT,
+    TEST_Q_POP
+} FifoTestState deriving(Bits, Eq);
 
 (* synthesize *)
 module mkTestSearchFIFOF(Empty);

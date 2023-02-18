@@ -36,18 +36,22 @@ module mkSQ#(
     PendingWorkReqBuf pendingWorkReqBuf <- mkScanFIFOF;
 
     let newPendingWorkReqPipeOut <- mkNewPendingWorkReqPipeOut(workReqPipeIn);
-    // let retryPendingWorkReqPipeOut = scanQ2PipeOut(pendingWorkReqScan);
+    let retryPendingWorkReqPipeOut = scanOut2PipeOut(pendingWorkReqBuf);
 
-    let retryHandler <- mkRetryHandleSQ(cntrl, pendingWorkReqBuf.scanIfc);
+    let retryHandler <- mkRetryHandleSQ(
+        cntrl, pendingWorkReqBuf.fifoIfc.notEmpty, pendingWorkReqBuf.scanCntrlIfc
+    );
 
-    // TODO: fix isRetryDone bug
     let pendingWorkReqPipeOut = muxPipeOut(
-        retryHandler.isRetryDone,
+        pendingWorkReqBuf.scanCntrlIfc.isScanDone,
         newPendingWorkReqPipeOut,
-        retryHandler.retryWorkReqPipeOut
+        retryPendingWorkReqPipeOut
     );
     let reqGenSQ <- mkReqGenSQ(
         cntrl, dmaReadSrv, pendingWorkReqPipeOut, pendingWorkReqBuf.fifoIfc.notEmpty
+    );
+    let pendingWorkReq2Q <- mkConnectPendingWorkReqPipeOut2PendingWorkReqQ(
+        reqGenSQ.pendingWorkReqPipeOut, pendingWorkReqBuf.fifoIfc
     );
 
     let respHandleSQ <- mkRespHandleSQ(

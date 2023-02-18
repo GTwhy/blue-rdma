@@ -1313,11 +1313,11 @@ module mkNewPendingWorkReqPipeOut#(
 endmodule
 
 module mkConnectPendingWorkReqPipeOut2PendingWorkReqQ#(
-    PipeOut#(PendingWorkReq) pipeIn, PendingWorkReqBuf pendingWorkReqBuf
+    PipeOut#(PendingWorkReq) pipeIn, FIFOF#(PendingWorkReq) pendingWorkReqBufQ
 )(Empty);
     rule connect;
         let pendingWR = pipeIn.first;
-        pendingWorkReqBuf.fifoIfc.enq(pendingWR);
+        pendingWorkReqBufQ.enq(pendingWR);
         pipeIn.deq;
 
         // $display(

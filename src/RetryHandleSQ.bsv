@@ -21,26 +21,24 @@ interface RetryHandleSQ;
         RetryReason      retryReason,
         Maybe#(RnrTimer) retryRnrTimer
     );
-    interface PipeOut#(PendingWorkReq) retryWorkReqPipeOut;
 endinterface
 
 typedef enum {
     RETRY_ST_NOT_RETRY,
-    RETRY_ST_START_RETRY,
+    RETRY_ST_START_PRE_RETRY,
     RETRY_ST_RNR_CHECK,
     RETRY_ST_RNR_WAIT,
-    RETRY_ST_PARTIAL_RETRY_WR,
-    RETRY_ST_FULL_RETRY_WR,
-    RETRY_ST_WAIT_WR_OUT_Q_EMPTY,
+    RETRY_ST_MODIFY_PARTIAL_RETRY_WR,
+    RETRY_ST_START_RETRY,
+    RETRY_ST_WAIT_RETRY_DONE,
     RETRY_ST_RETRY_LIMIT_EXC
 } RetryHandleState deriving(Bits, Eq, FShow);
 
 module mkRetryHandleSQ#(
     Controller cntrl,
-    ScanIfc#(PendingWorkReq) pendingWorkReqScan
+    Bool pendingWorkReqNotEmpty,
+    ScanCntrlIfc#(PendingWorkReq) pendingWorkReqScanCntrl
 )(RetryHandleSQ);
-    FIFOF#(PendingWorkReq) retryPendingWorkReqOutQ <- mkFIFOF;
-
     Reg#(RnrWaitCycleCnt) rnrWaitCntReg <- mkRegU;
     Reg#(TimeOutCycleCnt) timeOutCntReg <- mkRegU;
     Reg#(Bool)        disableTimeOutReg <- mkRegU;
@@ -69,7 +67,7 @@ module mkRetryHandleSQ#(
     let notRetrying = retryHandleStateReg[0] == RETRY_ST_NOT_RETRY;
     let retryErr    = retryHandleStateReg[0] == RETRY_ST_RETRY_LIMIT_EXC;
     // Retry restart conflicts with partial retry state
-    let retryingWR  = retryHandleStateReg[0] == RETRY_ST_FULL_RETRY_WR;
+    let retryingWR  = retryHandleStateReg[0] == RETRY_ST_WAIT_RETRY_DONE;
 
     function Bool retryCntExceedLimit(RetryReason retryReason);
         return case (retryReason)
@@ -152,9 +150,9 @@ module mkRetryHandleSQ#(
             resetTimeOutInternal;
         end
         else if (
-            !disableTimeOutReg          &&
-            !pendingWorkReqScan.isEmpty &&               // Disable timeout when no pending WR
-            retryHandleStateReg[1] == RETRY_ST_NOT_RETRY // Disable timeout when in retry
+            !disableTimeOutReg     &&
+            pendingWorkReqNotEmpty &&                    // Enable timeout when having pending WR
+            retryHandleStateReg[1] == RETRY_ST_NOT_RETRY // Enable timeout when not retry
         ) begin
             if (isZero(timeOutCntReg)) begin
                 hasTimeOutRetry = True;
@@ -192,13 +190,13 @@ module mkRetryHandleSQ#(
                 retryReasonReg[1] : RETRY_REASON_TIMEOUT;
             decRetryCntByReason(retryReason);
             retryReasonReg[1]      <= retryReason;
-            retryHandleStateReg[1] <= RETRY_ST_START_RETRY;
+            retryHandleStateReg[1] <= RETRY_ST_START_PRE_RETRY;
 
-            // $display(
-            //     "time=%0t: retry start in canonicalize", $time,
-            //     ", hasNotifiedRetryReg[1]=", fshow(hasNotifiedRetryReg[1]),
-            //     ", hasTimeOutRetry=", fshow(hasTimeOutRetry)
-            // );
+            $display(
+                "time=%0t: retry start in canonicalize", $time,
+                ", hasNotifiedRetryReg[1]=", fshow(hasNotifiedRetryReg[1]),
+                ", hasTimeOutRetry=", fshow(hasTimeOutRetry)
+            );
         end
 
         hasNotifiedRetryReg[1] <= False;
@@ -210,9 +208,9 @@ module mkRetryHandleSQ#(
         // );
     endrule
 
-    rule startRetry if (
+    rule startPreRetry if (
         cntrl.isRTS &&
-        retryHandleStateReg[0] == RETRY_ST_START_RETRY
+        retryHandleStateReg[0] == RETRY_ST_START_PRE_RETRY
     );
         let retryReason = retryReasonReg[0];
         if (retryCntExceedLimit(retryReason)) begin
@@ -223,38 +221,37 @@ module mkRetryHandleSQ#(
         else begin
             retryHandleStateReg[0] <= RETRY_ST_RNR_CHECK;
 
-            retryPendingWorkReqOutQ.clear;
-            if (pendingWorkReqScan.scanDone) begin
-                pendingWorkReqScan.scanStart;
+            if (pendingWorkReqScanCntrl.isScanDone) begin
+                pendingWorkReqScanCntrl.preScanStart;
                 // $display(
-                //     "time=%0t: pendingWorkReqScan.scanStart", $time,
-                //     " pendingWorkReqScan.isEmpty=", fshow(pendingWorkReqScan.isEmpty)
+                //     "time=%0t: pendingWorkReqScanCntrl.preScanStart", $time,
+                //     " pendingWorkReqNotEmpty=", fshow(pendingWorkReqNotEmpty)
                 // );
             end
             else begin
-                pendingWorkReqScan.scanRestart;
+                pendingWorkReqScanCntrl.preScanRestart;
                 // $display(
-                //     "time=%0t: pendingWorkReqScan.scanRestart", $time,
-                //     " pendingWorkReqScan.isEmpty=", fshow(pendingWorkReqScan.isEmpty)
+                //     "time=%0t: pendingWorkReqScanCntrl.preScanRestart", $time,
+                //     " pendingWorkReqNotEmpty=", fshow(pendingWorkReqNotEmpty)
                 // );
             end
         end
-        // $display(
-        //     "time=%0t: startRetry", $time,
-        //     ", retryHandleStateReg=", fshow(retryHandleStateReg[0]),
-        //     ", retryErr=", fshow(retryErr),
-        //     ", retryReason=", fshow(retryReason)
-        // );
+        $display(
+            "time=%0t: startPreRetry", $time,
+            ", retryHandleStateReg=", fshow(retryHandleStateReg[0]),
+            ", retryErr=", fshow(retryErr),
+            ", retryReason=", fshow(retryReason)
+        );
     endrule
 
     rule rnrCheck if (cntrl.isRTS && retryHandleStateReg[0] == RETRY_ST_RNR_CHECK);
-        let curRetryWR = pendingWorkReqScan.current;
+        let firstRetryWR = pendingWorkReqScanCntrl.getHead;
 
-        let startPSN = unwrapMaybe(curRetryWR.startPSN);
-        let endPSN   = unwrapMaybe(curRetryWR.endPSN);
-        let wrLen    = curRetryWR.wr.len;
-        let laddr    = curRetryWR.wr.laddr;
-        let raddr    = curRetryWR.wr.raddr;
+        let startPSN = unwrapMaybe(firstRetryWR.startPSN);
+        let endPSN   = unwrapMaybe(firstRetryWR.endPSN);
+        let wrLen    = firstRetryWR.wr.len;
+        let laddr    = firstRetryWR.wr.laddr;
+        let raddr    = firstRetryWR.wr.raddr;
 
         immAssert(
             retryReasonReg[0] != RETRY_REASON_NOT_RETRY,
@@ -271,11 +268,11 @@ module mkRetryHandleSQ#(
         end
         else begin
             immAssert(
-                retryWorkReqIdReg == curRetryWR.wr.id,
+                retryWorkReqIdReg == firstRetryWR.wr.id,
                 "retryWorkReqIdReg assertion @ mkRespHandleSQ",
                 $format(
-                    "retryWorkReqIdReg=%h should == curRetryWR.wr.id=%h",
-                    retryWorkReqIdReg, curRetryWR.wr.id
+                    "retryWorkReqIdReg=%h should == firstRetryWR.wr.id=%h",
+                    retryWorkReqIdReg, firstRetryWR.wr.id
                 )
             );
         end
@@ -301,72 +298,67 @@ module mkRetryHandleSQ#(
             // $display("time=%0t: retry next state is RNR wait", $time);
         end
         else begin
-            retryHandleStateReg[0] <= RETRY_ST_PARTIAL_RETRY_WR;
+            retryHandleStateReg[0] <= RETRY_ST_MODIFY_PARTIAL_RETRY_WR;
 
             // $display("time=%0t: retry next state is partial retry WR", $time);
         end
-        // $display(
-        //     "time=%0t: rnrCheck", $time,
-        //     ", retryReasonReg=", fshow(retryReasonReg[0]),
-        //     ", hasNotifiedRetryReg[0]=", fshow(hasNotifiedRetryReg[0])
-        // );
+        $display(
+            "time=%0t: rnrCheck", $time,
+            ", retryReasonReg=", fshow(retryReasonReg[0]),
+            ", hasNotifiedRetryReg[0]=", fshow(hasNotifiedRetryReg[0])
+        );
     endrule
 
     rule rnrWait if (cntrl.isRTS && retryHandleStateReg[0] == RETRY_ST_RNR_WAIT);
         if (isZero(rnrWaitCntReg)) begin
-            retryHandleStateReg[0] <= RETRY_ST_PARTIAL_RETRY_WR;
+            retryHandleStateReg[0] <= RETRY_ST_MODIFY_PARTIAL_RETRY_WR;
         end
         else begin
             rnrWaitCntReg <= rnrWaitCntReg - 1;
         end
 
-        // $display(
-        //     "time=%0t: retry rnrWait", $time,
-        //     ", rnrWaitCntReg=%h", rnrWaitCntReg
-        // );
+        $display(
+            "time=%0t: retry rnrWait", $time,
+            ", rnrWaitCntReg=%h", rnrWaitCntReg
+        );
     endrule
 
-    rule partialRetryWR if (cntrl.isRTS && retryHandleStateReg[0] == RETRY_ST_PARTIAL_RETRY_WR);
-        let curRetryWR = pendingWorkReqScan.current;
-        pendingWorkReqScan.scanNext;
+    rule modifyPartialRetryWR if (cntrl.isRTS && retryHandleStateReg[0] == RETRY_ST_MODIFY_PARTIAL_RETRY_WR);
+        let firstRetryWR = pendingWorkReqScanCntrl.getHead;
+        // pendingWorkReqScanCntrl.next;
 
-        let wrLen = curRetryWR.wr.len;
-        let laddr = curRetryWR.wr.laddr;
-        let raddr = curRetryWR.wr.raddr;
+        let wrLen = firstRetryWR.wr.len;
+        let laddr = firstRetryWR.wr.laddr;
+        let raddr = firstRetryWR.wr.raddr;
         let retryWorkReqLen       = lenSubtractPsnMultiplyPMTU(wrLen, psnDiffReg, cntrl.getPMTU);
         let retryWorkReqLocalAddr = addrAddPsnMultiplyPMTU(laddr, psnDiffReg, cntrl.getPMTU);
         let retryWorkReqRmtAddr   = addrAddPsnMultiplyPMTU(raddr, psnDiffReg, cntrl.getPMTU);
         if (retryReasonReg[0] != RETRY_REASON_TIMEOUT) begin
-            curRetryWR.startPSN = tagged Valid retryStartPsnReg;
+            firstRetryWR.startPSN = tagged Valid retryStartPsnReg;
         end
-        curRetryWR.wr.len   = retryWorkReqLen;
-        curRetryWR.wr.laddr = retryWorkReqLocalAddr;
-        curRetryWR.wr.raddr = retryWorkReqRmtAddr;
+        firstRetryWR.wr.len   = retryWorkReqLen;
+        firstRetryWR.wr.laddr = retryWorkReqLocalAddr;
+        firstRetryWR.wr.raddr = retryWorkReqRmtAddr;
 
-        retryPendingWorkReqOutQ.enq(curRetryWR);
-        retryHandleStateReg[0] <= RETRY_ST_FULL_RETRY_WR;
-        // $display("time=%0t:", $time, " partial retry WR ID=%h", curRetryWR.wr.id);
+        pendingWorkReqScanCntrl.modifyHead(firstRetryWR);
+        retryHandleStateReg[0] <= RETRY_ST_START_RETRY;
+        $display("time=%0t:", $time, " partial retry WR ID=%h", firstRetryWR.wr.id);
     endrule
 
-    rule fullRetryWR if (cntrl.isRTS && retryHandleStateReg[0] == RETRY_ST_FULL_RETRY_WR);
-        if (pendingWorkReqScan.scanDone) begin
+    rule startRetry if (cntrl.isRTS && retryHandleStateReg[0] == RETRY_ST_START_RETRY);
+        pendingWorkReqScanCntrl.scanStart;
+        retryHandleStateReg[0] <= RETRY_ST_WAIT_RETRY_DONE;
+    endrule
+
+    rule waitRetryDone if (cntrl.isRTS && retryHandleStateReg[0] == RETRY_ST_WAIT_RETRY_DONE);
+        if (pendingWorkReqScanCntrl.isScanDone) begin
             retryHandleStateReg[0] <= RETRY_ST_NOT_RETRY;
 
-            // $display(
-            //     "time=%0t: retry done", $time,
-            //     ", cntrl.isRTS=", fshow(cntrl.isRTS)
-            // );
+            $display(
+                "time=%0t: retry done", $time,
+                ", cntrl.isRTS=", fshow(cntrl.isRTS)
+            );
         end
-        else begin
-            let curRetryWR = pendingWorkReqScan.current;
-            pendingWorkReqScan.scanNext;
-            retryPendingWorkReqOutQ.enq(curRetryWR);
-            // $display("time=%0t:", $time, " full retry WR ID=%h", curRetryWR.wr.id);
-        end
-    endrule
-
-    rule cleanWorkReqOutQ if (cntrl.isERR);
-        retryPendingWorkReqOutQ.clear;
     endrule
 
     method Bool hasRetryErr() = retryErr;
@@ -405,6 +397,4 @@ module mkRetryHandleSQ#(
             retryRnrTimerReg <= unwrapMaybe(retryRnrTimer);
         end
     endmethod
-
-    interface retryWorkReqPipeOut = convertFifo2PipeOut(retryPendingWorkReqOutQ);
 endmodule

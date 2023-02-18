@@ -167,7 +167,7 @@ module mkTestRespHandleNormalOrDupOrGhostRespCase#(
     else begin
         // Only put normal WR in pending WR buffer
         let pendingWorkReq2Q <- mkConnectPendingWorkReqPipeOut2PendingWorkReqQ(
-            pendingWorkReqPipeOut4PendingQ, pendingWorkReqBuf
+            pendingWorkReqPipeOut4PendingQ, pendingWorkReqBuf.fifoIfc
         );
     end
     // Generate normal WR when TEST_RESP_HANDLE_NORMAL_RESP and TEST_RESP_HANDLE_GHOST_RESP
@@ -202,7 +202,9 @@ module mkTestRespHandleNormalOrDupOrGhostRespCase#(
     let pktMetaDataPipeOut4RespHandle = pktMetaDataPipeOutVec[0];
     let pktMetaDataPipeOut4ReadResp <- mkBufferN(8, pktMetaDataPipeOutVec[1]);
     // Retry handler
-    let retryHandler <- mkRetryHandleSQ(cntrl, pendingWorkReqBuf.scanIfc);
+    let retryHandler <- mkRetryHandleSQ(
+        cntrl, pendingWorkReqBuf.fifoIfc.notEmpty, pendingWorkReqBuf.scanCntrlIfc
+    );
 
     // MR permission check
     let mrCheckPassOrFail = True;
@@ -393,7 +395,7 @@ module mkTestRespHandleAbnormalCase#(TestRespHandleRespType respType)(Empty);
     let pendingWorkReqPipeOut4WorkComp <- mkBufferN(32, existingPendingWorkReqPipeOutVec[1]);
     let pendingWorkReqPipeOut4PendingQ = existingPendingWorkReqPipeOutVec[2];
     let pendingWorkReq2Q <- mkConnectPendingWorkReqPipeOut2PendingWorkReqQ(
-        pendingWorkReqPipeOut4PendingQ, pendingWorkReqBuf
+        pendingWorkReqPipeOut4PendingQ, pendingWorkReqBuf.fifoIfc
     );
     // Payload DataStream generation
     let simDmaReadSrv <- mkSimDmaReadSrv;
@@ -542,6 +544,8 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
 
     // WorkReq generation
     PendingWorkReqBuf pendingWorkReqBuf <- mkScanFIFOF;
+    let retryWorkReqPipeOut = scanOut2PipeOut(pendingWorkReqBuf);
+
     Vector#(1, PipeOut#(WorkReq)) sendWorkReqPipeOutVec <- mkRandomSendWorkReq(
         minDmaLength, maxDmaLength
     );
@@ -553,7 +557,7 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
     let pendingWorkReqPipeOut4WorkComp <- mkBufferN(32, existingPendingWorkReqPipeOutVec[1]);
     // let pendingWorkReqPipeOut4PendingQ = existingPendingWorkReqPipeOutVec[2];
     // let pendingWorkReq2Q <- mkConnectPendingWorkReqPipeOut2PendingWorkReqQ(
-    //     pendingWorkReqPipeOut4PendingQ, pendingWorkReqBuf
+    //     pendingWorkReqPipeOut4PendingQ, pendingWorkReqBuf.fifoIfc
     // );
 
     // Generate RDMA responses
@@ -591,7 +595,9 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
     //     headerAndMetaDataAndPayloadPipeOut, qpMetaData
     // );
     // Retry handler
-    let retryHandler <- mkRetryHandleSQ(cntrl, pendingWorkReqBuf.scanIfc);
+    let retryHandler <- mkRetryHandleSQ(
+        cntrl, pendingWorkReqBuf.fifoIfc.notEmpty, pendingWorkReqBuf.scanCntrlIfc
+    );
 
     // MR permission check
     let mrCheckPassOrFail = True;
@@ -721,8 +727,8 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
     rule genNestedRetryResp if (
         retryTestState == TEST_RESP_HANDLE_RETRY_RESP_GEN_AGAIN
     );
-        let retryRestartWR = retryHandler.retryWorkReqPipeOut.first;
-        retryHandler.retryWorkReqPipeOut.deq;
+        let retryRestartWR = retryWorkReqPipeOut.first;
+        retryWorkReqPipeOut.deq;
 
         let workReqID = retryRestartWR.wr.id;
         immAssert(
@@ -744,7 +750,7 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
     endrule
 
     rule waitRetryRestart if (retryTestState == TEST_RESP_HANDLE_WAIT_RETRY_RESTART);
-        let retryPendingWR = retryHandler.retryWorkReqPipeOut.first;
+        let retryPendingWR = retryWorkReqPipeOut.first;
         let workReqID = retryPendingWR.wr.id;
 
         if (workReqID == retryWorkReqIdReg) begin
@@ -764,8 +770,8 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
     endrule
 
     rule genNormalResp if (retryTestState == TEST_RESP_HANDLE_NORMAL_RESP_GEN);
-        let retryPendingWR = retryHandler.retryWorkReqPipeOut.first;
-        retryHandler.retryWorkReqPipeOut.deq;
+        let retryPendingWR = retryWorkReqPipeOut.first;
+        retryWorkReqPipeOut.deq;
 
         let workReqID = retryPendingWR.wr.id;
         immAssert(
@@ -789,8 +795,8 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
     rule genFollowingNormaResp if (
         retryTestState == TEST_RESP_HANDLE_FOLLOWING_NORMAL_RESP_GEN
     );
-        let followingPendingWR = retryHandler.retryWorkReqPipeOut.first;
-        retryHandler.retryWorkReqPipeOut.deq;
+        let followingPendingWR = retryWorkReqPipeOut.first;
+        retryWorkReqPipeOut.deq;
 
         genNormalResp4WR(followingPendingWR);
 

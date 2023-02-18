@@ -66,6 +66,7 @@ module mkTestRetryHandleSQ#(TestRetryCase retryCase)(Empty);
 
     let cntrl <- mkSimController(qpType, pmtu);
     PendingWorkReqBuf pendingWorkReqBuf <- mkScanFIFOF;
+    let retryWorkReqPipeOut = scanOut2PipeOut(pendingWorkReqBuf);
 
     Vector#(1, PipeOut#(WorkReq)) workReqPipeOutVec <- mkRandomWorkReq(
         minPayloadLen, maxPayloadLen
@@ -77,11 +78,13 @@ module mkTestRetryHandleSQ#(TestRetryCase retryCase)(Empty);
         valueOf(MAX_QP_WR), existingPendingWorkReqPipeOutVec[1]
     );
     let pendingWorkReq2Q <- mkConnectPendingWorkReqPipeOut2PendingWorkReqQ(
-        pendingWorkReqPipeOut4PendingQ, pendingWorkReqBuf
+        pendingWorkReqPipeOut4PendingQ, pendingWorkReqBuf.fifoIfc
     );
 
     // DUT
-    let dut <- mkRetryHandleSQ(cntrl, pendingWorkReqBuf.scanIfc);
+    let dut <- mkRetryHandleSQ(
+        cntrl, pendingWorkReqBuf.fifoIfc.notEmpty, pendingWorkReqBuf.scanCntrlIfc
+    );
 
     Reg#(Bool) isPartialRetryWorkReqReg <- mkRegU;
     Reg#(TestRetryHandlerState) retryHandleTestStateReg <- mkReg(TEST_RETRY_DONE);
@@ -123,7 +126,7 @@ module mkTestRetryHandleSQ#(TestRetryCase retryCase)(Empty);
         end
         isPartialRetryWorkReqReg <= isPartialRetry;
         retryHandleTestStateReg <= TEST_RETRY_TRIGGERED;
-        // $display("time=%0t: test retry triggered", $time);
+        $display("time=%0t: test retry triggered", $time);
     endrule
 
     rule retryWait4Start if (
@@ -140,8 +143,8 @@ module mkTestRetryHandleSQ#(TestRetryCase retryCase)(Empty);
     rule retryRestart if (
         dut.isRetrying && retryHandleTestStateReg == TEST_RETRY_RESTART
     );
-        let firstRetryWR = dut.retryWorkReqPipeOut.first;
-        dut.retryWorkReqPipeOut.deq;
+        let firstRetryWR = retryWorkReqPipeOut.first;
+        retryWorkReqPipeOut.deq;
 
         let wrStartPSN = unwrapMaybe(firstRetryWR.startPSN);
         let wrEndPSN = unwrapMaybe(firstRetryWR.endPSN);
@@ -160,10 +163,10 @@ module mkTestRetryHandleSQ#(TestRetryCase retryCase)(Empty);
         );
 
         retryHandleTestStateReg <= TEST_RETRY_RESTART_TRIGGERED;
-        // $display(
-        //     "time=%0t: test retry restarted", $time,
-        //     ", firstRetryWR.wr.id=%h", firstRetryWR.wr.id
-        // );
+        $display(
+            "time=%0t: test retry restarted", $time,
+            ", firstRetryWR.wr.id=%h", firstRetryWR.wr.id
+        );
     endrule
 
     rule retryWait4Restart if (
@@ -173,8 +176,8 @@ module mkTestRetryHandleSQ#(TestRetryCase retryCase)(Empty);
     endrule
 
     rule compare if (retryHandleTestStateReg == TEST_RETRY_STARTED);
-        let retryWR = dut.retryWorkReqPipeOut.first;
-        dut.retryWorkReqPipeOut.deq;
+        let retryWR = retryWorkReqPipeOut.first;
+        retryWorkReqPipeOut.deq;
 
         let refRetryWR = pendingWorkReqPipeOut4RetryWR.first;
         pendingWorkReqPipeOut4RetryWR.deq;
@@ -235,14 +238,14 @@ module mkTestRetryHandleSQ#(TestRetryCase retryCase)(Empty);
         end
 
         countDown.decr;
-        // $display(
-        //     "time=%0t: compare", $time,
-        //     " retryWR.wr.id=%h == refRetryWR.wr.id=%h",
-        //     retryWR.wr.id, refRetryWR.wr.id,
-        //     ", retryHandleTestStateReg=", fshow(retryHandleTestStateReg)
-        //     // ", retryWR=", fshow(retryWR),
-        //     // ", refRetryWR=", fshow(refRetryWR)
-        // );
+        $display(
+            "time=%0t: compare", $time,
+            " retryWR.wr.id=%h == refRetryWR.wr.id=%h",
+            retryWR.wr.id, refRetryWR.wr.id,
+            ", retryHandleTestStateReg=", fshow(retryHandleTestStateReg)
+            // ", retryWR=", fshow(retryWR),
+            // ", refRetryWR=", fshow(refRetryWR)
+        );
     endrule
 
     rule retryDone if (
@@ -252,6 +255,6 @@ module mkTestRetryHandleSQ#(TestRetryCase retryCase)(Empty);
         pendingWorkReqBuf.fifoIfc.clear;
         dut.resetRetryCntBySQ;
         dut.resetTimeOutBySQ;
-        // $display("time=%0t: test retry done", $time);
+        $display("time=%0t: test retry done", $time);
     endrule
 endmodule

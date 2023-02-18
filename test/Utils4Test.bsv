@@ -825,7 +825,7 @@ module mkSimGenRecvReq#(Controller cntrl)(Vector#(vSz, PipeOut#(RecvReq)));
 endmodule
 
 module mkSimRetryHandlerWithLimitExcErr(RetryHandleSQ);
-    FIFOF#(PendingWorkReq) emptyQ <- mkFIFOF;
+    // FIFOF#(PendingWorkReq) emptyQ <- mkFIFOF;
     method Bool hasRetryErr() = True;
     method Bool isRetryDone() = False;
     method Bool isRetrying() = False;
@@ -843,7 +843,7 @@ module mkSimRetryHandlerWithLimitExcErr(RetryHandleSQ);
     );
         noAction;
     endmethod
-    interface retryWorkReqPipeOut = convertFifo2PipeOut(emptyQ);
+    // interface retryWorkReqPipeOut = convertFifo2PipeOut(emptyQ);
 endmodule
 
 /*

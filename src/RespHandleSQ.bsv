@@ -58,7 +58,6 @@ typedef enum {
     SQ_ACT_IMPLICIT_RETRY,
     SQ_ACT_LOCAL_ACC_ERR,
     SQ_ACT_LOCAL_LEN_ERR,
-    // SQ_ACT_RETRY_EXC,
     SQ_ACT_UNKNOWN
 } RespActionSQ deriving(Bits, Eq, FShow);
 
