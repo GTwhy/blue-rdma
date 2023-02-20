@@ -1,6 +1,8 @@
-import FIFOF :: *;
-import PAClib :: *;
+import ClientServer :: *;
 import Cntrs :: *;
+import FIFOF :: *;
+import GetPut :: *;
+import PAClib :: *;
 
 import Controller :: *;
 import DataTypes :: *;
@@ -786,7 +788,7 @@ module mkReqHandleRQ#(
             reqPktInfo.isFirstOrOnlyPkt && !hasErrOccurredReg[0] &&
             reqStatus == RDMA_REQ_ST_NORMAL && !permCheckInfo.isZeroDmaLen
         ) begin
-            permCheckMR.checkReq(permCheckInfo);
+            permCheckMR.request.put(permCheckInfo);
             expectPermCheckResp = True;
         end
 
@@ -817,7 +819,7 @@ module mkReqHandleRQ#(
 
         let expectDupReadCheckResp = False;
         if (reqStatus == RDMA_REQ_ST_NORMAL && expectPermCheckResp) begin
-            let mrCheckResult <- permCheckMR.checkResp;
+            let mrCheckResult <- permCheckMR.response.get;
             if (mrCheckResult) begin
                 if (isReadReq) begin
                     dupReadAtomicCache.insertRead(reth);

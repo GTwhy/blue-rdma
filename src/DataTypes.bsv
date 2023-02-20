@@ -1,5 +1,5 @@
+import Arbitration :: *;
 import ClientServer :: *;
-// import CompletionBuffer :: *;
 import PAClib :: *;
 
 import Headers :: *;
@@ -208,6 +208,11 @@ typedef struct {
     Bool isZeroDmaLen;
     MemAccessTypeFlags accType;
 } PermCheckInfo deriving(Bits, FShow);
+
+instance ArbRequestTC#(PermCheckInfo);
+   function Bool isReadRequest(PermCheckInfo x) = True;
+   function Bool isWriteRequest(PermCheckInfo x) = False;
+endinstance
 
 typedef struct {
     DmaReqInitiator initiator;

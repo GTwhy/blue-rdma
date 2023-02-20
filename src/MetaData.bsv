@@ -1,5 +1,8 @@
+import Arbitration :: *;
 import BRAM :: *;
+import ClientServer :: *;
 import Cntrs :: *;
+import Connectable :: * ;
 import FIFOF :: *;
 import Vector :: *;
 
@@ -381,7 +384,7 @@ module mkMetaDataQPs(MetaDataQPs);
 endmodule
 
 // MR check related
-
+/*
 interface PermCheckMR;
     method Action checkReq(PermCheckInfo permCheckInfo);
     method ActionValue#(Bool) checkResp();
@@ -473,6 +476,117 @@ module mkPermCheckMR#(MetaDataPDs pdMetaData)(PermCheckMR);
         return checkResult;
     endmethod
 endmodule
+*/
+
+typedef Server#(PermCheckInfo, Bool) PermCheckMR;
+
+module mkPermCheckMR#(MetaDataPDs pdMetaData)(PermCheckMR);
+    FIFOF#(PermCheckInfo) reqInQ <- mkFIFOF;
+    FIFOF#(Bool) respOutQ <- mkFIFOF;
+    FIFOF#(Tuple3#(PermCheckInfo, Bool, Maybe#(MemRegion))) checkReqQ <- mkFIFOF;
+
+    function Bool checkPermByMR(PermCheckInfo permCheckInfo, MemRegion mr);
+        let keyMatch = case (permCheckInfo.localOrRmtKey)
+            True : (truncate(permCheckInfo.lkey) == mr.lkeyPart);
+            False: (isValid(mr.rkeyPart) ?
+                truncate(permCheckInfo.rkey) == unwrapMaybe(mr.rkeyPart) : False);
+        endcase;
+
+        let accTypeMatch = compareAccessTypeFlags(permCheckInfo.accType, mr.accType);
+
+        let addrLenMatch = checkAddrAndLenWithinRange(
+            permCheckInfo.laddr, permCheckInfo.totalLen, mr.laddr, mr.len
+        );
+        return keyMatch && accTypeMatch && addrLenMatch;
+    endfunction
+
+    function Maybe#(MemRegion) mrSearchByLKey(
+        MetaDataPDs pdMetaData, PdHandler pdHandler, LKEY lkey
+    );
+        let maybeMR = tagged Invalid;
+        // let maybePD = qpMetaData.getPD(qpn);
+        // if (maybePD matches tagged Valid .pdHandler) begin
+        let maybeMRs = pdMetaData.getMRs4PD(pdHandler);
+        if (maybeMRs matches tagged Valid .mrMetaData) begin
+            maybeMR = getMemRegionByLKey(mrMetaData, lkey);
+        end
+        // end
+        return maybeMR;
+    endfunction
+
+    function Maybe#(MemRegion) mrSearchByRKey(
+        MetaDataPDs pdMetaData, PdHandler pdHandler, RKEY rkey
+    );
+        let maybeMR = tagged Invalid;
+        // let maybePD = qpMetaData.getPD(qpn);
+        // if (maybePD matches tagged Valid .pdHandler) begin
+        let maybeMRs = pdMetaData.getMRs4PD(pdHandler);
+        if (maybeMRs matches tagged Valid .mrMetaData) begin
+            maybeMR = getMemRegionByRKey(mrMetaData, rkey);
+        end
+        // end
+        return maybeMR;
+    endfunction
+
+    rule checkReq;
+        let permCheckInfo = reqInQ.first;
+        reqInQ.deq;
+
+        let isZeroDmaLen = isZero(permCheckInfo.totalLen);
+        immAssert(
+            !isZeroDmaLen,
+            "isZeroDmaLen assertion @ mkPermCheckMR",
+            $format(
+                "isZeroDmaLen=", fshow(isZeroDmaLen),
+                " should be false in PermCheckMR.checkReq()"
+            )
+        );
+
+        let maybeMR = tagged Invalid;
+        if (permCheckInfo.localOrRmtKey) begin
+            maybeMR = mrSearchByLKey(
+                pdMetaData, permCheckInfo.pdHandler, permCheckInfo.lkey
+            );
+        end
+        else begin
+            maybeMR = mrSearchByRKey(
+                pdMetaData, permCheckInfo.pdHandler, permCheckInfo.rkey
+            );
+        end
+
+        checkReqQ.enq(tuple3(permCheckInfo, isZeroDmaLen, maybeMR));
+    endrule
+
+    rule checkResp;
+        let { permCheckInfo, isZeroDmaLen, maybeMR } = checkReqQ.first;
+        checkReqQ.deq;
+
+        let checkResult = isZeroDmaLen;
+        if (!isZeroDmaLen) begin
+            if (maybeMR matches tagged Valid .mr) begin
+                checkResult = checkPermByMR(permCheckInfo, mr);
+            end
+        end
+
+        respOutQ.enq(checkResult);
+    endrule
+
+    interface request  = toPut(reqInQ);
+    interface response = toGet(respOutQ);
+endmodule
+
+typedef Arbiter#(portSz, PermCheckInfo, Bool) PermCheckArbiter#(numeric type portSz);
+
+module mkPermCheckAribter#(PermCheckMR permCheckMR)(PermCheckArbiter#(portSz))
+provisos(Add#(1, anysize, portSz));
+    Arbitrate#(portSz) roundRobin <- mkRoundRobin;
+    let maxPendingReq = valueOf(portSz);
+    Arbiter#(portSz, PermCheckInfo, Bool) arbiter <- mkArbiter(roundRobin, maxPendingReq);
+    mkConnection(permCheckMR, arbiter.master);
+    return arbiter;
+endmodule
+
+// TLB related
 
 typedef TExp#(11)  BRAM_CACHE_SIZE; // 2K
 typedef BYTE_WIDTH BRAM_CACHE_DATA_WIDTH;

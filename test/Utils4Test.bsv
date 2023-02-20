@@ -1,3 +1,4 @@
+import ClientServer :: *;
 import Cntrs :: *;
 import FIFOF :: *;
 import Array :: *;
@@ -756,17 +757,25 @@ endmodule
 
 module mkSimPermCheckMR#(Bool mrCheckPassOrFail)(PermCheckMR);
     FIFOF#(PermCheckInfo) checkReqQ <- mkFIFOF;
+    FIFOF#(Bool) checkRespQ <- mkFIFOF;
 
-    method Action checkReq(PermCheckInfo permCheckInfo);
-        checkReqQ.enq(permCheckInfo);
-    endmethod
-
-    method ActionValue#(Bool) checkResp();
-        let permCheckInfo = checkReqQ.first;
+    rule check;
         checkReqQ.deq;
+        checkRespQ.enq(mrCheckPassOrFail);
+    endrule
 
-        return mrCheckPassOrFail;
-    endmethod
+    // method Action checkReq(PermCheckInfo permCheckInfo);
+    //     checkReqQ.enq(permCheckInfo);
+    // endmethod
+
+    // method ActionValue#(Bool) checkResp();
+    //     let permCheckInfo = checkReqQ.first;
+    //     checkReqQ.deq;
+
+    //     return mrCheckPassOrFail;
+    // endmethod
+
+    return toGPServer(checkReqQ, checkRespQ);
 endmodule
 
 module mkSimMetaDataQPs#(QpType qpType, PMTU pmtu)(MetaDataQPs);

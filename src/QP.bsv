@@ -1,3 +1,4 @@
+import Arbitration :: *;
 import ClientServer :: *;
 import FIFOF :: *;
 import GetPut :: *;
@@ -136,7 +137,8 @@ module mkQP#(
     Controller cntrl,
     DmaReadSrv dmaReadSrv,
     DmaWriteSrv dmaWriteSrv,
-    PermCheckMR permCheckMR,
+    PermCheckMR permCheck4RQ,
+    PermCheckMR permCheck4SQ,
     RdmaPktMetaDataAndPayloadPipeOut reqPktPipeIn,
     RdmaPktMetaDataAndPayloadPipeOut respPktPipeIn
 )(QP);
@@ -184,7 +186,7 @@ module mkQP#(
         cntrl,
         dmaArbiter.dmaReadSrv4RQ,
         dmaArbiter.dmaWriteSrv4RQ,
-        permCheckMR,
+        permCheck4RQ,
         recvReqBuf,
         reqPktPipeIn
     );
@@ -193,7 +195,7 @@ module mkQP#(
         cntrl,
         dmaArbiter.dmaReadSrv4SQ,
         dmaArbiter.dmaWriteSrv4SQ,
-        permCheckMR,
+        permCheck4SQ,
         workReqPipeIn,
         respPktPipeIn,
         rq.workCompStatusPipeOutRQ
@@ -243,6 +245,10 @@ module mkTransportLayerRDMA(TransportLayerRDMA);
     let tlb <- mkTLB;
     let qpMetaData <- mkMetaDataQPs;
 
+    PermCheckArbiter#(2) permCheckArbiter <- mkPermCheckAribter(permCheckMR);
+    let permCheck4RQ = permCheckArbiter.users[0];
+    let permCheck4SQ = permCheckArbiter.users[1];
+
     let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
         rdmaReqRespPipeIn
     );
@@ -253,7 +259,7 @@ module mkTransportLayerRDMA(TransportLayerRDMA);
     // TODO: support CNP
     let addNoErrWorkCompOutRule <- addRules(genEmptyPipeOutRule(
         pktMetaDataAndPayloadPipeOut.cnpPipeOut,
-        "cnpPipeOut empty assertion @ mkQP"
+        "cnpPipeOut empty assertion @ mkTransportLayerRDMA"
     ));
 
     ServerProxy#(DmaReadReq, DmaReadResp) dmaReadProxy <- mkServerProxy;
@@ -265,7 +271,8 @@ module mkTransportLayerRDMA(TransportLayerRDMA);
         cntrl,
         dmaReadProxy.server,
         dmaWriteProxy.server,
-        permCheckMR,
+        permCheck4RQ,
+        permCheck4SQ,
         pktMetaDataAndPayloadPipeOut.reqPktPipeOut,
         pktMetaDataAndPayloadPipeOut.respPktPipeOut
     );

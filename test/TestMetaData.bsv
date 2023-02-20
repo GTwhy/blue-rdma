@@ -1,5 +1,7 @@
+import ClientServer :: *;
 import Cntrs :: *;
 import FIFOF :: *;
+import GetPut :: *;
 import PAClib :: *;
 import Vector :: *;
 
@@ -603,7 +605,7 @@ module mkTestPermCheckMR(Empty);
             accType      : defaultAccPerm
         };
 
-        permCheckMR.checkReq(permCheckInfo);
+        permCheckMR.request.put(permCheckInfo);
         // lKeyPermCheckInfoQ.enq(permCheckInfo);
 
         // $display(
@@ -627,7 +629,7 @@ module mkTestPermCheckMR(Empty);
             accType      : defaultAccPerm
         };
 
-        permCheckMR.checkReq(permCheckInfo);
+        permCheckMR.request.put(permCheckInfo);
         // rKeyPermCheckInfoQ.enq(permCheckInfo);
     endrule
 
@@ -635,7 +637,7 @@ module mkTestPermCheckMR(Empty);
         countDown.decr;
 
         // if (lKeyPermCheckInfoQ.notEmpty) begin
-        //     let lKeyCheckResp <- permCheckMR.checkResp;
+        //     let lKeyCheckResp <- permCheckMR.response.get;
         //     immAssert(
         //         lKeyCheckResp,
         //         "lKeyCheckResp @ mkTestPermCheckMR",
@@ -651,7 +653,7 @@ module mkTestPermCheckMR(Empty);
         //     );
         // end
         // else if (rKeyPermCheckInfoQ.notEmpty) begin
-        //     let rKeyCheckResp <- permCheckMR.checkResp;
+        //     let rKeyCheckResp <- permCheckMR.response.get;
         //     immAssert(
         //         rKeyCheckResp,
         //         "rKeyCheckResp @ mkTestPermCheckMR",
@@ -667,7 +669,7 @@ module mkTestPermCheckMR(Empty);
         //     );
         // end
 
-        let checkResp <- permCheckMR.checkResp;
+        let checkResp <- permCheckMR.response.get;
         immAssert(
             checkResp,
             "checkResp @ mkTestPermCheckMR",

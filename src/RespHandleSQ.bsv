@@ -1,4 +1,6 @@
+import ClientServer :: *;
 import FIFOF :: *;
+import GetPut :: *;
 import PAClib :: *;
 
 import Controller :: *;
@@ -519,7 +521,7 @@ module mkRespHandleSQ#(
                     accType      : IBV_ACCESS_LOCAL_WRITE,
                     localOrRmtKey: True
                 };
-                permCheckMR.checkReq(permCheckInfo);
+                permCheckMR.request.put(permCheckInfo);
                 expectPermCheckResp = True;
             end
         end
@@ -574,7 +576,7 @@ module mkRespHandleSQ#(
             end
             SQ_ACT_EXPLICIT_RESP: begin
                 if (expectPermCheckResp) begin
-                    let mrCheckResult <- permCheckMR.checkResp;
+                    let mrCheckResult <- permCheckMR.response.get;
                     if (!mrCheckResult) begin
                         wcStatus   = tagged Valid IBV_WC_LOC_ACCESS_ERR;
                         respAction = SQ_ACT_LOCAL_ACC_ERR;
