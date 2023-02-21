@@ -262,7 +262,7 @@ module mkTransportLayerRDMA(TransportLayerRDMA);
         "cnpPipeOut empty assertion @ mkTransportLayerRDMA"
     ));
 
-    ServerProxy#(DmaReadReq, DmaReadResp) dmaReadProxy <- mkServerProxy;
+    ServerProxy#(DmaReadReq, DmaReadResp)    dmaReadProxy <- mkServerProxy;
     ServerProxy#(DmaWriteReq, DmaWriteResp) dmaWriteProxy <- mkServerProxy;
 
     let qpn = 0;

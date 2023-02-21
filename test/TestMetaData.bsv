@@ -25,13 +25,13 @@ module mkTestMetaDataPDs(Empty);
     let pdMetaDataDUT <- mkMetaDataPDs;
     Count#(Bit#(TLog#(MAX_PD))) pdCnt <- mkCount(0);
 
-    PipeOut#(PdKey) pdKeyPipeOut <- mkGenericRandomPipeOut;
-    Vector#(2, PipeOut#(PdKey)) pdKeyPipeOutVec <-
+    PipeOut#(KeyPD) pdKeyPipeOut <- mkGenericRandomPipeOut;
+    Vector#(2, PipeOut#(KeyPD)) pdKeyPipeOutVec <-
         mkForkVector(pdKeyPipeOut);
     let pdKeyPipeOut4InsertReq = pdKeyPipeOutVec[0];
     let pdKeyPipeOut4InsertResp <- mkBufferN(2, pdKeyPipeOutVec[1]);
-    FIFOF#(PdHandler) pdHandlerQ4Search <- mkSizedFIFOF(valueOf(MAX_PD));
-    FIFOF#(PdHandler) pdHandlerQ4Pop <- mkSizedFIFOF(valueOf(MAX_PD));
+    FIFOF#(HandlerPD) pdHandlerQ4Search <- mkSizedFIFOF(valueOf(MAX_PD));
+    FIFOF#(HandlerPD) pdHandlerQ4Pop <- mkSizedFIFOF(valueOf(MAX_PD));
 
     Reg#(SeqTestState) pdTestStateReg <- mkReg(TEST_ST_FILL);
 
@@ -42,7 +42,8 @@ module mkTestMetaDataPDs(Empty);
             let curPdKey = pdKeyPipeOut4InsertReq.first;
             pdKeyPipeOut4InsertReq.deq;
 
-            pdMetaDataDUT.allocPD(curPdKey);
+            pdMetaDataDUT.allocPD.request.put(curPdKey);
+            // pdMetaDataDUT.allocPD(curPdKey);
         end
     endrule
 
@@ -55,7 +56,8 @@ module mkTestMetaDataPDs(Empty);
             pdCnt.incr(1);
         end
 
-        let pdHandler <- pdMetaDataDUT.allocResp;
+        let pdHandler <- pdMetaDataDUT.allocPD.response.get;
+        // let pdHandler <- pdMetaDataDUT.allocResp;
         pdHandlerQ4Search.enq(pdHandler);
         pdHandlerQ4Pop.enq(pdHandler);
 
@@ -121,7 +123,8 @@ module mkTestMetaDataPDs(Empty);
             let pdHandler2Remove = pdHandlerQ4Pop.first;
             pdHandlerQ4Pop.deq;
 
-            pdMetaDataDUT.deAllocPD(pdHandler2Remove);
+            pdMetaDataDUT.deAllocPD.request.put(pdHandler2Remove);
+            // pdMetaDataDUT.deAllocPD(pdHandler2Remove);
         end
     endrule
 
@@ -136,8 +139,8 @@ module mkTestMetaDataPDs(Empty);
             pdCnt.incr(1);
         end
 
-        let removeResp <- pdMetaDataDUT.deAllocResp;
-
+        let removeResp <- pdMetaDataDUT.deAllocPD.response.get;
+        // let removeResp <- pdMetaDataDUT.deAllocResp;
         immAssert(
             removeResp,
             "removeResp assertion @ mkTestMetaDataPDs",
@@ -165,8 +168,8 @@ module mkTestMetaDataMRs(Empty);
         mkForkVector(mrKeyPipeOut);
     let mrKeyPipeOut4InsertReq = mrKeyPipeOutVec[0];
     let mrKeyPipeOut4InsertResp <- mkBufferN(2, mrKeyPipeOutVec[1]);
-    FIFOF#(MrIndex) mrIndexQ4Search <- mkSizedFIFOF(valueOf(MAX_MR_PER_PD));
-    FIFOF#(MrIndex) mrIndexQ4Pop <- mkSizedFIFOF(valueOf(MAX_MR_PER_PD));
+    FIFOF#(IndexMR) mrIndexQ4Search <- mkSizedFIFOF(valueOf(MAX_MR_PER_PD));
+    FIFOF#(IndexMR) mrIndexQ4Pop <- mkSizedFIFOF(valueOf(MAX_MR_PER_PD));
 
     Reg#(SeqTestState) mrTestStateReg <- mkReg(TEST_ST_FILL);
 
@@ -177,14 +180,23 @@ module mkTestMetaDataMRs(Empty);
             let curMrKey = mrKeyPipeOut4InsertReq.first;
             mrKeyPipeOut4InsertReq.deq;
 
-            mrMetaDataDUT.allocMR(
-                dontCareValue,        // laddr
-                dontCareValue,        // len
-                dontCareValue,        // accType
-                dontCareValue,        // pdHandler
-                curMrKey,             // lkeyPart
-                tagged Valid curMrKey // rkeyPart
-            );
+            let allocReq = AllocReqMR {
+                laddr    : dontCareValue,
+                len      : dontCareValue,
+                accType  : dontCareValue,
+                pdHandler: dontCareValue,
+                lkeyPart : curMrKey,
+                rkeyPart : tagged Valid curMrKey
+            };
+            mrMetaDataDUT.allocMR.request.put(allocReq);
+            // mrMetaDataDUT.allocMR(
+            //     dontCareValue,        // laddr
+            //     dontCareValue,        // len
+            //     dontCareValue,        // accType
+            //     dontCareValue,        // pdHandler
+            //     curMrKey,             // lkeyPart
+            //     tagged Valid curMrKey // rkeyPart
+            // );
         end
     endrule
 
@@ -197,7 +209,11 @@ module mkTestMetaDataMRs(Empty);
             mrCnt.incr(1);
         end
 
-        let { mrIndex, lkey, rkey } <- mrMetaDataDUT.allocResp;
+        let allocResp <- mrMetaDataDUT.allocMR.response.get;
+        let mrIndex = allocResp.mrIndex;
+        let lkey    = allocResp.lkey;
+        let rkey    = allocResp.rkey;
+        // let { mrIndex, lkey, rkey } <- mrMetaDataDUT.allocResp;
         mrIndexQ4Search.enq(mrIndex);
         mrIndexQ4Pop.enq(mrIndex);
 
@@ -262,7 +278,8 @@ module mkTestMetaDataMRs(Empty);
             let mrIndex2Remove = mrIndexQ4Pop.first;
             mrIndexQ4Pop.deq;
 
-            mrMetaDataDUT.deAllocMR(mrIndex2Remove);
+            mrMetaDataDUT.deAllocMR.request.put(mrIndex2Remove);
+            // mrMetaDataDUT.deAllocMR(mrIndex2Remove);
         end
     endrule
 
@@ -277,8 +294,8 @@ module mkTestMetaDataMRs(Empty);
             mrCnt.incr(1);
         end
 
-        let removeResp <- mrMetaDataDUT.deAllocResp;
-
+        let removeResp <- mrMetaDataDUT.deAllocMR.response.get;
+        // let removeResp <- mrMetaDataDUT.deAllocResp;
         immAssert(
             removeResp,
             "removeResp assertion @ mkTestMetaDataMRs",
@@ -301,8 +318,8 @@ module mkTestMetaDataQPs(Empty);
     let qpMetaDataDUT <- mkMetaDataQPs;
     Count#(Bit#(TLog#(MAX_QP))) qpCnt <- mkCount(0);
 
-    PipeOut#(PdHandler) pdHandlerPipeOut <- mkGenericRandomPipeOut;
-    Vector#(3, PipeOut#(PdHandler)) pdHandlerPipeOutVec <-
+    PipeOut#(HandlerPD) pdHandlerPipeOut <- mkGenericRandomPipeOut;
+    Vector#(3, PipeOut#(HandlerPD)) pdHandlerPipeOutVec <-
         mkForkVector(pdHandlerPipeOut);
     let pdHandlerPipeOut4InsertReq = pdHandlerPipeOutVec[0];
     let pdHandlerPipeOut4InsertResp <- mkBufferN(2, pdHandlerPipeOutVec[1]);
@@ -319,7 +336,8 @@ module mkTestMetaDataQPs(Empty);
             let curPdHandler = pdHandlerPipeOut4InsertReq.first;
             pdHandlerPipeOut4InsertReq.deq;
 
-            qpMetaDataDUT.createQP(curPdHandler);
+            qpMetaDataDUT.createQP.request.put(curPdHandler);
+            // qpMetaDataDUT.createQP(curPdHandler);
         end
     endrule
 
@@ -332,7 +350,8 @@ module mkTestMetaDataQPs(Empty);
             qpCnt.incr(1);
         end
 
-        let qpn <- qpMetaDataDUT.createResp;
+        let qpn <- qpMetaDataDUT.createQP.response.get;
+        // let qpn <- qpMetaDataDUT.createResp;
         qpnQ4Search.enq(qpn);
         qpnQ4Pop.enq(qpn);
 
@@ -433,7 +452,8 @@ module mkTestMetaDataQPs(Empty);
             let qpn2Remove = qpnQ4Pop.first;
             qpnQ4Pop.deq;
 
-            qpMetaDataDUT.destroyQP(qpn2Remove);
+            qpMetaDataDUT.destroyQP.request.put(qpn2Remove);
+            // qpMetaDataDUT.destroyQP(qpn2Remove);
         end
     endrule
 
@@ -448,8 +468,8 @@ module mkTestMetaDataQPs(Empty);
             qpCnt.incr(1);
         end
 
-        let removeResp <- qpMetaDataDUT.destroyResp;
-
+        let removeResp <- qpMetaDataDUT.destroyQP.response.get;
+        // let removeResp <- qpMetaDataDUT.destroyResp;
         immAssert(
             removeResp,
             "removeResp assertion @ mkTestMetaDataQPs",
@@ -477,12 +497,12 @@ module mkTestPermCheckMR(Empty);
     Count#(Bit#(TLog#(TAdd#(1, MAX_PD)))) mrMetaDataCnt <- mkCount(0);
     Count#(Bit#(TLog#(TMul#(2, TMul#(MAX_PD, MAX_MR_PER_PD))))) searchCnt <- mkCount(0);
 
-    PipeOut#(PdKey) pdKeyPipeOut <- mkGenericRandomPipeOut;
+    PipeOut#(KeyPD) pdKeyPipeOut <- mkGenericRandomPipeOut;
     PipeOut#(MrKeyPart) mrKeyPipeOut <- mkGenericRandomPipeOut;
 
-    FIFOF#(PdHandler) pdHandlerQ4FillMR <- mkFIFOF;
-    FIFOF#(Tuple2#(PdHandler, LKEY)) lKeyQ4Search <- mkSizedFIFOF(valueOf(TMul#(MAX_PD, MAX_MR_PER_PD)));
-    FIFOF#(Tuple2#(PdHandler, RKEY)) rKeyQ4Search <- mkSizedFIFOF(valueOf(TMul#(MAX_PD, MAX_MR_PER_PD)));
+    FIFOF#(HandlerPD) pdHandlerQ4FillMR <- mkFIFOF;
+    FIFOF#(Tuple2#(HandlerPD, LKEY)) lKeyQ4Search <- mkSizedFIFOF(valueOf(TMul#(MAX_PD, MAX_MR_PER_PD)));
+    FIFOF#(Tuple2#(HandlerPD, RKEY)) rKeyQ4Search <- mkSizedFIFOF(valueOf(TMul#(MAX_PD, MAX_MR_PER_PD)));
     FIFOF#(PermCheckInfo) lKeyPermCheckInfoQ <- mkFIFOF;
     FIFOF#(PermCheckInfo) rKeyPermCheckInfoQ <- mkFIFOF;
 
@@ -499,13 +519,15 @@ module mkTestPermCheckMR(Empty);
         let curPdKey = pdKeyPipeOut.first;
         pdKeyPipeOut.deq;
 
-        pdMetaData.allocPD(curPdKey);
+        pdMetaData.allocPD.request.put(curPdKey);
+        // pdMetaData.allocPD(curPdKey);
 
         // $display("time=%0t: curPdKey=%h", $time, curPdKey);
     endrule
 
     rule allocRespPDs if (mrCheckStateReg == TEST_ST_FILL);
-        let pdHandler <- pdMetaData.allocResp;
+        let pdHandler <- pdMetaData.allocPD.response.get;
+        // let pdHandler <- pdMetaData.allocResp;
         pdHandlerQ4FillMR.enq(pdHandler);
 
         // $display("time=%0t: pdHandler=%h", $time, pdHandler);
@@ -528,14 +550,23 @@ module mkTestPermCheckMR(Empty);
             let curMrKey = mrKeyPipeOut.first;
             mrKeyPipeOut.deq;
 
-            mrMetaData.allocMR(
-                defaultAddr,          // laddr
-                defaultLen,           // len
-                defaultAccPerm,       // accType
-                pdHandler,            // pdHandler
-                curMrKey,             // lkeyPart
-                tagged Valid curMrKey // rkeyPart
-            );
+            let allocReq = AllocReqMR {
+                laddr    : defaultAddr,
+                len      : defaultLen,
+                accType  : defaultAccPerm,
+                pdHandler: pdHandler,
+                lkeyPart : curMrKey,
+                rkeyPart : tagged Valid curMrKey
+            };
+            mrMetaData.allocMR.request.put(allocReq);
+            // mrMetaData.allocMR(
+            //     defaultAddr,          // laddr
+            //     defaultLen,           // len
+            //     defaultAccPerm,       // accType
+            //     pdHandler,            // pdHandler
+            //     curMrKey,             // lkeyPart
+            //     tagged Valid curMrKey // rkeyPart
+            // );
 
             // $display("time=%0t: curMrKey=%h", $time, curMrKey);
         end
@@ -558,7 +589,11 @@ module mkTestPermCheckMR(Empty);
                 );
 
                 if (maybeMRs matches tagged Valid .mrMetaData) begin
-                    let { mrIndex, lkey, rkey } <- mrMetaData.allocResp;
+                    let allocResp <- mrMetaData.allocMR.response.get;
+                    let mrIndex = allocResp.mrIndex;
+                    let lkey    = allocResp.lkey;
+                    let rkey    = allocResp.rkey;
+                    // let { mrIndex, lkey, rkey } <- mrMetaData.allocResp;
 
                     immAssert(
                         isValid(rkey),
@@ -738,11 +773,13 @@ module mkTestBramCache(Empty);
         let bramCacheAddr = bramCacheAddrQ.first;
         bramCacheAddrQ.deq;
 
-        dut.readReq(bramCacheAddr);
+        dut.read.request.put(bramCacheAddr);
+        // dut.readReq(bramCacheAddr);
     endrule
 
     rule checkReadResp;
-        let bramCacheReadData <- dut.readResp;
+        let bramCacheReadData <- dut.read.response.get;
+        // let bramCacheReadData <- dut.readResp;
         let bramCacheReadDataRef = bramCacheDataQ.first;
         bramCacheDataQ.deq;
 
@@ -793,12 +830,14 @@ module mkTestTLB(Empty);
         let virtAddr = virtAddrQ.first;
         virtAddrQ.deq;
 
-        dut.findReq(virtAddr);
+        dut.find.request.put(virtAddr);
+        // dut.findReq(virtAddr);
         virtAddrQ4Ref.enq(virtAddr);
     endrule
 
     rule checkFindResp;
-        let { foundOrNot, phyAddr } <- dut.findResp;
+        let { foundOrNot, phyAddr } <- dut.find.response.get;
+        // let { foundOrNot, phyAddr } <- dut.findResp;
         let phyAddrData = getData4PA(phyAddr);
         let phyAddrDataRef = phyAddrDataQ.first;
         phyAddrDataQ.deq;

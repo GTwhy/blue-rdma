@@ -598,16 +598,18 @@ endinterface
 
 module mkServerProxy(ServerProxy#(reqType, respType))
 provisos(Bits#(reqType, reqSz), Bits#(respType, respSz));
-    FIFOF#(reqType) reqQ <- mkFIFOF;
+    FIFOF#(reqType)   reqQ <- mkFIFOF;
     FIFOF#(respType) respQ <- mkFIFOF;
 
-    interface client = interface Client#(reqType, respType);
-        interface request  = toGet(reqQ);
-        interface response = toPut(respQ);
-    endinterface;
+    interface client = toGPClient(reqQ, respQ);
+    interface server = toGPServer(reqQ, respQ);
+    // interface client = interface Client#(reqType, respType);
+    //     interface request  = toGet(reqQ);
+    //     interface response = toPut(respQ);
+    // endinterface;
 
-    interface server = interface Server#(reqType, respType);
-        interface request  = toPut(reqQ);
-        interface response = toGet(respQ);
-    endinterface;
+    // interface server = interface Server#(reqType, respType);
+    //     interface request  = toPut(reqQ);
+    //     interface response = toGet(respQ);
+    // endinterface;
 endmodule

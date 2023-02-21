@@ -189,9 +189,9 @@ module mkInputRdmaPktBufAndHeaderValidation#(
     // Pipeline buffers
     FIFOF#(Tuple2#(RdmaHeader, BTH))                   rdmaHeaderValidationQ <- mkFIFOF;
     FIFOF#(DataStream)                                    payloadValidationQ <- mkFIFOF;
-    FIFOF#(Tuple4#(RdmaHeader, BTH, PdHandler, PMTU)) rdmaHeaderFragLenCalcQ <- mkFIFOF;
+    FIFOF#(Tuple4#(RdmaHeader, BTH, HandlerPD, PMTU)) rdmaHeaderFragLenCalcQ <- mkFIFOF;
     FIFOF#(DataStream)                                   payloadFragLenCalcQ <- mkFIFOF;
-    FIFOF#(Tuple4#(RdmaHeader, BTH, PdHandler, PMTU))  rdmaHeaderPktlenCalcQ <- mkFIFOF;
+    FIFOF#(Tuple4#(RdmaHeader, BTH, HandlerPD, PMTU))  rdmaHeaderPktlenCalcQ <- mkFIFOF;
     FIFOF#(Tuple5#(DataStream, ByteEnBitNum, ByteEnBitNum, Bool, Bool)) payloadPktlenCalcQ <- mkFIFOF;
 
     Reg#(Bool)        isValidPktReg <- mkRegU;

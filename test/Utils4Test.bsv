@@ -781,24 +781,44 @@ endmodule
 module mkSimMetaDataQPs#(QpType qpType, PMTU pmtu)(MetaDataQPs);
     let cntrl <- mkSimController(qpType, pmtu);
 
-    method Action createQP(QKEY qkey);
-        noAction;
-    endmethod
+    FIFOF#(QKEY)   createReqQ <- mkFIFOF;
+    FIFOF#(QPN)   createRespQ <- mkFIFOF;
+    FIFOF#(QPN)   destroyReqQ <- mkFIFOF;
+    FIFOF#(Bool) destroyRespQ <- mkFIFOF;
 
-    method ActionValue#(QPN) createResp();
-        return dontCareValue;
-    endmethod
+    rule handleCreateQP;
+        createReqQ.deq;
+        let qpn = dontCareValue;
+        createRespQ.enq(qpn);
+    endrule
 
-    method Action destroyQP(QPN qpn);
-        noAction;
-    endmethod
+    rule handleDestroyQP;
+        destroyReqQ.deq;
+        let destroyResp = True;
+        destroyRespQ.enq(destroyResp);
+    endrule
 
-    method ActionValue#(Bool) destroyResp();
-        return True;
-    endmethod
+    // method Action createQP(QKEY qkey);
+    //     noAction;
+    // endmethod
+
+    // method ActionValue#(QPN) createResp();
+    //     return dontCareValue;
+    // endmethod
+
+    // method Action destroyQP(QPN qpn);
+    //     noAction;
+    // endmethod
+
+    // method ActionValue#(Bool) destroyResp();
+    //     return True;
+    // endmethod
+
+    interface createQP  = toGPServer(createReqQ, createRespQ);
+    interface destroyQP = toGPServer(destroyReqQ, destroyRespQ);
 
     method Bool isValidQP(QPN qpn) = True;
-    method Maybe#(PdHandler) getPD(QPN qpn);
+    method Maybe#(HandlerPD) getPD(QPN qpn);
         return tagged Valid dontCareValue;
     endmethod
     method Controller getCntrl(QPN qpn) = cntrl;

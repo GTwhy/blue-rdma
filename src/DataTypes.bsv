@@ -101,7 +101,7 @@ typedef Bit#(TLog#(ATOMIC_ADDR_BYTE_ALIGNMENT)) AtomicAddrByteAlignment;
 typedef Bit#(RNR_WAIT_CYCLE_CNT_WIDTH) RnrWaitCycleCnt;
 typedef Bit#(TIMEOUT_CYCLE_CNT_WIDTH)  TimeOutCycleCnt;
 
-typedef Bit#(PD_HANDLE_WIDTH) PdHandler;
+typedef Bit#(PD_HANDLE_WIDTH) HandlerPD;
 
 typedef PipeOut#(DataStream) DataStreamPipeOut;
 
@@ -179,7 +179,7 @@ typedef struct {
     PktLen pktPayloadLen;
     PmtuFragNum pktFragNum;
     RdmaHeader pktHeader;
-    PdHandler pdHandler;
+    HandlerPD pdHandler;
     Bool pktValid;
     PktVeriStatus pktStatus;
 } RdmaPktMetaData deriving(Bits, Bounded);
@@ -204,7 +204,7 @@ typedef struct {
     Bool localOrRmtKey; // True for local, False for remote
     ADDR laddr;
     Length totalLen;
-    PdHandler pdHandler;
+    HandlerPD pdHandler;
     Bool isZeroDmaLen;
     MemAccessTypeFlags accType;
 } PermCheckInfo deriving(Bits, FShow);

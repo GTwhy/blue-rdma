@@ -26,8 +26,8 @@ function Vector#(n, Bool) select_grant(Vector#(n, Bool) requests, UInt#(TLog#(n)
    function f(bspg,b);
       match {.bs, .p, .going} = bspg;
       if (going) begin
-	 if (b) return tuple3(1 << p, ?, False);
-	 else   return tuple3(0, (p == fromInteger(nports-1) ? 0 : p+1), True);
+   if (b) return tuple3(1 << p, ?, False);
+   else   return tuple3(0, (p == fromInteger(nports-1) ? 0 : p+1), True);
       end
       else return tuple3(bs, ?, False);
    endfunction
@@ -40,11 +40,12 @@ function Bool hasRequest(FIFOF#(a) b);
    return b.notEmpty;
 endfunction
 
-function Server#(req,resp) fifosToServer(Tuple2#(FIFOF#(req), FIFO#(resp)) a);
-   return (interface Server
-	      interface request  = toPut(tpl_1(a));
-	      interface response = toGet(tpl_2(a));
-	   endinterface);
+function Server#(req, resp) fifosToServer(Tuple2#(FIFOF#(req), FIFO#(resp)) a);
+   return toGPServer(tpl_1(a), tpl_2(a));
+   // return (interface Server
+	//       interface request  = toPut(tpl_1(a));
+	//       interface response = toGet(tpl_2(a));
+	//    endinterface);
 endfunction
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -69,9 +70,7 @@ endinterface
 ////////////////////////////////////////////////////////////////////////////////
 (* options = {"-aggressive-conditions, -no-opt-AndOr"} *)
 module mkRoundRobin(Arbitrate#(n))
-   provisos(  Add#(1, z, n)
-	    , Log#(n, logn)
-	    );
+   provisos(Add#(1, z, n), Log#(n, logn));
 
    Integer maxCounter = valueOf(n) - 1;
 
@@ -104,11 +103,7 @@ endmodule
 ////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 (* options = {"-aggressive-conditions, -no-opt-AndOr"} *)
-module mkFixedPriority(Arbitrate#(n))
-   provisos(  Add#(1, z, n)
-	    , Log#(n, logn)
-	    );
-
+module mkFixedPriority(Arbitrate#(n)) provisos(Add#(1, z, n), Log#(n, logn));
    ////////////////////////////////////////////////////////////////////////////////
    /// Design Elements
    ////////////////////////////////////////////////////////////////////////////////
@@ -137,10 +132,10 @@ endmodule
 ////////////////////////////////////////////////////////////////////////////////
 module mkArbiter#(Arbitrate#(n) arbIfc, Integer max_in_flight)(Arbiter#(n, req, resp))
    provisos(  Add#(1, _1, n)     // must have at least one user
-	    , Bits#(req, sreq)   // requests must be bit representable
-	    , Bits#(resp, sresp) // responses must be bit representable
-	    , ArbRequestTC#(req) // supports a request with a read/write distinction
-	    );
+      , Bits#(req, sreq)   // requests must be bit representable
+      , Bits#(resp, sresp) // responses must be bit representable
+      , ArbRequestTC#(req) // supports a request with a read/write distinction
+   );
 
    ////////////////////////////////////////////////////////////////////////////////
    /// Design Elements
@@ -162,25 +157,27 @@ module mkArbiter#(Arbitrate#(n) arbIfc, Integer max_in_flight)(Arbiter#(n, req, 
 
    (* aggressive_implicit_conditions *)
    rule route_read_requests;
-    if (findElem(True, arbIfc.grant) matches tagged Valid .grantid
-				&&& isReadRequest(vfRequests[grantid].first)
-    ) begin
-      let request <- toGet(vfRequests[grantid]).get;
-      fMasterReq.enq(request);
-      fMasterReadIds.enq(grantid);
-    end
-    else dummyAction;
+      if (
+         findElem(True, arbIfc.grant) matches tagged Valid .grantid &&&
+         isReadRequest(vfRequests[grantid].first)
+      ) begin
+         let request <- toGet(vfRequests[grantid]).get;
+         fMasterReq.enq(request);
+         fMasterReadIds.enq(grantid);
+      end
+      else dummyAction;
    endrule
 
    (* aggressive_implicit_conditions *)
    rule route_write_requests;
-    if (findElem(True, arbIfc.grant) matches tagged Valid .grantid
-				 &&& isWriteRequest(vfRequests[grantid].first)
-    ) begin
-      let request <- toGet(vfRequests[grantid]).get;
-      fMasterReq.enq(request);
-    end
-    else dummyAction;
+      if (
+         findElem(True, arbIfc.grant) matches tagged Valid .grantid &&&
+         isWriteRequest(vfRequests[grantid].first)
+      ) begin
+         let request <- toGet(vfRequests[grantid]).get;
+         fMasterReq.enq(request);
+      end
+      else dummyAction;
    endrule
 
    rule route_responses;
@@ -194,9 +191,10 @@ module mkArbiter#(Arbitrate#(n) arbIfc, Integer max_in_flight)(Arbiter#(n, req, 
    ////////////////////////////////////////////////////////////////////////////////
    interface users = map(fifosToServer, zip(vfRequests, vfResponses));
 
-   interface Client master;
-      interface request  = toGet(fMasterReq);
-      interface response = toPut(fMasterResp);
-   endinterface
+   interface master = toGPClient(fMasterReq, fMasterResp);
+   // interface Client master;
+   //    interface request  = toGet(fMasterReq);
+   //    interface response = toPut(fMasterResp);
+   // endinterface
 
 endmodule

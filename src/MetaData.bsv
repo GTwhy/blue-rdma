@@ -144,45 +144,151 @@ typedef TDiv#(MAX_MR, MAX_PD) MAX_MR_PER_PD;
 typedef TLog#(MAX_MR_PER_PD) MR_INDEX_WIDTH;
 typedef TSub#(KEY_WIDTH, MR_INDEX_WIDTH) MR_KEY_PART_WIDTH;
 
-typedef UInt#(MR_INDEX_WIDTH) MrIndex;
+typedef UInt#(MR_INDEX_WIDTH) IndexMR;
 typedef Bit#(MR_KEY_PART_WIDTH) MrKeyPart;
 
 typedef struct {
     ADDR laddr;
     Length len;
     MemAccessTypeFlags accType;
-    PdHandler pdHandler;
+    HandlerPD pdHandler;
     MrKeyPart lkeyPart;
     Maybe#(MrKeyPart) rkeyPart;
 } MemRegion deriving(Bits, FShow);
 
+typedef struct {
+    ADDR               laddr;
+    Length             len;
+    MemAccessTypeFlags accType;
+    HandlerPD          pdHandler;
+    MrKeyPart          lkeyPart;
+    Maybe#(MrKeyPart)  rkeyPart;
+} AllocReqMR deriving(Bits, FShow);
+
+typedef struct {
+    IndexMR mrIndex;
+    LKEY lkey;
+    Maybe#(RKEY) rkey;
+} AllocRespMR deriving(Bits, FShow);
+
+typedef Server#(AllocReqMR, AllocRespMR) AllocMR;
+typedef Server#(IndexMR, Bool) DeAllocMR;
+
 interface MetaDataMRs;
-    method Action allocMR(
-        ADDR               laddr,
-        Length             len,
-        MemAccessTypeFlags accType,
-        PdHandler          pdHandler,
-        MrKeyPart          lkeyPart,
-        Maybe#(MrKeyPart)  rkeyPart
-    );
-    method ActionValue#(Tuple3#(MrIndex, LKEY, Maybe#(RKEY))) allocResp();
-    method Action deAllocMR(MrIndex mrIndex);
-    method ActionValue#(Bool) deAllocResp();
-    method Maybe#(MemRegion) getMR(MrIndex mrIndex);
+    interface AllocMR allocMR;
+    interface DeAllocMR deAllocMR;
+    method Maybe#(MemRegion) getMR(IndexMR mrIndex);
     method Action clear();
     method Bool notEmpty();
     method Bool notFull();
 endinterface
 
 function Maybe#(MemRegion) getMemRegionByLKey(MetaDataMRs mrMetaData, LKEY lkey);
-    MrIndex mrIndex = unpack(truncateLSB(lkey));
+    IndexMR mrIndex = unpack(truncateLSB(lkey));
     return mrMetaData.getMR(mrIndex);
 endfunction
 
 function Maybe#(MemRegion) getMemRegionByRKey(MetaDataMRs mrMetaData, RKEY rkey);
-    MrIndex mrIndex = unpack(truncateLSB(rkey));
+    IndexMR mrIndex = unpack(truncateLSB(rkey));
     return mrMetaData.getMR(mrIndex);
 endfunction
+
+module mkMetaDataMRs(MetaDataMRs);
+    FIFOF#(AllocReqMR)   allocReqQ <- mkFIFOF;
+    FIFOF#(AllocRespMR) allocRespQ <- mkFIFOF;
+    FIFOF#(MemRegion)       mrOutQ <- mkFIFOF;
+
+    FIFOF#(IndexMR) deAllocReqQ <- mkFIFOF;
+    FIFOF#(Bool)   deAllocRespQ <- mkFIFOF;
+
+    TagVector#(MAX_MR_PER_PD, MemRegion) mrTagVec <- mkTagVector;
+
+    rule handleAllocReq;
+        let allocReq = allocReqQ.first;
+        allocReqQ.deq;
+
+        let mr = MemRegion {
+            laddr    : allocReq.laddr,
+            len      : allocReq.len,
+            accType  : allocReq.accType,
+            pdHandler: allocReq.pdHandler,
+            lkeyPart : allocReq.lkeyPart,
+            rkeyPart : allocReq.rkeyPart
+        };
+        mrOutQ.enq(mr);
+        mrTagVec.insertReq(mr);
+    endrule
+
+    rule handleAllocResp;
+        let mrIndex <- mrTagVec.insertResp;
+        let mr = mrOutQ.first;
+        mrOutQ.deq;
+
+        LKEY lkey = { pack(mrIndex), mr.lkeyPart };
+        Maybe#(RKEY) rkey = case (mr.rkeyPart) matches
+            tagged Valid .rmtKeyPart: begin
+                RKEY rmtKey = { pack(mrIndex), rmtKeyPart };
+                tagged Valid rmtKey;
+            end
+            default: tagged Invalid;
+        endcase;
+
+        let allocResp = AllocRespMR {
+            mrIndex: mrIndex,
+            lkey   : lkey,
+            rkey   : rkey
+        };
+        allocRespQ.enq(allocResp);
+    endrule
+
+    rule handleDeAllocReq;
+        let mrIndex = deAllocReqQ.first;
+        deAllocReqQ.deq;
+
+        mrTagVec.removeReq(mrIndex);
+    endrule
+
+    rule handleDeAllocResp;
+        let deAllocResp <- mrTagVec.removeResp;
+        deAllocRespQ.enq(deAllocResp);
+    endrule
+
+    interface allocMR   = toGPServer(allocReqQ, allocRespQ);
+    interface deAllocMR = toGPServer(deAllocReqQ, deAllocRespQ);
+
+    method Maybe#(MemRegion) getMR(IndexMR mrIndex) = mrTagVec.getItem(mrIndex);
+
+    method Action clear();
+        mrTagVec.clear;
+        allocReqQ.clear;
+        allocRespQ.clear;
+        deAllocReqQ.clear;
+        deAllocRespQ.clear;
+        mrOutQ.clear;
+    endmethod
+
+    method Bool notEmpty() = mrTagVec.notEmpty;
+    method Bool notFull() = mrTagVec.notFull;
+endmodule
+
+/*
+interface MetaDataMRs;
+    method Action allocMR(
+        ADDR               laddr,
+        Length             len,
+        MemAccessTypeFlags accType,
+        HandlerPD          pdHandler,
+        MrKeyPart          lkeyPart,
+        Maybe#(MrKeyPart)  rkeyPart
+    );
+    method ActionValue#(Tuple3#(IndexMR, LKEY, Maybe#(RKEY))) allocResp();
+    method Action deAllocMR(IndexMR mrIndex);
+    method ActionValue#(Bool) deAllocResp();
+    method Maybe#(MemRegion) getMR(IndexMR mrIndex);
+    method Action clear();
+    method Bool notEmpty();
+    method Bool notFull();
+endinterface
 
 module mkMetaDataMRs(MetaDataMRs);
     TagVector#(MAX_MR_PER_PD, MemRegion) mrTagVec <- mkTagVector;
@@ -192,7 +298,7 @@ module mkMetaDataMRs(MetaDataMRs);
         ADDR               laddr,
         Length             len,
         MemAccessTypeFlags accType,
-        PdHandler          pdHandler,
+        HandlerPD          pdHandler,
         MrKeyPart          lkeyPart,
         Maybe#(MrKeyPart)  rkeyPart
     );
@@ -208,7 +314,7 @@ module mkMetaDataMRs(MetaDataMRs);
         mrTagVec.insertReq(mr);
     endmethod
 
-    method ActionValue#(Tuple3#(MrIndex, LKEY, Maybe#(RKEY))) allocResp();
+    method ActionValue#(Tuple3#(IndexMR, LKEY, Maybe#(RKEY))) allocResp();
         let mrIndex <- mrTagVec.insertResp;
         let mr = mrOutQ.first;
         mrOutQ.deq;
@@ -224,9 +330,9 @@ module mkMetaDataMRs(MetaDataMRs);
         return tuple3(mrIndex, lkey, rkey);
     endmethod
 
-    method Action deAllocMR(MrIndex mrIndex) = mrTagVec.removeReq(mrIndex);
+    method Action deAllocMR(IndexMR mrIndex) = mrTagVec.removeReq(mrIndex);
     method ActionValue#(Bool) deAllocResp() = mrTagVec.removeResp;
-    method Maybe#(MemRegion) getMR(MrIndex mrIndex) = mrTagVec.getItem(mrIndex);
+    method Maybe#(MemRegion) getMR(IndexMR mrIndex) = mrTagVec.getItem(mrIndex);
 
     method Action clear();
         mrTagVec.clear;
@@ -236,63 +342,153 @@ module mkMetaDataMRs(MetaDataMRs);
     method Bool notEmpty() = mrTagVec.notEmpty;
     method Bool notFull() = mrTagVec.notFull;
 endmodule
-
+*/
 // PD related
 
 typedef TLog#(MAX_PD) PD_INDEX_WIDTH;
 typedef TSub#(PD_HANDLE_WIDTH, PD_INDEX_WIDTH) PD_KEY_WIDTH;
 
-typedef Bit#(PD_KEY_WIDTH)    PdKey;
-typedef UInt#(PD_INDEX_WIDTH) PdIndex;
+typedef Bit#(PD_KEY_WIDTH)    KeyPD;
+typedef UInt#(PD_INDEX_WIDTH) IndexPD;
+
+typedef Server#(KeyPD, HandlerPD) AllocPD;
+typedef Server#(HandlerPD, Bool) DeAllocPD;
 
 interface MetaDataPDs;
-    method Action allocPD(PdKey pdKey);
-    method ActionValue#(PdHandler) allocResp();
-    method Action deAllocPD(PdHandler pdHandler);
-    method ActionValue#(Bool) deAllocResp();
-    method Bool isValidPD(PdHandler pdHandler);
-    method Maybe#(MetaDataMRs) getMRs4PD(PdHandler pdHandler);
+    interface AllocPD allocPD;
+    interface DeAllocPD deAllocPD;
+    method Bool isValidPD(HandlerPD pdHandler);
+    method Maybe#(MetaDataMRs) getMRs4PD(HandlerPD pdHandler);
     method Action clear();
     method Bool notEmpty();
     method Bool notFull();
 endinterface
 
 module mkMetaDataPDs(MetaDataPDs);
-    TagVector#(MAX_PD, PdKey) pdTagVec <- mkTagVector;
+    TagVector#(MAX_PD, KeyPD) pdTagVec <- mkTagVector;
     Vector#(MAX_PD, MetaDataMRs) pdMrVec <- replicateM(mkMetaDataMRs);
-    FIFOF#(PdKey) pdKeyOutQ <- mkFIFOF;
 
-    function PdIndex getPdIndex(PdHandler pdHandler) = unpack(truncateLSB(pdHandler));
+    FIFOF#(KeyPD)       allocReqQ <- mkFIFOF;
+    FIFOF#(HandlerPD)  allocRespQ <- mkFIFOF;
+    FIFOF#(KeyPD)       pdKeyOutQ <- mkFIFOF;
+
+    FIFOF#(HandlerPD) deAllocReqQ <- mkFIFOF;
+    FIFOF#(Bool)     deAllocRespQ <- mkFIFOF;
+
+    function IndexPD getPdIndex(HandlerPD pdHandler) = unpack(truncateLSB(pdHandler));
     function Action clearAllMRs(MetaDataMRs mrMetaData);
         action
             mrMetaData.clear;
         endaction
     endfunction
 
-    method Action allocPD(PdKey pdKey);
+    rule handleAllocReq;
+        let pdKey = allocReqQ.first;
+        allocReqQ.deq;
+
+        pdTagVec.insertReq(pdKey);
+        pdKeyOutQ.enq(pdKey);
+    endrule
+
+    rule handleAllocResp;
+        let pdIndex <- pdTagVec.insertResp;
+
+        let pdKey = pdKeyOutQ.first;
+        pdKeyOutQ.deq;
+
+        HandlerPD pdHandler = { pack(pdIndex), pdKey };
+        allocRespQ.enq(pdHandler);
+    endrule
+
+    rule handleDeAllocReq;
+        let pdHandler = deAllocReqQ.first;
+        deAllocReqQ.deq;
+
+        let pdIndex = getPdIndex(pdHandler);
+        pdTagVec.removeReq(pdIndex);
+    endrule
+
+    rule handleDeAllocResp;
+        let deAllocResp <- pdTagVec.removeResp;
+        deAllocRespQ.enq(deAllocResp);
+    endrule
+
+    interface allocPD   = toGPServer(allocReqQ, allocRespQ);
+    interface deAllocPD = toGPServer(deAllocReqQ, deAllocRespQ);
+
+    method Bool isValidPD(HandlerPD pdHandler);
+        let pdIndex = getPdIndex(pdHandler);
+        return isValid(pdTagVec.getItem(pdIndex));
+    endmethod
+
+    method Maybe#(MetaDataMRs) getMRs4PD(HandlerPD pdHandler);
+        let pdIndex = getPdIndex(pdHandler);
+        return isValid(pdTagVec.getItem(pdIndex)) ?
+            (tagged Valid pdMrVec[pdIndex]) : (tagged Invalid);
+    endmethod
+
+    method Action clear();
+        pdTagVec.clear;
+        allocReqQ.clear;
+        allocRespQ.clear;
+        deAllocReqQ.clear;
+        deAllocRespQ.clear;
+        pdKeyOutQ.clear;
+        mapM_(clearAllMRs, pdMrVec);
+    endmethod
+
+    method Bool notEmpty() = pdTagVec.notEmpty;
+    method Bool notFull()  = pdTagVec.notFull;
+endmodule
+/*
+interface MetaDataPDs;
+    method Action allocPD(KeyPD pdKey);
+    method ActionValue#(HandlerPD) allocResp();
+    method Action deAllocPD(HandlerPD pdHandler);
+    method ActionValue#(Bool) deAllocResp();
+    method Bool isValidPD(HandlerPD pdHandler);
+    method Maybe#(MetaDataMRs) getMRs4PD(HandlerPD pdHandler);
+    method Action clear();
+    method Bool notEmpty();
+    method Bool notFull();
+endinterface
+
+module mkMetaDataPDs(MetaDataPDs);
+    TagVector#(MAX_PD, KeyPD) pdTagVec <- mkTagVector;
+    Vector#(MAX_PD, MetaDataMRs) pdMrVec <- replicateM(mkMetaDataMRs);
+    FIFOF#(KeyPD) pdKeyOutQ <- mkFIFOF;
+
+    function IndexPD getPdIndex(HandlerPD pdHandler) = unpack(truncateLSB(pdHandler));
+    function Action clearAllMRs(MetaDataMRs mrMetaData);
+        action
+            mrMetaData.clear;
+        endaction
+    endfunction
+
+    method Action allocPD(KeyPD pdKey);
         pdTagVec.insertReq(pdKey);
         pdKeyOutQ.enq(pdKey);
     endmethod
-    method ActionValue#(PdHandler) allocResp();
+    method ActionValue#(HandlerPD) allocResp();
         let pdIndex <- pdTagVec.insertResp;
         let pdKey = pdKeyOutQ.first;
         pdKeyOutQ.deq;
-        PdHandler pdHandler = { pack(pdIndex), pdKey };
+        HandlerPD pdHandler = { pack(pdIndex), pdKey };
         return pdHandler;
     endmethod
 
-    method Action deAllocPD(PdHandler pdHandler);
+    method Action deAllocPD(HandlerPD pdHandler);
         let pdIndex = getPdIndex(pdHandler);
         pdTagVec.removeReq(pdIndex);
     endmethod
     method ActionValue#(Bool) deAllocResp() = pdTagVec.removeResp;
 
-    method Bool isValidPD(PdHandler pdHandler);
+    method Bool isValidPD(HandlerPD pdHandler);
         let pdIndex = getPdIndex(pdHandler);
         return isValid(pdTagVec.getItem(pdIndex));
     endmethod
 
-    method Maybe#(MetaDataMRs) getMRs4PD(PdHandler pdHandler);
+    method Maybe#(MetaDataMRs) getMRs4PD(HandlerPD pdHandler);
         let pdIndex = getPdIndex(pdHandler);
         return isValid(pdTagVec.getItem(pdIndex)) ?
             (tagged Valid pdMrVec[pdIndex]) : (tagged Invalid);
@@ -307,19 +503,20 @@ module mkMetaDataPDs(MetaDataPDs);
     method Bool notEmpty() = pdTagVec.notEmpty;
     method Bool notFull()  = pdTagVec.notFull;
 endmodule
-
+*/
 // QP related
 
 typedef TLog#(MAX_QP) QP_INDEX_WIDTH;
 typedef UInt#(QP_INDEX_WIDTH) QpIndex;
 
+typedef Server#(QKEY, QPN) CreateQP;
+typedef Server#(QPN, Bool) DestroyQP;
+
 interface MetaDataQPs;
-    method Action createQP(QKEY qkey);
-    method ActionValue#(QPN) createResp();
-    method Action destroyQP(QPN qpn);
-    method ActionValue#(Bool) destroyResp();
+    interface CreateQP createQP;
+    interface DestroyQP destroyQP;
     method Bool isValidQP(QPN qpn);
-    method Maybe#(PdHandler) getPD(QPN qpn);
+    method Maybe#(HandlerPD) getPD(QPN qpn);
     method Controller getCntrl(QPN qpn);
     // method Maybe#(Controller) getCntrl2(QPN qpn);
     method Action clear();
@@ -328,13 +525,109 @@ interface MetaDataQPs;
 endinterface
 
 module mkMetaDataQPs(MetaDataQPs);
-    TagVector#(MAX_QP, PdHandler) qpTagVec <- mkTagVector;
+    TagVector#(MAX_QP, HandlerPD) qpTagVec <- mkTagVector;
     Vector#(MAX_QP, Controller) qpCntrlVec <- replicateM(mkController);
-    FIFOF#(PdHandler) pdHandlerOutQ <- mkFIFOF;
+
+    FIFOF#(QKEY)      createReqQ <- mkFIFOF;
+    FIFOF#(QPN)      createRespQ <- mkFIFOF;
+    FIFOF#(HandlerPD) pdHandlerQ <- mkFIFOF;
+
+    FIFOF#(QPN)   destroyReqQ <- mkFIFOF;
+    FIFOF#(Bool) destroyRespQ <- mkFIFOF;
 
     function QpIndex getQpIndex(QPN qpn) = unpack(truncateLSB(qpn));
 
-    method Action createQP(PdHandler pdHandler);
+    rule handleCreateQP;
+        let pdHandler = createReqQ.first;
+        createReqQ.deq;
+
+        qpTagVec.insertReq(pdHandler);
+        pdHandlerQ.enq(pdHandler);
+    endrule
+
+    rule handleCreateResp;
+        let qpIndex <- qpTagVec.insertResp;
+
+        let pdHandler = pdHandlerQ.first;
+        pdHandlerQ.deq;
+
+        QPN qpn = { pack(qpIndex), truncateLSB(pdHandler) };
+        createRespQ.enq(qpn);
+    endrule
+
+    rule handleDestroyQP;
+        let qpn = destroyReqQ.first;
+        destroyReqQ.deq;
+
+        let qpIndex = getQpIndex(qpn);
+        qpTagVec.removeReq(qpIndex);
+    endrule
+
+    rule handleDestroyResp;
+        let destroyResp <- qpTagVec.removeResp;
+        destroyRespQ.enq(destroyResp);
+    endrule
+
+    interface createQP  = toGPServer(createReqQ, createRespQ);
+    interface destroyQP = toGPServer(destroyReqQ, destroyRespQ);
+
+    method Bool isValidQP(QPN qpn);
+        let qpIndex = getQpIndex(qpn);
+        return isValid(qpTagVec.getItem(qpIndex));
+    endmethod
+
+    method Maybe#(HandlerPD) getPD(QPN qpn);
+        let qpIndex = getQpIndex(qpn);
+        return qpTagVec.getItem(qpIndex);
+    endmethod
+
+    method Controller getCntrl(QPN qpn);
+        let qpIndex = getQpIndex(qpn);
+        let qpCntrl = qpCntrlVec[qpIndex];
+        return qpCntrl;
+    endmethod
+    // method Maybe#(Controller) getCntrl2(QPN qpn);
+    //     let qpIndex = getQpIndex(qpn);
+    //     let qpCntrl = qpCntrlVec[qpIndex];
+    //     let pdHandler = qpTagVec.getItem(qpIndex);
+    //     return isValid(pdHandler) ? tagged Valid qpCntrl : tagged Invalid;
+    // endmethod
+
+    method Action clear();
+        qpTagVec.clear;
+        createReqQ.clear;
+        createRespQ.clear;
+        destroyReqQ.clear;
+        destroyRespQ.clear;
+        pdHandlerQ.clear;
+    endmethod
+
+    method Bool notEmpty() = qpTagVec.notEmpty;
+    method Bool notFull()  = qpTagVec.notFull;
+endmodule
+/*
+interface MetaDataQPs;
+    method Action createQP(QKEY qkey);
+    method ActionValue#(QPN) createResp();
+    method Action destroyQP(QPN qpn);
+    method ActionValue#(Bool) destroyResp();
+    method Bool isValidQP(QPN qpn);
+    method Maybe#(HandlerPD) getPD(QPN qpn);
+    method Controller getCntrl(QPN qpn);
+    // method Maybe#(Controller) getCntrl2(QPN qpn);
+    method Action clear();
+    method Bool notEmpty();
+    method Bool notFull();
+endinterface
+
+module mkMetaDataQPs(MetaDataQPs);
+    TagVector#(MAX_QP, HandlerPD) qpTagVec <- mkTagVector;
+    Vector#(MAX_QP, Controller) qpCntrlVec <- replicateM(mkController);
+    FIFOF#(HandlerPD) pdHandlerOutQ <- mkFIFOF;
+
+    function QpIndex getQpIndex(QPN qpn) = unpack(truncateLSB(qpn));
+
+    method Action createQP(HandlerPD pdHandler);
         qpTagVec.insertReq(pdHandler);
         pdHandlerOutQ.enq(pdHandler);
     endmethod
@@ -357,7 +650,7 @@ module mkMetaDataQPs(MetaDataQPs);
         return isValid(qpTagVec.getItem(qpIndex));
     endmethod
 
-    method Maybe#(PdHandler) getPD(QPN qpn);
+    method Maybe#(HandlerPD) getPD(QPN qpn);
         let qpIndex = getQpIndex(qpn);
         return qpTagVec.getItem(qpIndex);
     endmethod
@@ -382,6 +675,7 @@ module mkMetaDataQPs(MetaDataQPs);
     method Bool notEmpty() = qpTagVec.notEmpty;
     method Bool notFull()  = qpTagVec.notFull;
 endmodule
+*/
 
 // MR check related
 /*
@@ -409,7 +703,7 @@ module mkPermCheckMR#(MetaDataPDs pdMetaData)(PermCheckMR);
     endfunction
 
     function Maybe#(MemRegion) mrSearchByLKey(
-        MetaDataPDs pdMetaData, PdHandler pdHandler, LKEY lkey
+        MetaDataPDs pdMetaData, HandlerPD pdHandler, LKEY lkey
     );
         let maybeMR = tagged Invalid;
         // let maybePD = qpMetaData.getPD(qpn);
@@ -423,7 +717,7 @@ module mkPermCheckMR#(MetaDataPDs pdMetaData)(PermCheckMR);
     endfunction
 
     function Maybe#(MemRegion) mrSearchByRKey(
-        MetaDataPDs pdMetaData, PdHandler pdHandler, RKEY rkey
+        MetaDataPDs pdMetaData, HandlerPD pdHandler, RKEY rkey
     );
         let maybeMR = tagged Invalid;
         // let maybePD = qpMetaData.getPD(qpn);
@@ -501,30 +795,24 @@ module mkPermCheckMR#(MetaDataPDs pdMetaData)(PermCheckMR);
     endfunction
 
     function Maybe#(MemRegion) mrSearchByLKey(
-        MetaDataPDs pdMetaData, PdHandler pdHandler, LKEY lkey
+        MetaDataPDs pdMetaData, HandlerPD pdHandler, LKEY lkey
     );
         let maybeMR = tagged Invalid;
-        // let maybePD = qpMetaData.getPD(qpn);
-        // if (maybePD matches tagged Valid .pdHandler) begin
         let maybeMRs = pdMetaData.getMRs4PD(pdHandler);
         if (maybeMRs matches tagged Valid .mrMetaData) begin
             maybeMR = getMemRegionByLKey(mrMetaData, lkey);
         end
-        // end
         return maybeMR;
     endfunction
 
     function Maybe#(MemRegion) mrSearchByRKey(
-        MetaDataPDs pdMetaData, PdHandler pdHandler, RKEY rkey
+        MetaDataPDs pdMetaData, HandlerPD pdHandler, RKEY rkey
     );
         let maybeMR = tagged Invalid;
-        // let maybePD = qpMetaData.getPD(qpn);
-        // if (maybePD matches tagged Valid .pdHandler) begin
         let maybeMRs = pdMetaData.getMRs4PD(pdHandler);
         if (maybeMRs matches tagged Valid .mrMetaData) begin
             maybeMR = getMemRegionByRKey(mrMetaData, rkey);
         end
-        // end
         return maybeMR;
     endfunction
 
@@ -571,8 +859,9 @@ module mkPermCheckMR#(MetaDataPDs pdMetaData)(PermCheckMR);
         respOutQ.enq(checkResult);
     endrule
 
-    interface request  = toPut(reqInQ);
-    interface response = toGet(respOutQ);
+    return toGPServer(reqInQ, respOutQ);
+    // interface request  = toPut(reqInQ);
+    // interface response = toGet(respOutQ);
 endmodule
 
 typedef Arbiter#(portSz, PermCheckInfo, Bool) PermCheckArbiter#(numeric type portSz);
@@ -594,6 +883,235 @@ typedef BYTE_WIDTH BRAM_CACHE_DATA_WIDTH;
 typedef Bit#(TLog#(BRAM_CACHE_SIZE)) BramCacheAddr;
 typedef Bit#(BRAM_CACHE_DATA_WIDTH)  BramCacheData;
 
+typedef Server#(BramCacheAddr, BramCacheData) BramRead;
+
+interface BramCache;
+    interface BramRead read;
+    method Action write(BramCacheAddr cacheAddr, BramCacheData writeData);
+endinterface
+
+// BramCache total size 2K * 8 = 16Kb
+module mkBramCache(BramCache);
+    BRAM_Configure cfg = defaultValue;
+    // Both read address and read output are registered
+    cfg.latency = 2;
+    // Allow full pipeline behavior
+    cfg.outFIFODepth = 4;
+    BRAM2Port#(BramCacheAddr, BramCacheData) bram2Port <- mkBRAM2Server(cfg);
+
+    FIFOF#(BramCacheAddr)  bramReadReqQ <- mkFIFOF;
+    FIFOF#(BramCacheData) bramReadRespQ <- mkFIFOF;
+
+    rule handleBramReadReq;
+        let cacheAddr = bramReadReqQ.first;
+        bramReadReqQ.deq;
+
+        let req = BRAMRequest{
+            write: False,
+            responseOnWrite: False,
+            address: cacheAddr,
+            datain: dontCareValue
+        };
+        bram2Port.portA.request.put(req);
+    endrule
+
+    rule handleBramReadResp;
+        let readRespData <- bram2Port.portA.response.get;
+        bramReadRespQ.enq(readRespData);
+    endrule
+
+    method Action write(BramCacheAddr cacheAddr, BramCacheData writeData);
+        let req = BRAMRequest{
+            write: True,
+            responseOnWrite: False,
+            address: cacheAddr,
+            datain: writeData
+        };
+        bram2Port.portB.request.put(req);
+    endmethod
+
+    interface read = toGPServer(bramReadReqQ, bramReadRespQ);
+endmodule
+
+
+interface CascadeCache#(numeric type addrWidth, numeric type payloadWidth);
+    interface Server#(Bit#(addrWidth), Bit#(payloadWidth)) read;
+    method Action write(Bit#(addrWidth) cacheAddr, Bit#(payloadWidth) writeData);
+endinterface
+
+module mkCascadeCache(CascadeCache#(addrWidth, payloadWidth))
+provisos(
+    NumAlias#(TLog#(BRAM_CACHE_SIZE), bramCacheIndexWidth),
+    Add#(bramCacheIndexWidth, TAdd#(anysize, 1), addrWidth), // addrWidth > bramCacheIndexWidth
+    NumAlias#(TDiv#(payloadWidth, BRAM_CACHE_DATA_WIDTH), colNum),
+    Add#(TMul#(BRAM_CACHE_DATA_WIDTH, colNum), 0, payloadWidth), // payloadWidth must be multiplier of BYTE_WIDTH
+    NumAlias#(TSub#(addrWidth, bramCacheIndexWidth), cascadeCacheIndexWidth),
+    NumAlias#(TExp#(cascadeCacheIndexWidth), rowNum)
+);
+    function BramCacheAddr getBramCacheIndex(Bit#(addrWidth) cacheAddr);
+        return truncate(cacheAddr); // [valueOf(bramCacheIndexWidth) - 1 : 0];
+    endfunction
+
+    function Bit#(cascadeCacheIndexWidth) getCascadeCacheIndex(Bit#(addrWidth) cacheAddr);
+        return truncateLSB(cacheAddr); // [valueOf(addrWidth) - 1 : valueOf(bramCacheIndexWidth)];
+    endfunction
+
+    function Action readReqHelper(BramCacheAddr bramCacheIndex, BramCache bramCache);
+        action
+            bramCache.read.request.put(bramCacheIndex);
+        endaction
+    endfunction
+
+    function ActionValue#(BramCacheData) readRespHelper(BramCache bramCache);
+        actionvalue
+            let bramCacheReadRespData <- bramCache.read.response.get;
+            return bramCacheReadRespData;
+        endactionvalue
+    endfunction
+
+    function Action writeHelper(
+        BramCacheAddr bramCacheIndex, Tuple2#(BramCache, BramCacheData) tupleInput
+    );
+        action
+            let { bramCache, writeData } = tupleInput;
+            bramCache.write(bramCacheIndex, writeData);
+        endaction
+    endfunction
+
+    function Bit#(payloadWidth) concatBitVec(BramCacheData bramCacheData, Bit#(payloadWidth) concatResult);
+        return truncate({ concatResult, bramCacheData });
+    endfunction
+    // function Bit#(m) concatBitVec(Vector#(nSz, Bit#(n)) inputBitVec)
+    // provisos(Add#(TMul#(n, nSz), 0, m));
+    //     Bit#(m) result = dontCareValue;
+    //     for (Integer idx = 0; idx < valueOf(n); idx = idx + 1) begin
+    //         // result[(idx+1)*valueOf(n) : idx*valueOf(n)] = inputBitVec[idx];
+    //         result = truncate({ result, inputBitVec[idx] });
+    //     end
+    //     return result;
+    // endfunction
+
+    Vector#(rowNum, Vector#(colNum, BramCache)) cascadeCacheVec <- replicateM(replicateM(mkBramCache));
+    FIFOF#(Bit#(cascadeCacheIndexWidth)) cascadeCacheIndexQ <- mkFIFOF;
+    FIFOF#(Bit#(addrWidth)) cacheReadReqQ <- mkFIFOF;
+    FIFOF#(Bit#(payloadWidth)) cacheReadRespQ <- mkFIFOF;
+
+    rule handleCacheReadReq;
+        let cacheAddr = cacheReadReqQ.first;
+        cacheReadReqQ.deq;
+
+        let cascadeCacheIndex = getCascadeCacheIndex(cacheAddr);
+        let bramCacheIndex = getBramCacheIndex(cacheAddr);
+
+        mapM_(readReqHelper(bramCacheIndex), cascadeCacheVec[cascadeCacheIndex]);
+        cascadeCacheIndexQ.enq(cascadeCacheIndex);
+    endrule
+
+    rule handleCacheReadResp;
+        let cascadeCacheIndex = cascadeCacheIndexQ.first;
+        cascadeCacheIndexQ.deq;
+        Vector#(colNum, BramCacheData) bramCacheReadRespVec <- mapM(
+            readRespHelper, cascadeCacheVec[cascadeCacheIndex]
+        );
+        Bit#(payloadWidth) concatSeed = dontCareValue;
+        Bit#(payloadWidth) concatResult = foldr(concatBitVec, concatSeed, bramCacheReadRespVec);
+
+        cacheReadRespQ.enq(concatResult);
+    endrule
+
+    method Action write(Bit#(addrWidth) cacheAddr, Bit#(payloadWidth) writeData);
+        let cascadeCacheIndex = getCascadeCacheIndex(cacheAddr);
+        let bramCacheIndex = getBramCacheIndex(cacheAddr);
+
+        Vector#(colNum, BramCacheData) writeDataVec = toChunks(writeData);
+        Vector#(colNum, Tuple2#(BramCache, BramCacheData)) bramCacheAndWriteDataVec = zip(
+            cascadeCacheVec[cascadeCacheIndex], writeDataVec
+        );
+        mapM_(writeHelper(bramCacheIndex), bramCacheAndWriteDataVec);
+    endmethod
+
+    interface read = toGPServer(cacheReadReqQ, cacheReadRespQ);
+endmodule
+
+typedef Tuple2#(Bool, ADDR) FindRespTLB;
+typedef Server#(ADDR, FindRespTLB) FindInTLB;
+
+interface TLB;
+    interface FindInTLB find;
+    method Action insert(ADDR va, ADDR pa);
+    // TODO: implement delete method
+    // method Action delete(ADDR va);
+endinterface
+
+function Bit#(PAGE_OFFSET_WIDTH) getPageOffset(ADDR addr);
+    return truncate(addr);
+endfunction
+
+function ADDR restorePA(
+    Bit#(TLB_CACHE_PA_DATA_WIDTH) paData, Bit#(PAGE_OFFSET_WIDTH) pageOffset
+);
+    return signExtend({ paData, pageOffset });
+endfunction
+
+function Bit#(TLB_CACHE_PA_DATA_WIDTH) getData4PA(ADDR pa);
+    return truncate(pa >> valueOf(PAGE_OFFSET_WIDTH));
+endfunction
+
+module mkTLB(TLB);
+    CascadeCache#(TLB_CACHE_INDEX_WIDTH, TLB_PAYLOAD_WIDTH) cache4TLB <- mkCascadeCache;
+    FIFOF#(ADDR) vaInputQ <- mkFIFOF;
+    FIFOF#(ADDR) findReqQ <- mkFIFOF;
+    FIFOF#(FindRespTLB) findRespQ <- mkFIFOF;
+
+    function Bit#(TLB_CACHE_INDEX_WIDTH) getIndex4TLB(ADDR va);
+        return truncate(va >> valueOf(PAGE_OFFSET_WIDTH));
+    endfunction
+
+    function Bit#(TLB_CACHE_TAG_WIDTH) getTag4TLB(ADDR va);
+        return truncate(va >> valueOf(TAdd#(TLB_CACHE_INDEX_WIDTH, PAGE_OFFSET_WIDTH)));
+    endfunction
+
+    rule handleFindReq;
+        let va = findReqQ.first;
+        findReqQ.deq;
+
+        let index = getIndex4TLB(va);
+        cache4TLB.read.request.put(index);
+
+        vaInputQ.enq(va);
+    endrule
+
+    rule handleFindResp;
+        let va = vaInputQ.first;
+        vaInputQ.deq;
+
+        let inputTag = getTag4TLB(va);
+        let pageOffset = getPageOffset(va);
+
+        let readRespData <- cache4TLB.read.response.get;
+        PayloadTLB payload = unpack(readRespData);
+
+        let pa = restorePA(payload.data, pageOffset);
+        let tagMatch = inputTag == payload.tag;
+
+        findRespQ.enq(tuple2(tagMatch, pa));
+    endrule
+
+    method Action insert(ADDR va, ADDR pa);
+        let index = getIndex4TLB(va);
+        let inputTag = getTag4TLB(va);
+        let paData = getData4PA(pa);
+        let payload = PayloadTLB {
+            data: paData,
+            tag : inputTag
+        };
+        cache4TLB.write(index, pack(payload));
+    endmethod
+
+    interface find = toGPServer(findReqQ, findRespQ);
+endmodule
+
+/*
 interface BramCache;
     method Action readReq(BramCacheAddr cacheAddr);
     method ActionValue#(BramCacheData) readResp();
@@ -791,3 +1309,4 @@ module mkTLB(TLB);
         cache4TLB.write(index, pack(payload));
     endmethod
 endmodule
+*/
