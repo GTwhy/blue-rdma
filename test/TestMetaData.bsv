@@ -421,7 +421,7 @@ module mkTestMetaDataQPs(Empty);
             )
         );
 
-        let qpCntrl = qpMetaDataDUT.getCntrl(qpn2Search);
+        let qpCntrl = qpMetaDataDUT.getCntrlByQPN(qpn2Search);
         immAssert(
             qpCntrl.isReset,
             "qpCntrl assertion @ mkTestMetaDataQPs",
@@ -750,8 +750,10 @@ endmodule
 module mkTestBramCache(Empty);
     let dut <- mkBramCache;
 
-    PipeOut#(BramCacheAddr) bramCacheAddrPipeOut <- mkGenericRandomPipeOut;
+    // Use address counter to avoid write address conflict
+    Count#(BramCacheAddr)       bramCacheAddrReg <- mkCount(0);
     PipeOut#(BramCacheData) bramCacheDataPipeOut <- mkGenericRandomPipeOut;
+    // PipeOut#(BramCacheAddr) bramCacheAddrPipeOut <- mkGenericRandomPipeOut;
 
     FIFOF#(BramCacheAddr) bramCacheAddrQ <- mkFIFOF;
     FIFOF#(BramCacheData) bramCacheDataQ <- mkFIFOF;
@@ -759,22 +761,33 @@ module mkTestBramCache(Empty);
     let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
 
     rule writeBramCache;
-        let bramCacheAddr = bramCacheAddrPipeOut.first;
-        bramCacheAddrPipeOut.deq;
+        // let bramCacheAddr = bramCacheAddrPipeOut.first;
+        // bramCacheAddrPipeOut.deq;
+        let bramCacheAddr = bramCacheAddrReg;
+        bramCacheAddrReg.incr(1);
         let bramCacheData = bramCacheDataPipeOut.first;
         bramCacheDataPipeOut.deq;
 
         dut.write(bramCacheAddr, bramCacheData);
         bramCacheAddrQ.enq(bramCacheAddr);
         bramCacheDataQ.enq(bramCacheData);
+        // $display(
+        //     "time=%0t:", $time,
+        //     " write bramCacheAddr=%h, bramCacheData=%h",
+        //     bramCacheAddr, bramCacheData
+        // );
     endrule
 
     rule readBramCache;
         let bramCacheAddr = bramCacheAddrQ.first;
         bramCacheAddrQ.deq;
 
-        dut.read.request.put(bramCacheAddr);
         // dut.readReq(bramCacheAddr);
+        dut.read.request.put(bramCacheAddr);
+        // $display(
+        //     "time=%0t:", $time,
+        //     " read request bramCacheAddr=%h", bramCacheAddr
+        // );
     endrule
 
     rule checkReadResp;

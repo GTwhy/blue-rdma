@@ -1,4 +1,4 @@
-import Arbitration :: *;
+// import Arbitration :: *;
 import ClientServer :: *;
 import PAClib :: *;
 
@@ -107,8 +107,8 @@ typedef PipeOut#(DataStream) DataStreamPipeOut;
 
 typedef Server#(DmaReadReq, DmaReadResp)   DmaReadSrv;
 typedef Server#(DmaWriteReq, DmaWriteResp) DmaWriteSrv;
-typedef Client#(DmaReadReq, DmaReadResp)   DmaReadClt;
-typedef Client#(DmaWriteReq, DmaWriteResp) DmaWriteClt;
+// typedef Client#(DmaReadReq, DmaReadResp)   DmaReadClt;
+// typedef Client#(DmaWriteReq, DmaWriteResp) DmaWriteClt;
 
 typedef ScanFIFOF#(MAX_QP_WR, PendingWorkReq) PendingWorkReqBuf;
 typedef PipeOut#(RecvReq)                     RecvReqBuf;
@@ -208,11 +208,6 @@ typedef struct {
     Bool isZeroDmaLen;
     MemAccessTypeFlags accType;
 } PermCheckInfo deriving(Bits, FShow);
-
-instance ArbRequestTC#(PermCheckInfo);
-   function Bool isReadRequest(PermCheckInfo x) = True;
-   function Bool isWriteRequest(PermCheckInfo x) = False;
-endinstance
 
 typedef struct {
     DmaReqInitiator initiator;

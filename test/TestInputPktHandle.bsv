@@ -19,9 +19,9 @@ module mkTestReceiveCNP(Empty);
     let qpType = IBV_QPT_XRC_SEND;
     let pmtu = IBV_MTU_256;
 
-    let qpMetaData <- mkSimMetaDataQPs(qpType, pmtu);
-    let qpn = dontCareValue;
-    let cntrl = qpMetaData.getCntrl(qpn);
+    let qpMetaData <- mkSimMetaData4SinigleQP(qpType, pmtu);
+    let qpIndex = getIndexQP(getDefaultQPN);
+    let cntrl = qpMetaData.getCntrlByIdxQP(qpIndex);
     let cnpDataStream = buildCNP(cntrl);
     let cnpDataStreamPipeIn <- mkConstantPipeOut(cnpDataStream);
     let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
@@ -30,14 +30,42 @@ module mkTestReceiveCNP(Empty);
     let dut <- mkInputRdmaPktBufAndHeaderValidation(
         headerAndMetaDataAndPayloadPipeOut, qpMetaData
     );
-    let reqPktMetaDataAndPayloadPipeOut = dut.reqPktPipeOut;
-    let respPktMetaDataAndPayloadPipeOut = dut.respPktPipeOut;
+
+    for (Integer idx = 1; idx < valueOf(MAX_QP); idx = idx + 1) begin
+        let reqPktMetaDataPipeOutEmptyRule <- addRules(genEmptyPipeOutRule(
+            dut[idx].reqPktPipeOut.pktMetaData,
+            "dut[" + integerToString(idx) +
+            "].reqPktPipeOut.pktMetaData empty assertion @ mkTestReceiveCNP"
+        ));
+        let reqPktPayloadPipeOutEmptyRule <- addRules(genEmptyPipeOutRule(
+            dut[idx].reqPktPipeOut.payload,
+            "dut[" + integerToString(idx) +
+            "].reqPktPipeOut.payload empty assertion @ mkTestReceiveCNP"
+        ));
+
+        let respPktMetaDataPipeOutEmptyRule <- addRules(genEmptyPipeOutRule(
+            dut[idx].respPktPipeOut.pktMetaData,
+            "dut[" + integerToString(idx) +
+            "].respPktPipeOut.pktMetaData empty assertion @ mkTestReceiveCNP"
+        ));
+        let respPktPayloadPipeOutEmptyRule <- addRules(genEmptyPipeOutRule(
+            dut[idx].respPktPipeOut.payload,
+            "dut[" + integerToString(idx) +
+            "].respPktPipeOut.payload empty assertion @ mkTestReceiveCNP"
+        ));
+
+        let cnpPipeOutEmptyRule <- addRules(genEmptyPipeOutRule(
+            dut[idx].cnpPipeOut,
+            "dut[" + integerToString(idx) +
+            "].cnpPipeOut empty assertion @ mkTestReceiveCNP"
+        ));
+    end
 
     let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
 
     rule checkCNP;
-        let cnpBth = dut.cnpPipeOut.first;
-        dut.cnpPipeOut.deq;
+        let cnpBth = dut[qpIndex].cnpPipeOut.first;
+        dut[qpIndex].cnpPipeOut.deq;
         immAssert(
             { pack(cnpBth.trans), pack(cnpBth.opcode) } == fromInteger(valueOf(ROCE_CNP)),
             "CNP assertion @ mkTestReceiveCNP",
@@ -48,10 +76,12 @@ module mkTestReceiveCNP(Empty);
             )
         );
 
+        let reqPktMetaDataAndPayloadPipeOut = dut[qpIndex].reqPktPipeOut;
+        let respPktMetaDataAndPayloadPipeOut = dut[qpIndex].respPktPipeOut;
         immAssert(
             !reqPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty &&
             !reqPktMetaDataAndPayloadPipeOut.payload.notEmpty,
-            "reqPktMetaDataAndPayloadPipeOut assertion @ mkSimInputPktBuf",
+            "reqPktMetaDataAndPayloadPipeOut assertion @ mkTestReceiveCNP",
             $format(
                 "reqPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty=",
                 fshow(reqPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty),
@@ -64,7 +94,7 @@ module mkTestReceiveCNP(Empty);
         immAssert(
             !respPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty &&
             !respPktMetaDataAndPayloadPipeOut.payload.notEmpty,
-            "respPktMetaDataAndPayloadPipeOut assertion @ mkSimInputPktBuf",
+            "respPktMetaDataAndPayloadPipeOut assertion @ mkTestReceiveCNP",
             $format(
                 "respPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty=",
                 fshow(respPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty),
@@ -106,11 +136,11 @@ module mkTestCalculatePktLen#(
     let rdmaReqPipeOut = reqGenSQ.rdmaReqDataStreamPipeOut;
 
     // QP metadata
-    let qpMetaData <- mkSimMetaDataQPs(qpType, pmtu);
+    let qpMetaData <- mkSimMetaData4SinigleQP(qpType, pmtu);
 
     // DUT
     let isRespPktPipeIn = False;
-    let dut <- mkSimInputPktBuf(isRespPktPipeIn, rdmaReqPipeOut, qpMetaData);
+    let dut <- mkSimInputPktBuf4SingleQP(isRespPktPipeIn, rdmaReqPipeOut, qpMetaData);
     let pktMetaDataPipeOut = dut.pktMetaData;
 
     // Payload sink

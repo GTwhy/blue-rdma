@@ -1,3 +1,4 @@
+import Arbitration :: *;
 import BRAMFIFO :: *;
 import ClientServer :: *;
 import FIFOF :: *;
@@ -591,25 +592,38 @@ module mkDmaArbiterInsideQP#(
     interface dmaWriteSrv4SQ = toGPServer(dmaWriteReqQ4SQ, dmaWriteRespQ4SQ);
 endmodule
 
-interface ServerProxy#(type reqType, type respType);
-    interface Server#(reqType, respType) server ;
-    interface Client#(reqType, respType) client;
-endinterface
+typedef Vector#(portSz, DmaReadSrv) DmaReadArbiter#(numeric type portSz);
 
-module mkServerProxy(ServerProxy#(reqType, respType))
-provisos(Bits#(reqType, reqSz), Bits#(respType, respSz));
-    FIFOF#(reqType)   reqQ <- mkFIFOF;
-    FIFOF#(respType) respQ <- mkFIFOF;
+module mkDmaReadAribter#(DmaReadSrv dmaReadSrv)(DmaReadArbiter#(portSz))
+provisos(
+    Add#(1, anysize, portSz),
+    Add#(TLog#(portSz), 1, TLog#(TAdd#(portSz, 1))) // portSz must be power of 2
+);
+    function Bool dmaReadReqHasLockFunc(DmaReadReq req) = False;
+    function Bool dmaReadRespHasLockFunc(DmaReadResp resp) = !resp.dataStream.isLast;
 
-    interface client = toGPClient(reqQ, respQ);
-    interface server = toGPServer(reqQ, respQ);
-    // interface client = interface Client#(reqType, respType);
-    //     interface request  = toGet(reqQ);
-    //     interface response = toPut(respQ);
-    // endinterface;
+    DmaReadArbiter#(portSz) arbiter <- mkServerArbiter(
+        dmaReadSrv,
+        dmaReadReqHasLockFunc,
+        dmaReadRespHasLockFunc
+    );
+    return arbiter;
+endmodule
 
-    // interface server = interface Server#(reqType, respType);
-    //     interface request  = toPut(reqQ);
-    //     interface response = toGet(respQ);
-    // endinterface;
+typedef Vector#(portSz, DmaWriteSrv) DmaWriteArbiter#(numeric type portSz);
+
+module mkDmaWriteAribter#(DmaWriteSrv dmaWriteSrv)(DmaWriteArbiter#(portSz))
+provisos(
+    Add#(1, anysize, portSz),
+    Add#(TLog#(portSz), 1, TLog#(TAdd#(portSz, 1))) // portSz must be power of 2
+);
+    function Bool dmaWriteReqHasLockFunc(DmaWriteReq req) = !req.dataStream.isLast;
+    function Bool dmaWriteRespHasLockFunc(DmaWriteResp resp) = False;
+
+    DmaWriteArbiter#(portSz) arbiter <- mkServerArbiter(
+        dmaWriteSrv,
+        dmaWriteReqHasLockFunc,
+        dmaWriteRespHasLockFunc
+    );
+    return arbiter;
 endmodule

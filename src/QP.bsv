@@ -1,8 +1,10 @@
 import Arbitration :: *;
 import ClientServer :: *;
+import Connectable :: *;
 import FIFOF :: *;
 import GetPut :: *;
 import PAClib :: *;
+import Vector :: *;
 
 import Controller :: *;
 import DataTypes :: *;
@@ -11,6 +13,7 @@ import InputPktHandle :: *;
 import Headers :: *;
 import MetaData :: *;
 import PayloadConAndGen :: *;
+import PrimUtils :: *;
 import RetryHandleSQ :: *;
 import ReqGenSQ :: *;
 import ReqHandleRQ :: *;
@@ -126,8 +129,8 @@ module mkRQ#(
 endmodule
 
 interface QP;
-    interface Put#(RecvReq) putRecvReq;
-    interface Put#(WorkReq) putWorkReq;
+    // interface Put#(RecvReq) putRecvReq;
+    // interface Put#(WorkReq) putWorkReq;
     interface DataStreamPipeOut rdmaReqRespPipeOut;
     interface PipeOut#(WorkComp) workCompPipeOutRQ;
     interface PipeOut#(WorkComp) workCompPipeOutSQ;
@@ -135,6 +138,8 @@ endinterface
 
 module mkQP#(
     Controller cntrl,
+    PipeOut#(RecvReq) recvReqPipeIn,
+    PipeOut#(WorkReq) workReqPipeIn,
     DmaReadSrv dmaReadSrv,
     DmaWriteSrv dmaWriteSrv,
     PermCheckMR permCheck4RQ,
@@ -175,8 +180,10 @@ module mkQP#(
     // TODO: change WR and RR queues to mkSizedFIFOF
     FIFOF#(RecvReq) recvReqQ <- mkFIFOF;
     FIFOF#(WorkReq) workReqQ <- mkFIFOF;
-    let recvReqBuf = convertFifo2PipeOut(recvReqQ);
-    let workReqPipeIn = convertFifo2PipeOut(workReqQ);
+    mkConnection(toGet(recvReqPipeIn), toPut(recvReqQ));
+    mkConnection(toGet(workReqPipeIn), toPut(workReqQ));
+    let recvReqBufPipeOut = convertFifo2PipeOut(recvReqQ);
+    let workReqBufPipeOut = convertFifo2PipeOut(workReqQ);
 
     let dmaArbiter <- mkDmaArbiterInsideQP(
         dmaReadSrv, dmaWriteSrv
@@ -187,7 +194,7 @@ module mkQP#(
         dmaArbiter.dmaReadSrv4RQ,
         dmaArbiter.dmaWriteSrv4RQ,
         permCheck4RQ,
-        recvReqBuf,
+        recvReqBufPipeOut,
         reqPktPipeIn
     );
 
@@ -196,7 +203,7 @@ module mkQP#(
         dmaArbiter.dmaReadSrv4SQ,
         dmaArbiter.dmaWriteSrv4SQ,
         permCheck4SQ,
-        workReqPipeIn,
+        workReqBufPipeOut,
         respPktPipeIn,
         rq.workCompStatusPipeOutRQ
     );
@@ -214,8 +221,8 @@ module mkQP#(
         end
     endrule
 
-    interface putRecvReq = toPut(recvReqQ);
-    interface putWorkReq = toPut(workReqQ);
+    // interface putRecvReq = toPut(recvReqQ);
+    // interface putWorkReq = toPut(workReqQ);
     interface rdmaReqRespPipeOut = arbitrateDataStreamInsideQP(
         rq.rdmaRespDataStreamPipeOut,
         sq.rdmaReqDataStreamPipeOut
@@ -224,15 +231,43 @@ module mkQP#(
     interface workCompPipeOutSQ = sq.workCompPipeOutSQ;
 endmodule
 
+// TODO: check QP state when dispatching WR and RR
+module mkWorkReqAndRecvReqDispatcher#(
+    PipeOut#(WorkReq) workReqPipeIn,
+    PipeOut#(RecvReq) recvReqPipeIn
+)(Tuple2#(Vector#(MAX_QP, PipeOut#(WorkReq)), Vector#(MAX_QP, PipeOut#(RecvReq))));
+    Vector#(MAX_QP, FIFOF#(WorkReq)) workReqOutVec <- replicateM(mkFIFOF);
+    Vector#(MAX_QP, FIFOF#(RecvReq)) recvReqOutVec <- replicateM(mkFIFOF);
+
+    rule dispatchWR;
+        let wr = workReqPipeIn.first;
+        workReqPipeIn.deq;
+
+        let qpIndex = getIndexQP(wr.sqpn);
+        workReqOutVec[qpIndex].enq(wr);
+    endrule
+
+    rule displatchRR;
+        let rr = recvReqPipeIn.first;
+        recvReqPipeIn.deq;
+
+        let qpIndex = getIndexQP(rr.sqpn);
+        recvReqOutVec[qpIndex].enq(rr);
+    endrule
+
+    return tuple2(
+        map(convertFifo2PipeOut, workReqOutVec),
+        map(convertFifo2PipeOut, recvReqOutVec)
+    );
+endmodule
+
 interface TransportLayerRDMA;
-    interface DmaReadClt dmaReadClt;
-    interface DmaWriteClt dmaWriteClt;
     interface Put#(DataStream) rdmaDataStreamInput;
     interface DataStreamPipeOut rdmaDataStreamPipeOut;
     interface Put#(RecvReq) putRecvReq;
     interface Put#(WorkReq) putWorkReq;
-    interface PipeOut#(WorkComp) workCompPipeOutRQ;
-    interface PipeOut#(WorkComp) workCompPipeOutSQ;
+    // interface PipeOut#(WorkComp) workCompPipeOutRQ;
+    // interface PipeOut#(WorkComp) workCompPipeOutSQ;
 endinterface
 
 (* synthesize *)
@@ -240,49 +275,215 @@ module mkTransportLayerRDMA(TransportLayerRDMA);
     FIFOF#(DataStream) inputDataStreamQ <- mkFIFOF;
     let rdmaReqRespPipeIn = convertFifo2PipeOut(inputDataStreamQ);
 
+    FIFOF#(WorkReq) inputWorkReqQ <- mkFIFOF;
+    FIFOF#(RecvReq) inputRecvReqQ <- mkFIFOF;
+
     let pdMetaData <- mkMetaDataPDs;
     let permCheckMR <- mkPermCheckMR(pdMetaData);
     let tlb <- mkTLB;
     let qpMetaData <- mkMetaDataQPs;
 
-    PermCheckArbiter#(2) permCheckArbiter <- mkPermCheckAribter(permCheckMR);
-    let permCheck4RQ = permCheckArbiter.users[0];
-    let permCheck4SQ = permCheckArbiter.users[1];
+    let { workReqPipeOutVec, recvPipeOutVec } <- mkWorkReqAndRecvReqDispatcher(
+        convertFifo2PipeOut(inputWorkReqQ),
+        convertFifo2PipeOut(inputRecvReqQ)
+    );
+
+    PermCheckArbiter#(TMul#(2, MAX_QP)) permCheckArbiter <- mkPermCheckAribter(permCheckMR);
 
     let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
         rdmaReqRespPipeIn
     );
-    let pktMetaDataAndPayloadPipeOut <- mkInputRdmaPktBufAndHeaderValidation(
+    let pktMetaDataAndPayloadPipeOutVec <- mkInputRdmaPktBufAndHeaderValidation(
         headerAndMetaDataAndPayloadPipeOut, qpMetaData
     );
 
-    // TODO: support CNP
-    let addNoErrWorkCompOutRule <- addRules(genEmptyPipeOutRule(
-        pktMetaDataAndPayloadPipeOut.cnpPipeOut,
-        "cnpPipeOut empty assertion @ mkTransportLayerRDMA"
-    ));
+    let dmaReadSrv  <- mkDmaReadSrv;
+    let dmaWriteSrv <- mkDmaWriteSrv;
+    DmaReadArbiter#(MAX_QP)   dmaReadSrvVec <- mkDmaReadAribter(dmaReadSrv);
+    DmaWriteArbiter#(MAX_QP) dmaWriteSrvVec <- mkDmaWriteAribter(dmaWriteSrv);
 
-    ServerProxy#(DmaReadReq, DmaReadResp)    dmaReadProxy <- mkServerProxy;
-    ServerProxy#(DmaWriteReq, DmaWriteResp) dmaWriteProxy <- mkServerProxy;
+    Vector#(MAX_QP, DataStreamPipeOut) qpDataStreamPipeOutVec = newVector;
+    for (Integer idx = 0; idx < valueOf(MAX_QP); idx = idx + 1) begin
+        let permCheck4RQ = permCheckArbiter[2 * idx];
+        let permCheck4SQ = permCheckArbiter[2 * idx + 1];
 
-    let qpn = 0;
-    let cntrl = qpMetaData.getCntrl(qpn);
-    let singleQP <- mkQP(
-        cntrl,
-        dmaReadProxy.server,
-        dmaWriteProxy.server,
-        permCheck4RQ,
-        permCheck4SQ,
-        pktMetaDataAndPayloadPipeOut.reqPktPipeOut,
-        pktMetaDataAndPayloadPipeOut.respPktPipeOut
-    );
+        IndexQP qpIndex = fromInteger(idx);
+        let cntrl = qpMetaData.getCntrlByIdxQP(qpIndex);
+        let qp <- mkQP(
+            cntrl,
+            recvPipeOutVec[qpIndex],
+            workReqPipeOutVec[qpIndex],
+            dmaReadSrvVec[qpIndex],
+            dmaWriteSrvVec[qpIndex],
+            permCheck4RQ,
+            permCheck4SQ,
+            pktMetaDataAndPayloadPipeOutVec[idx].reqPktPipeOut,
+            pktMetaDataAndPayloadPipeOutVec[idx].respPktPipeOut
+        );
+        qpDataStreamPipeOutVec[idx] = qp.rdmaReqRespPipeOut;
 
-    interface dmaReadClt            = dmaReadProxy.client;
-    interface dmaWriteClt           = dmaWriteProxy.client;
+        // TODO: support CNP
+        let addNoErrWorkCompOutRule <- addRules(genEmptyPipeOutRule(
+            pktMetaDataAndPayloadPipeOutVec[idx].cnpPipeOut,
+            "pktMetaDataAndPayloadPipeOutVec[" + integerToString(idx) +
+            "].cnpPipeOut empty assertion @ mkTransportLayerRDMA"
+        ));
+        // TODO: support CQ
+        mkSink(qp.workCompPipeOutRQ);
+        mkSink(qp.workCompPipeOutSQ);
+    end
+
+    function Bool dataStreamHasLockFunc(DataStream ds) = !ds.isLast;
+    let arbitratedPipeOut <- mkPipeOutArbiter(qpDataStreamPipeOutVec, dataStreamHasLockFunc);
+    // TODO: connect to UDP
+    // mkSink(arbitratedPipeOut);
+
     interface rdmaDataStreamInput   = toPut(inputDataStreamQ);
-    interface rdmaDataStreamPipeOut = singleQP.rdmaReqRespPipeOut;
-    interface putRecvReq            = singleQP.putRecvReq;
-    interface putWorkReq            = singleQP.putWorkReq;
-    interface workCompPipeOutRQ     = singleQP.workCompPipeOutRQ;
-    interface workCompPipeOutSQ     = singleQP.workCompPipeOutSQ;
+    interface rdmaDataStreamPipeOut = arbitratedPipeOut;
+    interface putRecvReq            = toPut(inputRecvReqQ);
+    interface putWorkReq            = toPut(inputWorkReqQ);
+    // interface workCompPipeOutRQ     = singleQP.workCompPipeOutRQ;
+    // interface workCompPipeOutSQ     = singleQP.workCompPipeOutSQ;
+endmodule
+
+// TODO: connect to DMA IP
+
+// This function should be used in simulation only
+function Tuple3#(TotalFragNum, ByteEn, ByteEnBitNum) calcTotalFragNumByLength(Length dmaLen);
+    let shiftAmt = valueOf(TLog#(DATA_BUS_BYTE_WIDTH));
+    TotalFragNum fragNum = truncate(dmaLen >> shiftAmt);
+    BusByteWidthMask busByteWidthMask = maxBound;
+    let lastFragSize = truncate(dmaLen) & busByteWidthMask;
+    Bool lastFragEmpty = isZero(lastFragSize);
+    if (!lastFragEmpty) begin
+        fragNum = fragNum + 1;
+    end
+
+    ByteEnBitNum lastFragValidByteNum = lastFragEmpty ?
+        fromInteger(valueOf(DATA_BUS_BYTE_WIDTH)) :
+        zeroExtend(lastFragSize);
+    ByteEn lastFragByteEn = genByteEn(lastFragValidByteNum);
+    return tuple3(fragNum, lastFragByteEn, lastFragValidByteNum);
+endfunction
+
+module mkDmaReadSrv(DmaReadSrv);
+    FIFOF#(DmaReadReq) dmaReadReqQ <- mkFIFOF;
+    FIFOF#(DmaReadResp) dmaReadRespQ <- mkFIFOF;
+
+    Reg#(TotalFragNum) totalFragCntReg <- mkRegU;
+    Reg#(Bool) busyReg <- mkReg(False);
+    Reg#(Bool) isFirstReg <- mkRegU;
+    Reg#(ByteEn) lastFragByteEnReg <- mkRegU;
+    Reg#(BusBitNum) lastFragInvalidBitNumReg <- mkRegU;
+    Reg#(DmaReadReq) curReqReg <- mkRegU;
+
+    Bool isFragCntZero = isZero(totalFragCntReg);
+
+    rule acceptReq if (!busyReg);
+        let curReq = dmaReadReqQ.first;
+        dmaReadReqQ.deq;
+
+        let isZeroLen = isZero(curReq.len);
+        immAssert(
+            !isZeroLen,
+            "dmaReadReq.len non-zero assrtion",
+            $format("curReq.len=%h should not be zero", curReq.len)
+        );
+
+        let { totalFragCnt, lastFragByteEn, lastFragValidByteNum } =
+            calcTotalFragNumByLength(curReq.len);
+        let { lastFragValidBitNum, lastFragInvalidByteNum, lastFragInvalidBitNum } =
+            calcFragBitNumAndByteNum(lastFragValidByteNum);
+
+        totalFragCntReg <= isZeroLen ? 0 : totalFragCnt - 1;
+        lastFragByteEnReg <= lastFragByteEn;
+        lastFragInvalidBitNumReg <= lastFragInvalidBitNum;
+
+        immAssert(
+            !isZero(lastFragByteEn),
+            "lastFragByteEn non-zero assertion",
+            $format(
+                "lastFragByteEn=%h should not have zero ByteEn, curReq.len=%h",
+                lastFragByteEn, curReq.len
+            )
+        );
+
+        curReqReg <= curReq;
+        busyReg <= True;
+        isFirstReg <= True;
+
+        // $display(
+        //     "time=%0t: curReq.len=%0d, totalFragCnt=%0d",
+        //     $time, curReq.len, totalFragCnt
+        // );
+    endrule
+
+    rule genResp if (busyReg);
+        totalFragCntReg <= totalFragCntReg - 1;
+        DataStream dataStream = dontCareValue;
+        dataStream.isFirst = isFirstReg;
+        isFirstReg <= False;
+        dataStream.isLast = isFragCntZero;
+        dataStream.byteEn = maxBound;
+
+        if (isFragCntZero) begin
+            busyReg <= False;
+            dataStream.byteEn = lastFragByteEnReg;
+            DATA tmpData = dataStream.data >> lastFragInvalidBitNumReg;
+            dataStream.data = truncate(tmpData << lastFragInvalidBitNumReg);
+        end
+
+        let resp = DmaReadResp {
+            initiator : curReqReg.initiator,
+            sqpn      : curReqReg.sqpn,
+            wrID      : curReqReg.wrID,
+            isRespErr : False,
+            dataStream: dataStream
+        };
+        dmaReadRespQ.enq(resp);
+
+        immAssert(
+            !isZero(dataStream.byteEn),
+            "dmaReadResp.data.byteEn non-zero assertion",
+            $format("dmaReadResp.data should not have zero ByteEn, ", fshow(dataStream))
+        );
+        // $display(
+        //     "time=%0t: mkSimDmaReadSrvAndReqRespPipeOut response, totalFragNum=%h, dataStream=",
+        //     $time, totalFragCntReg, fshow(dataStream)
+        // );
+    endrule
+
+    return toGPServer(dmaReadReqQ, dmaReadRespQ);
+endmodule
+
+module mkDmaWriteSrv(DmaWriteSrv);
+    FIFOF#(DmaWriteReq) dmaWriteReqQ <- mkFIFOF;
+    FIFOF#(DmaWriteResp) dmaWriteRespQ <- mkFIFOF;
+
+    function Action genDmaWriteResp(DmaWriteMetaData metaData);
+        action
+            let dmaWriteResp = DmaWriteResp {
+                initiator: metaData.initiator,
+                sqpn     : metaData.sqpn,
+                psn      : metaData.psn,
+                isRespErr: False
+            };
+            // $display("time=%0t: dmaWriteResp=", $time, fshow(dmaWriteResp));
+
+            dmaWriteRespQ.enq(dmaWriteResp);
+        endaction
+    endfunction
+
+    rule write;
+        let dmaWriteReq = dmaWriteReqQ.first;
+        dmaWriteReqQ.deq;
+
+        // $display("time=%0t: dmaWriteReq=", $time, fshow(dmaWriteReq));
+
+        if (dmaWriteReq.dataStream.isLast) begin
+            genDmaWriteResp(dmaWriteReq.metaData);
+        end
+    endrule
+
+    return toGPServer(dmaWriteReqQ, dmaWriteRespQ);
 endmodule

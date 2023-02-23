@@ -1,200 +1,187 @@
-import Vector            ::*;
-import GetPut            ::*;
-import ClientServer      ::*;
-import FIFOF             ::*;
-import FIFO              ::*;
-import BUtils            ::*;
+import Arbiter :: *;
+import ClientServer :: *;
+import Connectable :: *;
+import FIFOF :: *;
+import GetPut :: *;
+import PAClib :: *;
+import Vector :: *;
 
-////////////////////////////////////////////////////////////////////////////////
-/// Exports
-////////////////////////////////////////////////////////////////////////////////
+import PrimUtils :: *;
+import Utils :: *;
 
-////////////////////////////////////////////////////////////////////////////////
-/// Types
-////////////////////////////////////////////////////////////////////////////////
-typeclass ArbRequestTC#(type a);
-   function Bool isReadRequest(a x);
-   function Bool isWriteRequest(a x);
-endtypeclass
+module mkServerArbiter#(
+    Server#(reqType, respType) srv,
+    function Bool reqHasLockFunc(reqType request),
+    function Bool respHasLockFunc(respType response)
+)(Vector#(portSz, Server#(reqType, respType)))
+provisos(
+    Bits#(reqType, reqSz),
+    Bits#(respType, respSz),
+    Add#(1, anysize, portSz),
+    Add#(TLog#(portSz), 1, TLog#(TAdd#(portSz, 1))) // portSz must be power of 2
+);
+    Reg#(Bool) lockArbiterReg <- mkReg(False);
+    Arbiter_IFC#(portSz) arbiter <- mkArbiter(lockArbiterReg);
+    FIFOF#(Bit#(TLog#(portSz))) preGrantIdxQ <- mkFIFOF;
 
-////////////////////////////////////////////////////////////////////////////////
-/// Functions
-////////////////////////////////////////////////////////////////////////////////
-function Vector#(n, Bool) select_grant(Vector#(n, Bool) requests, UInt#(TLog#(n)) lowpriority);
-   let nports = valueOf(n);
+    Vector#(portSz, FIFOF#(reqType))   reqVec <- replicateM(mkFIFOF);
+    Vector#(portSz, FIFOF#(respType)) respVec <- replicateM(mkFIFOF);
 
-   function f(bspg,b);
-      match {.bs, .p, .going} = bspg;
-      if (going) begin
-   if (b) return tuple3(1 << p, ?, False);
-   else   return tuple3(0, (p == fromInteger(nports-1) ? 0 : p+1), True);
-      end
-      else return tuple3(bs, ?, False);
-   endfunction
+    function Bool portHasReqFunc(FIFOF#(reqType) portReqQ) = portReqQ.notEmpty;
 
-   match {.bits, .*, .* } = foldl(f, tuple3(?, lowpriority, True), reverse(rotateBy(reverse(requests), lowpriority)));
-   return unpack(bits);
-endfunction
+    // function Bool portHasReqLockFunc(FIFOF#(reqType) portReqQ);
+    //     return portReqQ.notEmpty ? reqHasLockFunc(portReqQ.first) : False;
+    // endfunction
 
-function Bool hasRequest(FIFOF#(a) b);
-   return b.notEmpty;
-endfunction
+    // function Tuple2#(Bool, Bool) clientHasReqAndLockFunc(
+    //     function Bool reqHasLockFunc(reqType request),
+    //     FIFOF#(reqType) portReqQ
+    // );
+    //     return portReqQ.notEmpty ?
+    //         tuple2(True, reqHasLockFunc(portReqQ.first)) :
+    //         tuple2(False, False);
+    // endfunction
 
-function Server#(req, resp) fifosToServer(Tuple2#(FIFOF#(req), FIFO#(resp)) a);
-   return toGPServer(tpl_1(a), tpl_2(a));
-   // return (interface Server
-	//       interface request  = toPut(tpl_1(a));
-	//       interface response = toGet(tpl_2(a));
-	//    endinterface);
-endfunction
+    function Server#(reqType, respType) fifoTuple2Server(
+        Tuple2#(FIFOF#(reqType), FIFOF#(respType)) fifoTuple
+    );
+        return toGPServer(getTupleFirst(fifoTuple), getTupleSecond(fifoTuple));
+    endfunction
 
-////////////////////////////////////////////////////////////////////////////////
-/// Interfaces
-////////////////////////////////////////////////////////////////////////////////
-interface Arbitrate#(numeric type size);
-   method    Action              request(Vector#(size, Bool) req);
-   method    Vector#(size, Bool) grant;
-endinterface
+    rule arbitrateRequest;
+        // ReqBits#(portSz) reqBits = pack(map(portHasReqFunc, reqVec));
+        // LockBits#(portSz) lockBits = pack(map(portHasReqLockFunc, reqVec));
+        // let { notLocked, grantBits } <- arbiter.arbitrate(reqBits, lockBits);
+        // if (notLocked) begin
+        //     preGrantQ.enq(grantBits);
+        // end
 
-interface Arbiter#(numeric type ports, type request, type response);
-   interface Vector#(ports, Server#(request, response)) users;
-   interface Client#(request, response)                 master;
-endinterface
+        for (Integer idx = 0; idx < valueOf(portSz); idx = idx + 1) begin
+            let hasReq = portHasReqFunc(reqVec[idx]);
+            // let { hasReq, hasLock } = clientHasReqAndLockFunc(
+            //     reqHasLockFunc, reqVec[idx]
+            // );
+            if (hasReq) begin
+                arbiter.clients[idx].request;
+            end
+        end
+    endrule
 
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-///
-/// Implementation of Pseudo Round Robin Arbitration
-///
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-(* options = {"-aggressive-conditions, -no-opt-AndOr"} *)
-module mkRoundRobin(Arbitrate#(n))
-   provisos(Add#(1, z, n), Log#(n, logn));
+    rule grantRequest;
+        let grantIdx = arbiter.grant_id;
+        let granted  = arbiter.clients[grantIdx].grant;
+        // let grantHasLock = arbiter.clients[grantIdx].lock;
+        if (granted) begin
+            let req = reqVec[grantIdx].first;
+            reqVec[grantIdx].deq;
+            srv.request.put(req);
 
-   Integer maxCounter = valueOf(n) - 1;
+            let reqHasLock = reqHasLockFunc(req);
+            lockArbiterReg <= reqHasLock;
+            // Save grant index only when no need to lock
+            if (!reqHasLock) begin
+                preGrantIdxQ.enq(grantIdx);
+            end
+            // immAssert(
+            //     grantHasLock == reqHasLock,
+            //     "grantHasLock assertion @ mkServerArbiterAndDispatcher",
+            //     $format(
+            //         "grantHasLock=", fshow(grantHasLock),
+            //         " should == reqHasLock=", fshow(reqHasLock)
+            //     )
+            // );
+        end
+    endrule
 
-   ////////////////////////////////////////////////////////////////////////////////
-   /// Design Elements
-   ////////////////////////////////////////////////////////////////////////////////
-   Reg#(UInt#(logn))          rLowPriority        <- mkReg(0);
-   Vector#(n, Wire#(Bool))    vwCurrGrant         <- replicateM(mkDWire(False));
+    rule dispatchResponse;
+        let preGrantIdx = preGrantIdxQ.first;
+        let resp <- srv.response.get;
+        // Vector#(portSz, Bool) preGrantVec = unpack(preGrantBits);
+        // let maybeIdx = findElem(True, preGrantVec);
+        // immAssert(
+        //     isValid(maybeIdx),
+        //     "maybeIdx assertion @ mkServerArbiter",
+        //     $format("maybeIdx=", fshow(maybeIdx), " should be valid")
+        // );
 
-   ////////////////////////////////////////////////////////////////////////////////
-   /// Interface Connections / Methods
-   ////////////////////////////////////////////////////////////////////////////////
-   method Action request(Vector#(n, Bool) requests);
-      rLowPriority <= rLowPriority + 1;
-      if (pack(requests) == 0) writeVReg(vwCurrGrant, replicate(False));
-      else                     writeVReg(vwCurrGrant, select_grant(requests, rLowPriority));
-   endmethod
+        let respHasLock = respHasLockFunc(resp);
+        // if (maybeIdx matches tagged Valid. grantIdx) begin
+        respVec[preGrantIdx].enq(resp);
+        // Pop current grant index only when no need to lock
+        if (!respHasLock) begin
+            preGrantIdxQ.deq;
+        end
+        // end
+    endrule
 
-   method Vector#(n, Bool) grant;
-      return map(readReg, vwCurrGrant);
-   endmethod
-
+    return map(fifoTuple2Server, zip(reqVec, respVec));
 endmodule
 
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-///
-/// Implementation of Fixed Priority Arbitration
-///
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-(* options = {"-aggressive-conditions, -no-opt-AndOr"} *)
-module mkFixedPriority(Arbitrate#(n)) provisos(Add#(1, z, n), Log#(n, logn));
-   ////////////////////////////////////////////////////////////////////////////////
-   /// Design Elements
-   ////////////////////////////////////////////////////////////////////////////////
-   Vector#(n, Wire#(Bool))    vwCurrGrant         <- replicateM(mkDWire(False));
+module mkPipeOutArbiter#(
+    Vector#(portSz, PipeOut#(anytype)) inputPipeOutVec,
+    function Bool reqHasLockFunc(anytype pipePayload)
+)(PipeOut#(anytype))
+provisos(
+    Bits#(anytype, tSz),
+    Add#(1, anysize, portSz),
+    Add#(TLog#(portSz), 1, TLog#(TAdd#(portSz, 1))) // portSz must be power of 2
+);
+    Reg#(Bool) lockArbiterReg <- mkReg(False);
+    Arbiter_IFC#(portSz) arbiter <- mkArbiter(lockArbiterReg);
+    FIFOF#(anytype) pipeOutQ <- mkFIFOF;
 
-   ////////////////////////////////////////////////////////////////////////////////
-   /// Interface Connections / Methods
-   ////////////////////////////////////////////////////////////////////////////////
-   method Action request(Vector#(n, Bool) requests);
-      if (pack(requests) == 0) writeVReg(vwCurrGrant, replicate(False));
-      else                     writeVReg(vwCurrGrant, select_grant(requests, 0));
-   endmethod
+    function Bool portHasReqFunc(PipeOut#(anytype) pipeIn) = pipeIn.notEmpty;
 
-   method Vector#(n, Bool) grant;
-      return map(readReg, vwCurrGrant);
-   endmethod
+    // function Bool portHasReqLockFunc(PipeOut#(anytype) pipeIn);
+    //     return pipeIn.notEmpty ? reqHasLockFunc(pipeIn.first) : False;
+    // endfunction
 
-endmodule
+    // function Tuple2#(Bool, Bool) clientHasReqAndLockFunc(
+    //     function Bool reqHasLockFunc(reqType request),
+    //     PipeOut#(reqType) portReqQ
+    // );
+    //     return portReqQ.notEmpty ?
+    //         tuple2(True, reqHasLockFunc(portReqQ.first)) :
+    //         tuple2(False, False);
+    // endfunction
 
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-///
-/// Implementation
-///
-////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////
-module mkArbiter#(Arbitrate#(n) arbIfc, Integer max_in_flight)(Arbiter#(n, req, resp))
-   provisos(  Add#(1, _1, n)     // must have at least one user
-      , Bits#(req, sreq)   // requests must be bit representable
-      , Bits#(resp, sresp) // responses must be bit representable
-      , ArbRequestTC#(req) // supports a request with a read/write distinction
-   );
+    rule arbitrateRequest;
+        // ReqBits#(portSz) reqBits = pack(map(portHasReqFunc, inputPipeOutVec));
+        // LockBits#(portSz) lockBits = pack(map(portHasReqLockFunc, inputPipeOutVec));
+        // let { notLocked, grantBits } <- arbiter.arbitrate(reqBits, lockBits);
 
-   ////////////////////////////////////////////////////////////////////////////////
-   /// Design Elements
-   ////////////////////////////////////////////////////////////////////////////////
-   Vector#(n, FIFOF#(req))         vfRequests          <- replicateM(mkFIFOF);
-   Vector#(n, FIFO#(resp))         vfResponses         <- replicateM(mkFIFO);
+        for (Integer idx = 0; idx < valueOf(portSz); idx = idx + 1) begin
+            let hasReq = portHasReqFunc(inputPipeOutVec[idx]);
+            // let { hasReq, hasLock } = clientHasReqAndLockFunc(
+            //     reqHasLockFunc, inputPipeOutVec[idx]
+            // );
+            if (hasReq) begin
+                arbiter.clients[idx].request;
+            end
+        end
+    endrule
 
-   FIFO#(UInt#(TLog#(n)))          fMasterReadIds      <- mkSizedFIFO(max_in_flight);
-   FIFO#(req)                      fMasterReq          <- mkFIFO;
-   FIFO#(resp)                     fMasterResp         <- mkFIFO;
+    rule grantRequest;
+        let grantIdx = arbiter.grant_id;
+        let granted = arbiter.clients[grantIdx].grant;
+        let grantHasLock = arbiter.clients[grantIdx].lock;
+        if (granted) begin
+            let pipePayload = inputPipeOutVec[grantIdx].first;
+            inputPipeOutVec[grantIdx].deq;
+            pipeOutQ.enq(pipePayload);
 
-   ////////////////////////////////////////////////////////////////////////////////
-   /// Rules
-   ////////////////////////////////////////////////////////////////////////////////
-   (* fire_when_enabled, no_implicit_conditions *)
-   rule arbitrate if (any(hasRequest, vfRequests));
-      arbIfc.request(map(hasRequest, vfRequests));
-   endrule
+            let reqHasLock = reqHasLockFunc(pipePayload);
+            lockArbiterReg <= reqHasLock;
+            // immAssert(
+            //     grantHasLock == reqHasLock,
+            //     "grantHasLock assertion @ mkPipeOutArbiter",
+            //     $format(
+            //         "grantHasLock=", fshow(grantHasLock),
+            //         " should == reqHasLock=", fshow(reqHasLock)
+            //     )
+            // );
+        end
+    endrule
 
-   (* aggressive_implicit_conditions *)
-   rule route_read_requests;
-      if (
-         findElem(True, arbIfc.grant) matches tagged Valid .grantid &&&
-         isReadRequest(vfRequests[grantid].first)
-      ) begin
-         let request <- toGet(vfRequests[grantid]).get;
-         fMasterReq.enq(request);
-         fMasterReadIds.enq(grantid);
-      end
-      else dummyAction;
-   endrule
-
-   (* aggressive_implicit_conditions *)
-   rule route_write_requests;
-      if (
-         findElem(True, arbIfc.grant) matches tagged Valid .grantid &&&
-         isWriteRequest(vfRequests[grantid].first)
-      ) begin
-         let request <- toGet(vfRequests[grantid]).get;
-         fMasterReq.enq(request);
-      end
-      else dummyAction;
-   endrule
-
-   rule route_responses;
-      let response <- toGet(fMasterResp).get;
-      let respid <- toGet(fMasterReadIds).get;
-      vfResponses[respid].enq(response);
-   endrule
-
-   ////////////////////////////////////////////////////////////////////////////////
-   /// Interface Connections / Methods
-   ////////////////////////////////////////////////////////////////////////////////
-   interface users = map(fifosToServer, zip(vfRequests, vfResponses));
-
-   interface master = toGPClient(fMasterReq, fMasterResp);
-   // interface Client master;
-   //    interface request  = toGet(fMasterReq);
-   //    interface response = toPut(fMasterResp);
-   // endinterface
-
+    return convertFifo2PipeOut(pipeOutQ);
 endmodule

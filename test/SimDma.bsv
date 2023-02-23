@@ -145,12 +145,8 @@ module mkSimDmaReadSrvAndReqRespPipeOut(DmaReadSrvAndReqRespPipeOut);
         // );
     endrule
 
-    interface dmaReadSrv = toGPServer(dmaReadReqQ, dmaReadRespQ);
-    // interface dmaReadSrv = interface DmaReadSrv;
-    //     interface request = toPut(dmaReadReqQ);
-    //     interface response = toGet(dmaReadRespQ);
-    // endinterface;
-    interface dmaReadReq = convertFifo2PipeOut(dmaReadReqOutQ);
+    interface dmaReadSrv  = toGPServer(dmaReadReqQ, dmaReadRespQ);
+    interface dmaReadReq  = convertFifo2PipeOut(dmaReadReqOutQ);
     interface dmaReadResp = convertFifo2PipeOut(dmaReadRespOutQ);
 endmodule
 
@@ -258,11 +254,7 @@ module mkSimDmaWriteSrvAndReqRespPipeOut(DmaWriteSrvAndReqRespPipeOut);
         end
     endrule
 
-    interface dmaWriteSrv = toGPServer(dmaWriteReqQ, dmaWriteRespQ);
-    // interface dmaWriteSrv  = interface DmaWriteSrv;
-    //     interface request  = toPut(dmaWriteReqQ);
-    //     interface response = toGet(dmaWriteRespQ);
-    // endinterface;
+    interface dmaWriteSrv  = toGPServer(dmaWriteReqQ, dmaWriteRespQ);
     interface dmaWriteReq  = convertFifo2PipeOut(dmaWriteReqOutQ);
     interface dmaWriteResp = convertFifo2PipeOut(dmaWriteRespOutQ);
 endmodule
@@ -303,7 +295,7 @@ module mkFixedLenSimDataStreamPipeOut#(
 
         let dmaReq = DmaReadReq {
             initiator: dontCareValue,
-            sqpn     : dontCareValue,
+            sqpn     : getDefaultQPN,
             startAddr: dontCareValue,
             len      : dmaLength,
             wrID     : dontCareValue

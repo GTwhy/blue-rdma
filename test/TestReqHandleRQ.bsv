@@ -73,9 +73,9 @@ module mkTestReqHandleNormalAndDupReqCase#(Bool normalOrDupReq)(Empty);
     let qpType = IBV_QPT_XRC_SEND;
     let pmtu = IBV_MTU_256;
 
-    let qpMetaData <- mkSimMetaDataQPs(qpType, pmtu);
-    let qpn = dontCareValue;
-    let cntrl = qpMetaData.getCntrl(qpn);
+    let qpMetaData <- mkSimMetaData4SinigleQP(qpType, pmtu);
+    let qpIndex = getIndexQP(getDefaultQPN);
+    let cntrl = qpMetaData.getCntrlByIdxQP(qpIndex);
 
     // WorkReq generation
     Vector#(1, PipeOut#(WorkReq)) workReqPipeOutVec <- mkRandomWorkReq(
@@ -133,7 +133,7 @@ module mkTestReqHandleNormalAndDupReqCase#(Bool normalOrDupReq)(Empty);
 
     // Build RdmaPktMetaData and payload DataStream
     let isRespPktPipeIn = False;
-    let pktMetaDataAndPayloadPipeOut <- mkSimInputPktBuf(
+    let pktMetaDataAndPayloadPipeOut <- mkSimInputPktBuf4SingleQP(
         isRespPktPipeIn, rdmaReqPipeOut, qpMetaData
     );
     let pktMetaDataPipeIn = pktMetaDataAndPayloadPipeOut.pktMetaData;
@@ -451,9 +451,9 @@ module mkTestReqHandleAbnormalCase#(ReqHandleErrType errType)(Empty);
     let qpType = IBV_QPT_XRC_SEND;
     let pmtu = IBV_MTU_256;
 
-    let qpMetaData <- mkSimMetaDataQPs(qpType, pmtu);
-    let qpn = dontCareValue;
-    let cntrl = qpMetaData.getCntrl(qpn);
+    let qpMetaData <- mkSimMetaData4SinigleQP(qpType, pmtu);
+    let qpIndex = getIndexQP(getDefaultQPN);
+    let cntrl = qpMetaData.getCntrlByIdxQP(qpIndex);
 
     // WorkReq generation
     Vector#(1, PipeOut#(Bool)) selectPipeOutVec <- mkGenericRandomPipeOutVec;
@@ -499,7 +499,7 @@ module mkTestReqHandleAbnormalCase#(ReqHandleErrType errType)(Empty);
 
     // Build RdmaPktMetaData and payload DataStream
     let isRespPktPipeIn = False;
-    let pktMetaDataAndPayloadPipeOut <- mkSimInputPktBuf(
+    let pktMetaDataAndPayloadPipeOut <- mkSimInputPktBuf4SingleQP(
         isRespPktPipeIn, rdmaReqPipeOut, qpMetaData
     );
     let pktMetaDataPipeIn = pktMetaDataAndPayloadPipeOut.pktMetaData;
@@ -733,9 +733,9 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
     let qpType = IBV_QPT_XRC_SEND;
     let pmtu = IBV_MTU_256;
 
-    let qpMetaData <- mkSimMetaDataQPs(qpType, pmtu);
-    let qpn = dontCareValue;
-    let cntrl = qpMetaData.getCntrl(qpn);
+    let qpMetaData <- mkSimMetaData4SinigleQP(qpType, pmtu);
+    let qpIndex = getIndexQP(getDefaultQPN);
+    let cntrl = qpMetaData.getCntrlByIdxQP(qpIndex);
 
     // WorkReq generation
     Vector#(1, PipeOut#(Bool)) selectPipeOutVec <- mkGenericRandomPipeOutVec;
@@ -770,7 +770,7 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
 
     // Build RdmaPktMetaData and payload DataStream
     let isRespPktPipeIn = False;
-    let pktMetaDataAndPayloadPipeOut <- mkSimInputPktBuf(
+    let pktMetaDataAndPayloadPipeOut <- mkSimInputPktBuf4SingleQP(
         isRespPktPipeIn, convertFifo2PipeOut(rdmaReqDataStreamQ), qpMetaData
     );
     let pktMetaDataPipeIn = pktMetaDataAndPayloadPipeOut.pktMetaData;

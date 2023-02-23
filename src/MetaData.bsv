@@ -507,7 +507,7 @@ endmodule
 // QP related
 
 typedef TLog#(MAX_QP) QP_INDEX_WIDTH;
-typedef UInt#(QP_INDEX_WIDTH) QpIndex;
+typedef UInt#(QP_INDEX_WIDTH) IndexQP;
 
 typedef Server#(QKEY, QPN) CreateQP;
 typedef Server#(QPN, Bool) DestroyQP;
@@ -517,12 +517,15 @@ interface MetaDataQPs;
     interface DestroyQP destroyQP;
     method Bool isValidQP(QPN qpn);
     method Maybe#(HandlerPD) getPD(QPN qpn);
-    method Controller getCntrl(QPN qpn);
+    method Controller getCntrlByQPN(QPN qpn);
+    method Controller getCntrlByIdxQP(IndexQP qpIndex);
     // method Maybe#(Controller) getCntrl2(QPN qpn);
     method Action clear();
     method Bool notEmpty();
     method Bool notFull();
 endinterface
+
+function IndexQP getIndexQP(QPN qpn) = unpack(truncateLSB(qpn));
 
 module mkMetaDataQPs(MetaDataQPs);
     TagVector#(MAX_QP, HandlerPD) qpTagVec <- mkTagVector;
@@ -534,8 +537,6 @@ module mkMetaDataQPs(MetaDataQPs);
 
     FIFOF#(QPN)   destroyReqQ <- mkFIFOF;
     FIFOF#(Bool) destroyRespQ <- mkFIFOF;
-
-    function QpIndex getQpIndex(QPN qpn) = unpack(truncateLSB(qpn));
 
     rule handleCreateQP;
         let pdHandler = createReqQ.first;
@@ -559,7 +560,7 @@ module mkMetaDataQPs(MetaDataQPs);
         let qpn = destroyReqQ.first;
         destroyReqQ.deq;
 
-        let qpIndex = getQpIndex(qpn);
+        let qpIndex = getIndexQP(qpn);
         qpTagVec.removeReq(qpIndex);
     endrule
 
@@ -572,22 +573,24 @@ module mkMetaDataQPs(MetaDataQPs);
     interface destroyQP = toGPServer(destroyReqQ, destroyRespQ);
 
     method Bool isValidQP(QPN qpn);
-        let qpIndex = getQpIndex(qpn);
+        let qpIndex = getIndexQP(qpn);
         return isValid(qpTagVec.getItem(qpIndex));
     endmethod
 
     method Maybe#(HandlerPD) getPD(QPN qpn);
-        let qpIndex = getQpIndex(qpn);
+        let qpIndex = getIndexQP(qpn);
         return qpTagVec.getItem(qpIndex);
     endmethod
 
-    method Controller getCntrl(QPN qpn);
-        let qpIndex = getQpIndex(qpn);
+    method Controller getCntrlByQPN(QPN qpn);
+        let qpIndex = getIndexQP(qpn);
         let qpCntrl = qpCntrlVec[qpIndex];
         return qpCntrl;
     endmethod
+
+    method Controller getCntrlByIdxQP(IndexQP qpIndex) = qpCntrlVec[qpIndex];
     // method Maybe#(Controller) getCntrl2(QPN qpn);
-    //     let qpIndex = getQpIndex(qpn);
+    //     let qpIndex = getIndexQP(qpn);
     //     let qpCntrl = qpCntrlVec[qpIndex];
     //     let pdHandler = qpTagVec.getItem(qpIndex);
     //     return isValid(pdHandler) ? tagged Valid qpCntrl : tagged Invalid;
@@ -613,7 +616,7 @@ interface MetaDataQPs;
     method ActionValue#(Bool) destroyResp();
     method Bool isValidQP(QPN qpn);
     method Maybe#(HandlerPD) getPD(QPN qpn);
-    method Controller getCntrl(QPN qpn);
+    method Controller getCntrlByQPN(QPN qpn);
     // method Maybe#(Controller) getCntrl2(QPN qpn);
     method Action clear();
     method Bool notEmpty();
@@ -625,7 +628,7 @@ module mkMetaDataQPs(MetaDataQPs);
     Vector#(MAX_QP, Controller) qpCntrlVec <- replicateM(mkController);
     FIFOF#(HandlerPD) pdHandlerOutQ <- mkFIFOF;
 
-    function QpIndex getQpIndex(QPN qpn) = unpack(truncateLSB(qpn));
+    function IndexQP getIndexQP(QPN qpn) = unpack(truncateLSB(qpn));
 
     method Action createQP(HandlerPD pdHandler);
         qpTagVec.insertReq(pdHandler);
@@ -640,28 +643,28 @@ module mkMetaDataQPs(MetaDataQPs);
     endmethod
 
     method Action destroyQP(QPN qpn);
-        let qpIndex = getQpIndex(qpn);
+        let qpIndex = getIndexQP(qpn);
         qpTagVec.removeReq(qpIndex);
     endmethod
     method ActionValue#(Bool) destroyResp() = qpTagVec.removeResp;
 
     method Bool isValidQP(QPN qpn);
-        let qpIndex = getQpIndex(qpn);
+        let qpIndex = getIndexQP(qpn);
         return isValid(qpTagVec.getItem(qpIndex));
     endmethod
 
     method Maybe#(HandlerPD) getPD(QPN qpn);
-        let qpIndex = getQpIndex(qpn);
+        let qpIndex = getIndexQP(qpn);
         return qpTagVec.getItem(qpIndex);
     endmethod
 
-    method Controller getCntrl(QPN qpn);
-        let qpIndex = getQpIndex(qpn);
+    method Controller getCntrlByQPN(QPN qpn);
+        let qpIndex = getIndexQP(qpn);
         let qpCntrl = qpCntrlVec[qpIndex];
         return qpCntrl;
     endmethod
     // method Maybe#(Controller) getCntrl2(QPN qpn);
-    //     let qpIndex = getQpIndex(qpn);
+    //     let qpIndex = getIndexQP(qpn);
     //     let qpCntrl = qpCntrlVec[qpIndex];
     //     let pdHandler = qpTagVec.getItem(qpIndex);
     //     return isValid(pdHandler) ? tagged Valid qpCntrl : tagged Invalid;
@@ -860,18 +863,23 @@ module mkPermCheckMR#(MetaDataPDs pdMetaData)(PermCheckMR);
     endrule
 
     return toGPServer(reqInQ, respOutQ);
-    // interface request  = toPut(reqInQ);
-    // interface response = toGet(respOutQ);
 endmodule
 
-typedef Arbiter#(portSz, PermCheckInfo, Bool) PermCheckArbiter#(numeric type portSz);
+typedef Vector#(portSz, PermCheckMR) PermCheckArbiter#(numeric type portSz);
 
 module mkPermCheckAribter#(PermCheckMR permCheckMR)(PermCheckArbiter#(portSz))
-provisos(Add#(1, anysize, portSz));
-    Arbitrate#(portSz) roundRobin <- mkRoundRobin;
-    let maxPendingReq = valueOf(portSz);
-    Arbiter#(portSz, PermCheckInfo, Bool) arbiter <- mkArbiter(roundRobin, maxPendingReq);
-    mkConnection(permCheckMR, arbiter.master);
+provisos(
+    Add#(1, anysize, portSz),
+    Add#(TLog#(portSz), 1, TLog#(TAdd#(portSz, 1))) // portSz must be power of 2
+);
+    function Bool permCheckReqHasLockFunc(PermCheckInfo req) = False;
+    function Bool permCheckRespHasLockFunc(Bool resp) = False;
+
+    PermCheckArbiter#(portSz) arbiter <- mkServerArbiter(
+        permCheckMR,
+        permCheckReqHasLockFunc,
+        permCheckRespHasLockFunc
+    );
     return arbiter;
 endmodule
 

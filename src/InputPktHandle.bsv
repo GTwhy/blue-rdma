@@ -1,4 +1,4 @@
-import Connectable :: *;
+// import Connectable :: *;
 import FIFOF :: *;
 import PAClib :: *;
 import Vector :: *;
@@ -9,6 +9,7 @@ import ExtractAndPrependPipeOut :: *;
 import Headers :: *;
 import MetaData :: *;
 import PrimUtils :: *;
+import Settings :: *;
 import Utils :: *;
 
 function Bool checkZeroFields4BTH(BTH bth);
@@ -179,12 +180,12 @@ module mkInputRdmaPktBufAndHeaderValidation#(
     // and packet header/metadata is aligned to the last fragment of payload.
     HeaderAndMetaDataAndPayloadSeperateDataStreamPipeOut pipeIn,
     MetaDataQPs qpMetaData
-)(InputRdmaPktBuf);
-    FIFOF#(BTH)                         cnpOutQ <- mkFIFOF;
-    FIFOF#(DataStream)           reqPayloadOutQ <- mkFIFOF;
-    FIFOF#(RdmaPktMetaData)  reqPktMetaDataOutQ <- mkFIFOF;
-    FIFOF#(DataStream)          respPayloadOutQ <- mkFIFOF;
-    FIFOF#(RdmaPktMetaData) respPktMetaDataOutQ <- mkFIFOF;
+)(Vector#(MAX_QP, InputRdmaPktBuf));
+    Vector#(MAX_QP, FIFOF#(BTH))                         cnpOutVec <- replicateM(mkFIFOF);
+    Vector#(MAX_QP, FIFOF#(DataStream))           reqPayloadOutVec <- replicateM(mkFIFOF);
+    Vector#(MAX_QP, FIFOF#(RdmaPktMetaData))  reqPktMetaDataOutVec <- replicateM(mkFIFOF);
+    Vector#(MAX_QP, FIFOF#(DataStream))          respPayloadOutVec <- replicateM(mkFIFOF);
+    Vector#(MAX_QP, FIFOF#(RdmaPktMetaData)) respPktMetaDataOutVec <- replicateM(mkFIFOF);
 
     // Pipeline buffers
     FIFOF#(Tuple2#(RdmaHeader, BTH))                   rdmaHeaderValidationQ <- mkFIFOF;
@@ -283,6 +284,7 @@ module mkInputRdmaPktBufAndHeaderValidation#(
 
         if (payloadFrag.isFirst) begin
             let { rdmaHeader, bth } = rdmaHeaderValidationQ.first;
+            let qpIndex             = getIndexQP(bth.dqpn);
             rdmaHeaderValidationQ.deq;
 
             let isCNP = isCongestionNotificationPkt(bth);
@@ -296,7 +298,7 @@ module mkInputRdmaPktBufAndHeaderValidation#(
 
             let maybePdHandler = qpMetaData.getPD(dqpn);
             // let isValidDQPN = isValid(maybePdHandler);
-            let cntrl = qpMetaData.getCntrl(dqpn);
+            let cntrl = qpMetaData.getCntrlByQPN(dqpn);
             if (maybePdHandler matches tagged Valid .pdHandler) begin
                 let validateResult = validateHeader(bth.trans, deth.qkey, cntrl, isRespPkt);
                 if (validateResult) begin
@@ -306,7 +308,7 @@ module mkInputRdmaPktBufAndHeaderValidation#(
                         ));
                     end
                     else begin
-                        cnpOutQ.enq(bth);
+                        cnpOutVec[qpIndex].enq(bth);
                     end
                 end
                 isValidPkt = validateResult && !isCNP;
@@ -369,6 +371,7 @@ module mkInputRdmaPktBufAndHeaderValidation#(
         payloadPktlenCalcQ.deq;
 
         let { rdmaHeader, bth, pdHandler, pmtu } = rdmaHeaderPktlenCalcQ.first;
+        let qpIndex         = getIndexQP(bth.dqpn);
         let isRespPkt       = isRdmaRespOpCode(bth.opcode);
         let isLastPkt       = isLastRdmaOpCode(bth.opcode);
         let isFirstOrMidPkt = isFirstOrMiddleRdmaOpCode(bth.opcode);
@@ -432,10 +435,10 @@ module mkInputRdmaPktBufAndHeaderValidation#(
             let isZeroPayloadLen = isZero(pktLen);
             if (!isZeroPayloadLen) begin
                 if (isRespPkt) begin
-                    respPayloadOutQ.enq(payloadFrag);
+                    respPayloadOutVec[qpIndex].enq(payloadFrag);
                 end
                 else begin
-                    reqPayloadOutQ.enq(payloadFrag);
+                    reqPayloadOutVec[qpIndex].enq(payloadFrag);
                 end
                 // $display("time=%0t: payloadFrag=", $time, fshow(payloadFrag));
             end
@@ -466,10 +469,10 @@ module mkInputRdmaPktBufAndHeaderValidation#(
                 pktStatus    : pktStatus
             };
             if (isRespPkt) begin
-                respPktMetaDataOutQ.enq(pktMetaData);
+                respPktMetaDataOutVec[qpIndex].enq(pktMetaData);
             end
             else begin
-                reqPktMetaDataOutQ.enq(pktMetaData);
+                reqPktMetaDataOutVec[qpIndex].enq(pktMetaData);
             end
             // $display(
             //     "time=%0t: bth=", $time, fshow(bth), ", pktMetaData=", fshow(pktMetaData)
@@ -477,24 +480,30 @@ module mkInputRdmaPktBufAndHeaderValidation#(
         end
         else begin
             if (isRespPkt) begin
-                respPayloadOutQ.enq(payloadFrag);
+                respPayloadOutVec[qpIndex].enq(payloadFrag);
             end
             else begin
-                reqPayloadOutQ.enq(payloadFrag);
+                reqPayloadOutVec[qpIndex].enq(payloadFrag);
             end
             // $display("time=%0t: payloadFrag=", $time, fshow(payloadFrag));
         end
     endrule
 
-    interface reqPktPipeOut = interface RdmaPktMetaDataAndPayloadPipeOut;
-        interface pktMetaData = convertFifo2PipeOut(reqPktMetaDataOutQ);
-        interface payload     = convertFifo2PipeOut(reqPayloadOutQ);
-    endinterface;
+    function InputRdmaPktBuf genInputRdmaPktBuf(Integer idx);
+        return interface InputRdmaPktBuf;
+            interface reqPktPipeOut = interface RdmaPktMetaDataAndPayloadPipeOut;
+                interface pktMetaData = convertFifo2PipeOut(reqPktMetaDataOutVec[idx]);
+                interface payload     = convertFifo2PipeOut(reqPayloadOutVec[idx]);
+            endinterface;
 
-    interface respPktPipeOut = interface RdmaPktMetaDataAndPayloadPipeOut;
-        interface pktMetaData = convertFifo2PipeOut(respPktMetaDataOutQ);
-        interface payload     = convertFifo2PipeOut(respPayloadOutQ);
-    endinterface;
+            interface respPktPipeOut = interface RdmaPktMetaDataAndPayloadPipeOut;
+                interface pktMetaData = convertFifo2PipeOut(respPktMetaDataOutVec[idx]);
+                interface payload     = convertFifo2PipeOut(respPayloadOutVec[idx]);
+            endinterface;
 
-    interface cnpPipeOut  = convertFifo2PipeOut(cnpOutQ);
+            interface cnpPipeOut  = convertFifo2PipeOut(cnpOutVec[idx]);
+        endinterface;
+    endfunction
+
+    return map(genInputRdmaPktBuf, genVector);
 endmodule

@@ -16,7 +16,12 @@ import RetryHandleSQ :: *;
 import Settings :: *;
 import Utils :: *;
 
+typedef 0 DEFAULT_QPN;
 typedef 10000 MAX_CMP_CNT;
+
+function QPN getDefaultQPN();
+    return fromInteger(valueOf(DEFAULT_QPN));
+endfunction
 
 interface CountDown;
     method Action decr();
@@ -501,8 +506,9 @@ module mkSimGenWorkReqByOpCode#(
         let rkey2Inv = rkey2InvPipeOut.first;
         rkey2InvPipeOut.deq;
 
+        QPN sqpn = getDefaultQPN;
         QPN srqn = dontCareValue;
-        QPN dqpn = dontCareValue;
+        QPN dqpn = getDefaultQPN;
         QKEY qkey = dontCareValue;
         let workReq = WorkReq {
             id       : wrID,
@@ -513,7 +519,7 @@ module mkSimGenWorkReqByOpCode#(
             len      : isAtomicWR ? fromInteger(valueOf(ATOMIC_WORK_REQ_LEN)) : dmaLen,
             laddr    : dontCareValue,
             lkey     : dontCareValue,
-            sqpn     : dontCareValue,
+            sqpn     : sqpn,
             solicited: dontCareValue,
             comp     : workReqHasComp(wrOpCode) ? (tagged Valid comp) : (tagged Invalid),
             swap     : workReqHasSwap(wrOpCode) ? (tagged Valid swap) : (tagged Invalid),
@@ -623,10 +629,8 @@ module mkGenIllegalAtomicWorkReq(PipeOut#(WorkReq));
 
         Long comp = dontCareValue;
         Long swap = dontCareValue;
-        IMM immDt = dontCareValue;
-        RKEY rkey2Inv = dontCareValue;
-        QPN srqn = dontCareValue;
-        QPN dqpn = dontCareValue;
+        QPN sqpn = getDefaultQPN;
+        QPN dqpn = getDefaultQPN;
         QKEY qkey = dontCareValue;
         let workReq = WorkReq {
             id       : wrID,
@@ -637,14 +641,14 @@ module mkGenIllegalAtomicWorkReq(PipeOut#(WorkReq));
             len      : fromInteger(valueOf(ATOMIC_WORK_REQ_LEN)),
             laddr    : dontCareValue,
             lkey     : dontCareValue,
-            sqpn     : dontCareValue,
+            sqpn     : sqpn,
             solicited: dontCareValue,
             comp     : tagged Valid comp,
             swap     : tagged Valid swap,
             immDt    : tagged Invalid,
             rkey2Inv : tagged Invalid,
             srqn     : tagged Invalid,
-            dqpn     : tagged Invalid,
+            dqpn     : tagged Valid dqpn,
             qkey     : tagged Invalid
         };
         workReqOutQ.enq(workReq);
@@ -700,6 +704,51 @@ module mkGenNormalOrDupWorkReq#(
     return resultPipeOut;
 endmodule
 
+module mkExistingPendingWorkReqPipeOut#(
+    Controller cntrl,
+    PipeOut#(WorkReq) workReqPipeIn
+)(Vector#(vSz, PipeOut#(PendingWorkReq)));
+    FIFOF#(PendingWorkReq) pendingWorkReqOutQ <- mkFIFOF;
+    let pendingWorkReqPipeOut = convertFifo2PipeOut(pendingWorkReqOutQ);
+
+    rule setExpectedPSN if (cntrl.isInit);
+        cntrl.contextRQ.restoreEPSN(cntrl.getNPSN);
+    endrule
+
+    rule genExistingPendingWorkReq if (cntrl.isRTS);
+        let wr = workReqPipeIn.first;
+        workReqPipeIn.deq;
+
+        let startPktSeqNum = cntrl.getNPSN;
+        let { isOnlyPkt, totalPktNum, nextPktSeqNum, endPktSeqNum } =
+            calcPktNumNextAndEndPSN(
+                startPktSeqNum,
+                wr.len,
+                cntrl.getPMTU
+            );
+
+        cntrl.setNPSN(nextPktSeqNum);
+        let isOnlyReqPkt = isOnlyPkt || isReadWorkReq(wr.opcode);
+
+        let pendingWR = PendingWorkReq {
+            wr: wr,
+            startPSN: tagged Valid startPktSeqNum,
+            endPSN: tagged Valid endPktSeqNum,
+            pktNum: tagged Valid totalPktNum,
+            isOnlyReqPkt: tagged Valid isOnlyReqPkt
+        };
+        pendingWorkReqOutQ.enq(pendingWR);
+
+        // $display(
+        //     "time=%0t: generates pendingWR=", $time, fshow(pendingWR)
+        // );
+    endrule
+
+    Vector#(vSz, PipeOut#(PendingWorkReq)) resultPipeOutVec <-
+        mkForkVector(pendingWorkReqPipeOut);
+    return resultPipeOutVec;
+endmodule
+
 module mkSimController#(QpType qpType, PMTU pmtu)(Controller);
     PSN minPSN = 0;
     PSN maxPSN = maxBound;
@@ -734,8 +783,8 @@ module mkSimController#(QpType qpType, PMTU pmtu)(Controller);
             fromInteger(valueOf(MAX_QP_WR)), // pendingRecvReqNum
             fromInteger(valueOf(MAX_QP_RD_ATOM)), // pendingReadAtomicReqNum
             False, // sigAll
-            dontCareValue, // sqpn
-            dontCareValue, // dqpn
+            getDefaultQPN, // sqpn
+            getDefaultQPN, // dqpn
             pkey,
             qkey,
             pmtu,
@@ -778,7 +827,7 @@ module mkSimPermCheckMR#(Bool mrCheckPassOrFail)(PermCheckMR);
     return toGPServer(checkReqQ, checkRespQ);
 endmodule
 
-module mkSimMetaDataQPs#(QpType qpType, PMTU pmtu)(MetaDataQPs);
+module mkSimMetaData4SinigleQP#(QpType qpType, PMTU pmtu)(MetaDataQPs);
     let cntrl <- mkSimController(qpType, pmtu);
 
     FIFOF#(QKEY)   createReqQ <- mkFIFOF;
@@ -788,7 +837,7 @@ module mkSimMetaDataQPs#(QpType qpType, PMTU pmtu)(MetaDataQPs);
 
     rule handleCreateQP;
         createReqQ.deq;
-        let qpn = dontCareValue;
+        let qpn = getDefaultQPN;
         createRespQ.enq(qpn);
     endrule
 
@@ -817,11 +866,13 @@ module mkSimMetaDataQPs#(QpType qpType, PMTU pmtu)(MetaDataQPs);
     interface createQP  = toGPServer(createReqQ, createRespQ);
     interface destroyQP = toGPServer(destroyReqQ, destroyRespQ);
 
-    method Bool isValidQP(QPN qpn) = True;
+    method Bool isValidQP(QPN qpn) = qpn == getDefaultQPN;
+
     method Maybe#(HandlerPD) getPD(QPN qpn);
         return tagged Valid dontCareValue;
     endmethod
-    method Controller getCntrl(QPN qpn) = cntrl;
+    method Controller getCntrlByQPN(QPN qpn) = cntrl;
+    method Controller getCntrlByIdxQP(IndexQP qpIndex) = cntrl;
 
     method Action clear();
         noAction;
@@ -875,92 +926,7 @@ module mkSimRetryHandlerWithLimitExcErr(RetryHandleSQ);
     // interface retryWorkReqPipeOut = convertFifo2PipeOut(emptyQ);
 endmodule
 
-/*
-module mkPendingWorkReqPipeOut#(
-    PipeOut#(WorkReq) workReqPipeIn, PMTU pmtu
-)(Vector#(vSz, PipeOut#(PendingWorkReq)));
-    Reg#(PSN) nextPSN <- mkReg(maxBound);
-
-    function ActionValue#(PendingWorkReq) genExistingPendingWorkReq(WorkReq wr);
-        actionvalue
-            let startPktSeqNum = nextPSN;
-            let { isOnlyPkt, totalPktNum, nextPktSeqNum, endPktSeqNum } =
-                calcPktNumNextAndEndPSN(
-                    startPktSeqNum,
-                    wr.len,
-                    pmtu
-                );
-
-            nextPSN <= nextPktSeqNum;
-            let isOnlyReqPkt = isOnlyPkt || isReadWorkReq(wr.opcode);
-            let pendingWR = PendingWorkReq {
-                wr: wr,
-                startPSN: tagged Valid startPktSeqNum,
-                endPSN: tagged Valid endPktSeqNum,
-                pktNum: tagged Valid totalPktNum,
-                isOnlyReqPkt: tagged Valid isOnlyReqPkt
-            };
-
-            // $display("time=%0t: generates pendingWR=", $time, fshow(pendingWR));
-            return pendingWR;
-        endactionvalue
-    endfunction
-
-    PipeOut#(PendingWorkReq) pendingWorkReqPipeOut <- mkActionValueFunc2Pipe(
-        genExistingPendingWorkReq, workReqPipeIn
-    );
-
-    Vector#(vSz, PipeOut#(PendingWorkReq)) resultPipeOutVec <-
-        mkForkVector(pendingWorkReqPipeOut);
-    return resultPipeOutVec;
-endmodule
-*/
-module mkExistingPendingWorkReqPipeOut#(
-    Controller cntrl,
-    PipeOut#(WorkReq) workReqPipeIn
-)(Vector#(vSz, PipeOut#(PendingWorkReq)));
-    FIFOF#(PendingWorkReq) pendingWorkReqOutQ <- mkFIFOF;
-    let pendingWorkReqPipeOut = convertFifo2PipeOut(pendingWorkReqOutQ);
-
-    rule setExpectedPSN if (cntrl.isInit);
-        cntrl.contextRQ.restoreEPSN(cntrl.getNPSN);
-    endrule
-
-    rule genExistingPendingWorkReq if (cntrl.isRTS);
-        let wr = workReqPipeIn.first;
-        workReqPipeIn.deq;
-
-        let startPktSeqNum = cntrl.getNPSN;
-        let { isOnlyPkt, totalPktNum, nextPktSeqNum, endPktSeqNum } =
-            calcPktNumNextAndEndPSN(
-                startPktSeqNum,
-                wr.len,
-                cntrl.getPMTU
-            );
-
-        cntrl.setNPSN(nextPktSeqNum);
-        let isOnlyReqPkt = isOnlyPkt || isReadWorkReq(wr.opcode);
-
-        let pendingWR = PendingWorkReq {
-            wr: wr,
-            startPSN: tagged Valid startPktSeqNum,
-            endPSN: tagged Valid endPktSeqNum,
-            pktNum: tagged Valid totalPktNum,
-            isOnlyReqPkt: tagged Valid isOnlyReqPkt
-        };
-        pendingWorkReqOutQ.enq(pendingWR);
-
-        // $display(
-        //     "time=%0t: generates pendingWR=", $time, fshow(pendingWR)
-        // );
-    endrule
-
-    Vector#(vSz, PipeOut#(PendingWorkReq)) resultPipeOutVec <-
-        mkForkVector(pendingWorkReqPipeOut);
-    return resultPipeOutVec;
-endmodule
-
-module mkSimInputPktBuf#(
+module mkSimInputPktBuf4SingleQP#(
     Bool isRespPktPipeIn,
     DataStreamPipeOut rdmaPktPipeIn,
     MetaDataQPs qpMetaData
@@ -971,51 +937,82 @@ module mkSimInputPktBuf#(
     let inputRdmaPktBuf <- mkInputRdmaPktBufAndHeaderValidation(
         headerAndMetaDataAndPayloadPipeOut, qpMetaData
     );
-    let reqPktMetaDataAndPayloadPipeOut = inputRdmaPktBuf.reqPktPipeOut;
-    let respPktMetaDataAndPayloadPipeOut = inputRdmaPktBuf.respPktPipeOut;
+    let reqPktMetaDataAndPayloadPipeIn = inputRdmaPktBuf[0].reqPktPipeOut;
+    let respPktMetaDataAndPayloadPipeIn = inputRdmaPktBuf[0].respPktPipeOut;
+    let cnpPipeIn = inputRdmaPktBuf[0].cnpPipeOut;
+
+    for (Integer idx = 1; idx < valueOf(MAX_QP); idx = idx + 1) begin
+        let reqPktMetaDataPipeOutEmptyRule <- addRules(genEmptyPipeOutRule(
+            inputRdmaPktBuf[idx].reqPktPipeOut.pktMetaData,
+            "inputRdmaPktBuf[" + integerToString(idx) +
+            "].reqPktPipeOut.pktMetaData empty assertion @ mkSimInputPktBuf4SingleQP"
+        ));
+        let reqPktPayloadPipeOutEmptyRule <- addRules(genEmptyPipeOutRule(
+            inputRdmaPktBuf[idx].reqPktPipeOut.payload,
+            "inputRdmaPktBuf[" + integerToString(idx) +
+            "].reqPktPipeOut.payload empty assertion @ mkSimInputPktBuf4SingleQP"
+        ));
+
+        let respPktMetaDataPipeOutEmptyRule <- addRules(genEmptyPipeOutRule(
+            inputRdmaPktBuf[idx].respPktPipeOut.pktMetaData,
+            "inputRdmaPktBuf[" + integerToString(idx) +
+            "].respPktPipeOut.pktMetaData empty assertion @ mkSimInputPktBuf4SingleQP"
+        ));
+        let respPktPayloadPipeOutEmptyRule <- addRules(genEmptyPipeOutRule(
+            inputRdmaPktBuf[idx].respPktPipeOut.payload,
+            "inputRdmaPktBuf[" + integerToString(idx) +
+            "].respPktPipeOut.payload empty assertion @ mkSimInputPktBuf4SingleQP"
+        ));
+
+        let cnpPipeOutEmptyRule <- addRules(genEmptyPipeOutRule(
+            inputRdmaPktBuf[idx].cnpPipeOut,
+            "inputRdmaPktBuf[" + integerToString(idx) +
+            "].cnpPipeOut empty assertion @ mkSimInputPktBuf4SingleQP"
+        ));
+    end
 
     rule checkEmpty;
         if (isRespPktPipeIn) begin
             immAssert(
-                !reqPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty &&
-                !reqPktMetaDataAndPayloadPipeOut.payload.notEmpty,
-                "reqPktMetaDataAndPayloadPipeOut assertion @ mkSimInputPktBuf",
+                !reqPktMetaDataAndPayloadPipeIn.pktMetaData.notEmpty &&
+                !reqPktMetaDataAndPayloadPipeIn.payload.notEmpty,
+                "reqPktMetaDataAndPayloadPipeIn assertion @ mkSimInputPktBuf4SingleQP",
                 $format(
-                    "reqPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty=",
-                    fshow(reqPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty),
-                    " and reqPktMetaDataAndPayloadPipeOut.payload.notEmpty=",
-                    fshow(reqPktMetaDataAndPayloadPipeOut.payload.notEmpty),
+                    "reqPktMetaDataAndPayloadPipeIn.pktMetaData.notEmpty=",
+                    fshow(reqPktMetaDataAndPayloadPipeIn.pktMetaData.notEmpty),
+                    " and reqPktMetaDataAndPayloadPipeIn.payload.notEmpty=",
+                    fshow(reqPktMetaDataAndPayloadPipeIn.payload.notEmpty),
                     " should both be false"
                 )
             );
         end
         else begin
             immAssert(
-                !respPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty &&
-                !respPktMetaDataAndPayloadPipeOut.payload.notEmpty,
-                "respPktMetaDataAndPayloadPipeOut assertion @ mkSimInputPktBuf",
+                !respPktMetaDataAndPayloadPipeIn.pktMetaData.notEmpty &&
+                !respPktMetaDataAndPayloadPipeIn.payload.notEmpty,
+                "respPktMetaDataAndPayloadPipeIn assertion @ mkSimInputPktBuf4SingleQP",
                 $format(
-                    "respPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty=",
-                    fshow(respPktMetaDataAndPayloadPipeOut.pktMetaData.notEmpty),
-                    " and respPktMetaDataAndPayloadPipeOut.payload.notEmpty=",
-                    fshow(respPktMetaDataAndPayloadPipeOut.payload.notEmpty),
+                    "respPktMetaDataAndPayloadPipeIn.pktMetaData.notEmpty=",
+                    fshow(respPktMetaDataAndPayloadPipeIn.pktMetaData.notEmpty),
+                    " and respPktMetaDataAndPayloadPipeIn.payload.notEmpty=",
+                    fshow(respPktMetaDataAndPayloadPipeIn.payload.notEmpty),
                     " should both be false"
                 )
             );
         end
 
         immAssert(
-            !inputRdmaPktBuf.cnpPipeOut.notEmpty,
-            "cnpPipeOut empty assertion @ mkTestReceiveCNP",
+            !cnpPipeIn.notEmpty,
+            "cnpPipeIn empty assertion @ mkTestReceiveCNP",
             $format(
-                "inputRdmaPktBuf.cnpPipeOut.notEmpty=",
-                fshow(inputRdmaPktBuf.cnpPipeOut.notEmpty),
+                "cnpPipeIn.notEmpty=",
+                fshow(cnpPipeIn.notEmpty),
                 " should be false"
             )
         );
     endrule
 
-    return isRespPktPipeIn ? respPktMetaDataAndPayloadPipeOut : reqPktMetaDataAndPayloadPipeOut;
+    return isRespPktPipeIn ? respPktMetaDataAndPayloadPipeIn : reqPktMetaDataAndPayloadPipeIn;
 endmodule
 
 // PipeOut related
