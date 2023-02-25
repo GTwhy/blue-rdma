@@ -985,12 +985,12 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
         let hasAETH = rdmaRespHasAETH(bth.opcode);
         let aeth = extractAETH(zeroExtendLSB(rdmaRespDataStream.data));
 
-        $display(
-            "time=%0t:", $time,
-            " retryTestState=", fshow(retryTestState),
-            ", response bth=", fshow(bth),
-            ", aeth=", fshow(aeth)
-        );
+        // $display(
+        //     "time=%0t:", $time,
+        //     " retryTestState=", fshow(retryTestState),
+        //     ", response bth=", fshow(bth),
+        //     ", aeth=", fshow(aeth)
+        // );
 
         immAssert(
             bth.psn == endPSN,

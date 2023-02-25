@@ -1,11 +1,11 @@
 TRANSFLAGS = -aggressive-conditions # -lift -split-if
 RECOMPILEFLAGS = -u -show-compiles
 SCHEDFLAGS = -show-schedule -sched-dot # -show-rule-rel dMemInit_request_put doExecute
-#	-show-elab-progress
 DEBUGFLAGS = -check-assert \
 	-continue-after-errors \
 	-keep-fires \
 	-keep-inlined-boundaries \
+	-show-elab-progress \
 	-show-method-bvi \
 	-show-method-conf \
 	-show-module-use \

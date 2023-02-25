@@ -17,6 +17,9 @@ echo "" > $RUN_LOG
 make -j8 TESTFILE=SimDma.bsv TOP=mkTestFixedLenSimDataStreamPipeOut 2>&1 | tee -a $RUN_LOG
 make -j8 TESTFILE=SimGenRdmaReqAndResp.bsv TOP=mkTestSimGenRdmaResp 2>&1 | tee -a $RUN_LOG
 
+make -j8 TESTFILE=TestArbitration.bsv TOP=mkTestPipeOutArbiter 2>&1 | tee -a $RUN_LOG
+make -j8 TESTFILE=TestArbitration.bsv TOP=mkTestServerArbiter 2>&1 | tee -a $RUN_LOG
+
 make -j8 TESTFILE=TestController.bsv TOP=mkTestCntrlInVec 2>&1 | tee -a $RUN_LOG
 
 make -j8 TESTFILE=TestDupReadAtomicCache.bsv TOP=mkTestDupReadAtomicCache 2>&1 | tee -a $RUN_LOG

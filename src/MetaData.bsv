@@ -872,13 +872,13 @@ provisos(
     Add#(1, anysize, portSz),
     Add#(TLog#(portSz), 1, TLog#(TAdd#(portSz, 1))) // portSz must be power of 2
 );
-    function Bool permCheckReqHasLockFunc(PermCheckInfo req) = False;
-    function Bool permCheckRespHasLockFunc(Bool resp) = False;
+    function Bool isPermCheckReqFinished(PermCheckInfo req) = True;
+    function Bool isPermCheckRespFinished(Bool resp) = True;
 
     PermCheckArbiter#(portSz) arbiter <- mkServerArbiter(
         permCheckMR,
-        permCheckReqHasLockFunc,
-        permCheckRespHasLockFunc
+        isPermCheckReqFinished,
+        isPermCheckRespFinished
     );
     return arbiter;
 endmodule
@@ -940,7 +940,6 @@ module mkBramCache(BramCache);
 
     interface read = toGPServer(bramReadReqQ, bramReadRespQ);
 endmodule
-
 
 interface CascadeCache#(numeric type addrWidth, numeric type payloadWidth);
     interface Server#(Bit#(addrWidth), Bit#(payloadWidth)) read;

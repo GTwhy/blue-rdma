@@ -599,13 +599,13 @@ provisos(
     Add#(1, anysize, portSz),
     Add#(TLog#(portSz), 1, TLog#(TAdd#(portSz, 1))) // portSz must be power of 2
 );
-    function Bool dmaReadReqHasLockFunc(DmaReadReq req) = False;
-    function Bool dmaReadRespHasLockFunc(DmaReadResp resp) = !resp.dataStream.isLast;
+    function Bool isDmaReadReqLastFrag(DmaReadReq req) = True;
+    function Bool isDmaReadRespLastFrag(DmaReadResp resp) = resp.dataStream.isLast;
 
     DmaReadArbiter#(portSz) arbiter <- mkServerArbiter(
         dmaReadSrv,
-        dmaReadReqHasLockFunc,
-        dmaReadRespHasLockFunc
+        isDmaReadReqLastFrag,
+        isDmaReadRespLastFrag
     );
     return arbiter;
 endmodule
@@ -617,13 +617,13 @@ provisos(
     Add#(1, anysize, portSz),
     Add#(TLog#(portSz), 1, TLog#(TAdd#(portSz, 1))) // portSz must be power of 2
 );
-    function Bool dmaWriteReqHasLockFunc(DmaWriteReq req) = !req.dataStream.isLast;
-    function Bool dmaWriteRespHasLockFunc(DmaWriteResp resp) = False;
+    function Bool isDmaWriteReqLastFrag(DmaWriteReq req) = req.dataStream.isLast;
+    function Bool isDmaWriteRespLastFrag(DmaWriteResp resp) = True;
 
     DmaWriteArbiter#(portSz) arbiter <- mkServerArbiter(
         dmaWriteSrv,
-        dmaWriteReqHasLockFunc,
-        dmaWriteRespHasLockFunc
+        isDmaWriteReqLastFrag,
+        isDmaWriteRespLastFrag
     );
     return arbiter;
 endmodule

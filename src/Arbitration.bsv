@@ -1,6 +1,5 @@
-import Arbiter :: *;
 import ClientServer :: *;
-import Connectable :: *;
+// import Connectable :: *;
 import FIFOF :: *;
 import GetPut :: *;
 import PAClib :: *;
@@ -8,37 +7,180 @@ import Vector :: *;
 
 import PrimUtils :: *;
 import Utils :: *;
+/*
+interface ArbiterClient;
+    method Action request();
+    // method Action lock();
+    method Bool grant();
+endinterface
+
+interface Arbiter#(numeric type portSz);
+    interface Vector#(portSz, ArbiterClient) clients;
+    method    Bit#(TLog#(portSz))            getGrantIdx;
+endinterface
+
+module mkRoundRobinArbiter(Arbiter#(portSz));
+    let portNum = valueOf(portSz);
+
+    // Initially, priority is given to client 0
+    Vector#(portSz, Bool) initPriorityVec = replicate(False);
+    initPriorityVec[0] = True;
+    Reg#(Vector#(portSz, Bool)) priorityVecReg <- mkReg(initPriorityVec);
+    // Reg#(Vector#(portSz, Bool)) preGrantVecReg <- mkReg(replicate(False));
+    // Reg#(Bit#(TLog#(portSz)))   preGrantIdxReg <- mkReg(0);
+
+    Wire#(Bit#(TLog#(portSz)))   grantIdx <- mkBypassWire;
+    Wire#(Vector#(portSz, Bool)) grantVec <- mkBypassWire;
+    Vector#(portSz, PulseWire) requestVec <- replicateM(mkPulseWire);
+    Vector#(portSz, PulseWire) reqLockVec <- replicateM(mkPulseWire);
+
+    function Bool isTrue(Bool inputVal) = inputVal;
+
+    (* no_implicit_conditions, fire_when_enabled *)
+    rule every;
+        // calculate the grantVec
+        Vector#(portSz, Bool) tmpReqVec = replicate(False);
+        Vector#(portSz, Bool) tmpGrantVec = replicate(False);
+        Bit#(TLog#(portSz))   tmpGrantIdx = 0;
+
+        Bool found = True;
+        // Bool fixed = False;
+        for (Integer x = 0; x < (2 * portNum); x = x + 1) begin
+            Integer y = (x % portNum);
+
+            let hasReq = requestVec[y];
+            tmpReqVec[y] = hasReq;
+            // let hasLock = reqLockVec[y];
+            let hasPriority = priorityVecReg[y];
+
+            if (hasPriority) begin
+                found = False;
+                // fixed = hasReq && hasLock;
+            end
+
+            if (!found && hasReq) begin
+                tmpGrantVec[y] = True;
+                tmpGrantIdx    = fromInteger(y);
+                found = True;
+            end
+        end
+
+        // let sticky = !isZero(pack(preGrantVecReg) & pack(requestVec));
+        // Update the RWire
+        grantVec <= tmpGrantVec;
+        grantIdx <= tmpGrantIdx;
+        // grantVec <= sticky ? preGrantVecReg : tmpGrantVec;
+        // grantIdx <= sticky ? preGrantIdxReg : tmpGrantIdx;
+
+        // If a grant was given, update the priority vector so that
+        // client now has lowest priority.
+        if (any(isTrue, tmpGrantVec)) begin
+            $display("time=%0t: Updating priorities", $time);
+            priorityVecReg <= rotateR(tmpGrantVec);
+            // preGrantVecReg <= tmpGrantVec;
+            // preGrantIdxReg <= tmpGrantIdx;
+        end
+        $display("time=%0t: priority vector: %b", $time, priorityVecReg);
+        $display("time=%0t:  request vector: %b", $time, tmpReqVec);
+        $display("time=%0t:    Grant vector: %b", $time, tmpGrantVec);
+        $display("time=%0t:        grantIdx: %0d", $time, tmpGrantIdx);
+        // $display("time=%0t:           fixed=", $time, fshow(fixed));
+    endrule
+
+    // Now create the vector of interfaces
+    Vector#(portSz, ArbiterClient) clientVec = newVector;
+    for (Integer x = 0; x < portNum; x = x + 1) begin
+        clientVec[x] = (interface ArbiterClient
+            method Action request();
+                requestVec[x].send;
+            endmethod
+
+            // method Action lock();
+            //     reqLockVec[x].send;
+            // endmethod
+
+            method Bool grant();
+                return grantVec[x];
+            endmethod
+        endinterface);
+    end
+
+    interface clients = clientVec;
+    method Bit#(TLog#(portSz)) getGrantIdx() = grantIdx;
+endmodule
+*/
+function Tuple3#(Bool, Bit#(TLog#(portSz)), Vector#(portSz, Bool)) arbitrate(
+    Vector#(portSz, Bool) priorityVec, Vector#(portSz, Bool) requestVec
+);
+    function Bool isTrue(Bool inputVal) = inputVal;
+
+    let portNum = valueOf(portSz);
+
+    Vector#(portSz, Bool) grantVec = replicate(False);
+    Bit#(TLog#(portSz))   grantIdx = 0;
+
+    Bool found   = True;
+    Bool granted = False;
+    for (Integer x = 0; x < (2 * portNum); x = x + 1) begin
+        Integer y = (x % portNum);
+
+        let hasReq = requestVec[y];
+        let hasPriority = priorityVec[y];
+
+        if (hasPriority) begin
+            found = False;
+        end
+
+        if (!found && hasReq) begin
+            grantVec[y] = True;
+            grantIdx    = fromInteger(y);
+            found   = True;
+            granted = True;
+        end
+    end
+
+    let nextPriorityVec = granted ? rotateR(grantVec) : priorityVec;
+    return tuple3(granted, grantIdx, nextPriorityVec);
+endfunction
 
 module mkServerArbiter#(
     Server#(reqType, respType) srv,
-    function Bool reqHasLockFunc(reqType request),
-    function Bool respHasLockFunc(respType response)
+    function Bool isReqFinished(reqType request),
+    function Bool isRespFinished(respType response)
 )(Vector#(portSz, Server#(reqType, respType)))
 provisos(
+    FShow#(reqType), FShow#(respType),
     Bits#(reqType, reqSz),
     Bits#(respType, respSz),
     Add#(1, anysize, portSz),
     Add#(TLog#(portSz), 1, TLog#(TAdd#(portSz, 1))) // portSz must be power of 2
 );
-    Reg#(Bool) lockArbiterReg <- mkReg(False);
-    Arbiter_IFC#(portSz) arbiter <- mkArbiter(lockArbiterReg);
+    // Arbiter#(portSz) arbiter <- mkRoundRobinArbiter;
+    Reg#(Bool) needArbitrationReg <- mkReg(True);
     FIFOF#(Bit#(TLog#(portSz))) preGrantIdxQ <- mkFIFOF;
+    Reg#(Bit#(TLog#(portSz))) preGrantIdxReg <- mkRegU;
+
+    // Initially, priority is given to client 0
+    Vector#(portSz, Bool) initPriorityVec = replicate(False);
+    initPriorityVec[0] = True;
+    Reg#(Vector#(portSz, Bool)) priorityVecReg <- mkReg(initPriorityVec);
 
     Vector#(portSz, FIFOF#(reqType))   reqVec <- replicateM(mkFIFOF);
     Vector#(portSz, FIFOF#(respType)) respVec <- replicateM(mkFIFOF);
+    // Vector#(portSz, Wire#(Bool))   reqLockVec <- replicateM(mkDWire(True));
 
     function Bool portHasReqFunc(FIFOF#(reqType) portReqQ) = portReqQ.notEmpty;
 
     // function Bool portHasReqLockFunc(FIFOF#(reqType) portReqQ);
-    //     return portReqQ.notEmpty ? reqHasLockFunc(portReqQ.first) : False;
+    //     return portReqQ.notEmpty ? isReqFinished(portReqQ.first) : False;
     // endfunction
 
     // function Tuple2#(Bool, Bool) clientHasReqAndLockFunc(
-    //     function Bool reqHasLockFunc(reqType request),
+    //     function Bool isReqFinished(reqType request),
     //     FIFOF#(reqType) portReqQ
     // );
     //     return portReqQ.notEmpty ?
-    //         tuple2(True, reqHasLockFunc(portReqQ.first)) :
+    //         tuple2(True, isReqFinished(portReqQ.first)) :
     //         tuple2(False, False);
     // endfunction
 
@@ -49,69 +191,70 @@ provisos(
     endfunction
 
     rule arbitrateRequest;
-        // ReqBits#(portSz) reqBits = pack(map(portHasReqFunc, reqVec));
-        // LockBits#(portSz) lockBits = pack(map(portHasReqLockFunc, reqVec));
-        // let { notLocked, grantBits } <- arbiter.arbitrate(reqBits, lockBits);
-        // if (notLocked) begin
-        //     preGrantQ.enq(grantBits);
+        let requestVec = map(portHasReqFunc, reqVec);
+        let { granted, grantIdx, nextPriorityVec } = arbitrate(priorityVecReg, requestVec);
+        immAssert(
+            needArbitrationReg || granted,
+            "needArbitrationReg assertion @ mkServerArbiter",
+            $format(
+                "needArbitrationReg=", fshow(needArbitrationReg),
+                " and granted=", fshow(granted),
+                " should be true at least one"
+            )
+        );
+
+        // $display("time=%0t: priority vector: %b", $time, priorityVecReg);
+        // $display("time=%0t:  request vector: %b", $time, requestVec);
+        // $display("time=%0t:    grant vector: %b", $time, grantVec);
+        // $display("time=%0t:        grantIdx: %0d", $time, grantIdx);
+
+        let curGrantIdx = needArbitrationReg ? grantIdx : preGrantIdxReg;
+        let req = reqVec[curGrantIdx].first;
+        reqVec[curGrantIdx].deq;
+        srv.request.put(req);
+
+        let reqFinished = isReqFinished(req);
+        needArbitrationReg <= reqFinished;
+        if (needArbitrationReg) begin
+            preGrantIdxReg <= grantIdx;
+            priorityVecReg <= nextPriorityVec;
+            preGrantIdxQ.enq(curGrantIdx);
+            // $display(
+            //     "time=%0t:", $time,
+            //     " grant to req=", fshow(req),
+            //     ", grantIdx=%0d", grantIdx,
+            //     ", granted=", fshow(granted),
+            //     ", reqFinished=", fshow(reqFinished)
+            // );
+        end
+        // else begin
+        //     $display(
+        //         "time=%0t:", $time,
+        //         " stick to req=", fshow(req),
+        //         " needArbitrationReg=", fshow(needArbitrationReg),
+        //         ", curGrantIdx=%0d", curGrantIdx,
+        //         ", preGrantIdxReg=%0d", preGrantIdxReg,
+        //         ", reqFinished=", fshow(reqFinished)
+        //     );
         // end
-
-        for (Integer idx = 0; idx < valueOf(portSz); idx = idx + 1) begin
-            let hasReq = portHasReqFunc(reqVec[idx]);
-            // let { hasReq, hasLock } = clientHasReqAndLockFunc(
-            //     reqHasLockFunc, reqVec[idx]
-            // );
-            if (hasReq) begin
-                arbiter.clients[idx].request;
-            end
-        end
-    endrule
-
-    rule grantRequest;
-        let grantIdx = arbiter.grant_id;
-        let granted  = arbiter.clients[grantIdx].grant;
-        // let grantHasLock = arbiter.clients[grantIdx].lock;
-        if (granted) begin
-            let req = reqVec[grantIdx].first;
-            reqVec[grantIdx].deq;
-            srv.request.put(req);
-
-            let reqHasLock = reqHasLockFunc(req);
-            lockArbiterReg <= reqHasLock;
-            // Save grant index only when no need to lock
-            if (!reqHasLock) begin
-                preGrantIdxQ.enq(grantIdx);
-            end
-            // immAssert(
-            //     grantHasLock == reqHasLock,
-            //     "grantHasLock assertion @ mkServerArbiterAndDispatcher",
-            //     $format(
-            //         "grantHasLock=", fshow(grantHasLock),
-            //         " should == reqHasLock=", fshow(reqHasLock)
-            //     )
-            // );
-        end
     endrule
 
     rule dispatchResponse;
         let preGrantIdx = preGrantIdxQ.first;
         let resp <- srv.response.get;
-        // Vector#(portSz, Bool) preGrantVec = unpack(preGrantBits);
-        // let maybeIdx = findElem(True, preGrantVec);
-        // immAssert(
-        //     isValid(maybeIdx),
-        //     "maybeIdx assertion @ mkServerArbiter",
-        //     $format("maybeIdx=", fshow(maybeIdx), " should be valid")
-        // );
 
-        let respHasLock = respHasLockFunc(resp);
-        // if (maybeIdx matches tagged Valid. grantIdx) begin
+        let respFinished = isRespFinished(resp);
         respVec[preGrantIdx].enq(resp);
-        // Pop current grant index only when no need to lock
-        if (!respHasLock) begin
+        if (respFinished) begin
             preGrantIdxQ.deq;
         end
-        // end
+
+        // $display(
+        //     "time=%0t:", $time,
+        //     " dispatch resp=", fshow(resp),
+        //     ", preGrantIdx=%0d", preGrantIdx,
+        //     ", respFinished=", fshow(respFinished)
+        // );
     endrule
 
     return map(fifoTuple2Server, zip(reqVec, respVec));
@@ -119,67 +262,148 @@ endmodule
 
 module mkPipeOutArbiter#(
     Vector#(portSz, PipeOut#(anytype)) inputPipeOutVec,
-    function Bool reqHasLockFunc(anytype pipePayload)
+    function Bool isPipePayloadFinished(anytype pipePayload)
 )(PipeOut#(anytype))
 provisos(
+    FShow#(anytype),
     Bits#(anytype, tSz),
     Add#(1, anysize, portSz),
     Add#(TLog#(portSz), 1, TLog#(TAdd#(portSz, 1))) // portSz must be power of 2
 );
-    Reg#(Bool) lockArbiterReg <- mkReg(False);
-    Arbiter_IFC#(portSz) arbiter <- mkArbiter(lockArbiterReg);
+    // Arbiter#(portSz) arbiter <- mkRoundRobinArbiter;
     FIFOF#(anytype) pipeOutQ <- mkFIFOF;
+    Reg#(Bool) needArbitrationReg <- mkReg(True);
+    Reg#(Bit#(TLog#(portSz))) preGrantIdxReg <- mkRegU;
+
+    // Initially, priority is given to client 0
+    Vector#(portSz, Bool) initPriorityVec = replicate(False);
+    initPriorityVec[0] = True;
+    Reg#(Vector#(portSz, Bool)) priorityVecReg <- mkReg(initPriorityVec);
 
     function Bool portHasReqFunc(PipeOut#(anytype) pipeIn) = pipeIn.notEmpty;
 
-    // function Bool portHasReqLockFunc(PipeOut#(anytype) pipeIn);
-    //     return pipeIn.notEmpty ? reqHasLockFunc(pipeIn.first) : False;
-    // endfunction
-
     // function Tuple2#(Bool, Bool) clientHasReqAndLockFunc(
-    //     function Bool reqHasLockFunc(reqType request),
+    //     function Bool isReqFinished(reqType request),
     //     PipeOut#(reqType) portReqQ
     // );
     //     return portReqQ.notEmpty ?
-    //         tuple2(True, reqHasLockFunc(portReqQ.first)) :
+    //         tuple2(True, isReqFinished(portReqQ.first)) :
     //         tuple2(False, False);
     // endfunction
-
-    rule arbitrateRequest;
-        // ReqBits#(portSz) reqBits = pack(map(portHasReqFunc, inputPipeOutVec));
-        // LockBits#(portSz) lockBits = pack(map(portHasReqLockFunc, inputPipeOutVec));
-        // let { notLocked, grantBits } <- arbiter.arbitrate(reqBits, lockBits);
-
+/*
+    rule arbitrateRequest if (!lockArbiterReg);
         for (Integer idx = 0; idx < valueOf(portSz); idx = idx + 1) begin
             let hasReq = portHasReqFunc(inputPipeOutVec[idx]);
             // let { hasReq, hasLock } = clientHasReqAndLockFunc(
-            //     reqHasLockFunc, inputPipeOutVec[idx]
+            //     isReqFinished, inputPipeOutVec[idx]
             // );
             if (hasReq) begin
                 arbiter.clients[idx].request;
+                // if (hasLock) begin
+                //     arbiter.clients[idx].lock;
+                // end
             end
         end
     endrule
 
     rule grantRequest;
-        let grantIdx = arbiter.grant_id;
+        let grantIdx = arbiter.getGrantIdx;
         let granted = arbiter.clients[grantIdx].grant;
-        let grantHasLock = arbiter.clients[grantIdx].lock;
-        if (granted) begin
-            let pipePayload = inputPipeOutVec[grantIdx].first;
-            inputPipeOutVec[grantIdx].deq;
-            pipeOutQ.enq(pipePayload);
+        immAssert(
+            !(lockArbiterReg && granted),
+            "lockArbiterReg assertion @ mkServerArbiter",
+            $format(
+                "lockArbiterReg=", fshow(lockArbiterReg),
+                " and granted=", fshow(granted),
+                " should not be true at the same time"
+            )
+        );
+        let curGrantIdx = lockArbiterReg ? preGrantIdxReg : grantIdx;
+        // let grantHasLock = arbiter.clients[grantIdx].lock;
+        // if (granted) begin
+        let pipePayload = inputPipeOutVec[curGrantIdx].first;
+        inputPipeOutVec[curGrantIdx].deq;
+        pipeOutQ.enq(pipePayload);
 
-            let reqHasLock = reqHasLockFunc(pipePayload);
-            lockArbiterReg <= reqHasLock;
-            // immAssert(
-            //     grantHasLock == reqHasLock,
-            //     "grantHasLock assertion @ mkPipeOutArbiter",
-            //     $format(
-            //         "grantHasLock=", fshow(grantHasLock),
-            //         " should == reqHasLock=", fshow(reqHasLock)
-            //     )
-            // );
+        let reqHasLock = isReqFinished(pipePayload);
+        // reqLockVec[curGrantIdx] <= reqHasLock;
+        lockArbiterReg <= reqHasLock;
+        // Save grant index at the first fragment of a request that no need to lock
+        if (granted) begin
+            preGrantIdxReg <= grantIdx;
+            $display(
+                "time=%0t:", $time,
+                " grant to pipePayload=", fshow(pipePayload),
+                ", grantIdx=%0d", grantIdx,
+                ", granted=", fshow(granted),
+                ", reqHasLock=", fshow(reqHasLock)
+            );
+        end
+        $display(
+            "time=%0t:", $time,
+            " reqHasLock=", fshow(reqHasLock),
+            ", lockArbiterReg=", fshow(lockArbiterReg),
+            ", curGrantIdx=%0d", curGrantIdx,
+            ", preGrantIdxReg=%0d", preGrantIdxReg
+        );
+        // if (granted) begin
+        //     let pipePayload = inputPipeOutVec[grantIdx].first;
+        //     inputPipeOutVec[grantIdx].deq;
+        //     pipeOutQ.enq(pipePayload);
+
+        //     let reqHasLock = isReqFinished(pipePayload);
+        //     $display(
+        //         "time=%0t:", $time, " reqHasLock=", fshow(reqHasLock),
+        //         ", pipePayload=", fshow(pipePayload)
+        //     );
+        // end
+    endrule
+*/
+    rule arbitrateRequest;
+        let requestVec = map(portHasReqFunc, inputPipeOutVec);
+        let { granted, grantIdx, nextPriorityVec } = arbitrate(priorityVecReg, requestVec);
+        immAssert(
+            needArbitrationReg || granted,
+            "needArbitrationReg assertion @ mkPipeOutArbiter",
+            $format(
+                "needArbitrationReg=", fshow(needArbitrationReg),
+                " and granted=", fshow(granted),
+                " should be true at least one"
+            )
+        );
+
+        // $display("time=%0t: priority vector: %b", $time, priorityVecReg);
+        // $display("time=%0t:  request vector: %b", $time, requestVec);
+        // $display("time=%0t:    grant vector: %b", $time, grantVec);
+        // $display("time=%0t:        grantIdx: %0d", $time, grantIdx);
+
+        let curGrantIdx = needArbitrationReg ? grantIdx : preGrantIdxReg;
+        let pipePayload = inputPipeOutVec[curGrantIdx].first;
+        inputPipeOutVec[curGrantIdx].deq;
+        pipeOutQ.enq(pipePayload);
+
+        let pipePayloadFinished = isPipePayloadFinished(pipePayload);
+        needArbitrationReg <= pipePayloadFinished;
+        if (needArbitrationReg) begin
+            preGrantIdxReg <= grantIdx;
+            priorityVecReg <= nextPriorityVec;
+            $display(
+                "time=%0t:", $time,
+                " grant to pipePayload=", fshow(pipePayload),
+                ", grantIdx=%0d", grantIdx,
+                ", granted=", fshow(granted),
+                ", pipePayloadFinished=", fshow(pipePayloadFinished)
+            );
+        end
+        else begin
+            $display(
+                "time=%0t:", $time,
+                " stick to pipePayload=", fshow(pipePayload),
+                " needArbitrationReg=", fshow(needArbitrationReg),
+                ", curGrantIdx=%0d", curGrantIdx,
+                ", preGrantIdxReg=%0d", preGrantIdxReg,
+                ", pipePayloadFinished=", fshow(pipePayloadFinished)
+            );
         end
     endrule
 
