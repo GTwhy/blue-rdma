@@ -1,4 +1,3 @@
-// import Connectable :: *;
 import FIFOF :: *;
 import PAClib :: *;
 import Vector :: *;
@@ -209,6 +208,11 @@ module mkInputRdmaPktBufAndHeaderValidation#(
         pipeIn.headerAndMetaData.headerMetaData
     );
 
+    (* conflict_free = "recvPktFrag, \
+                        discardInvalidFrag, \
+                        checkQpMetaData, \
+                        calcFraglen, \
+                        calcPktLen" *)
     rule recvPktFrag if (pktBufStateReg == RDMA_PKT_BUF_ST_RECV_FRAG);
         let payloadFrag = payloadPipeIn.first;
         payloadPipeIn.deq;

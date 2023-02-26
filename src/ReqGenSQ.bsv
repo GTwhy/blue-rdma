@@ -488,6 +488,11 @@ module mkReqGenSQ#(
         payloadGenerator.payloadDataStreamPipeOut
     );
 
+    (* conflict_free = "deqWorkReqPipeOut, \
+                        genFirstOrOnlyReqHeader, \
+                        genMiddleOrLastReqHeader, \
+                        recvPayloadGenRespAndGenErrWorkComp, \
+                        errFlush" *)
     rule deqWorkReqPipeOut if (cntrl.isRTS && isNormalStateReg);
         let qpType = cntrl.getQpType;
         immAssert(

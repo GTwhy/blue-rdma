@@ -146,6 +146,14 @@ module mkRespHandleSQ#(
     endfunction
 
     // Response handle pipeline first stage
+    (* conflict_free = "recvRespHeader, \
+                        handleRespByType, \
+                        queryPerm4NormalReadAtomicResp, \
+                        checkPerm4NormalReadAtomicResp, \
+                        checkReadRespLen, \
+                        genWorkCompAndInitDma, \
+                        errFlushPktMetaDataAndPayload, \
+                        (retryFlushDone, retryFlushPktMetaDataAndPayload)" *)
     rule recvRespHeader if (
         cntrl.isRTS && !hasErrOccuredReg            &&
         respHandleStateReg == SQ_HANDLE_RESP_HEADER &&

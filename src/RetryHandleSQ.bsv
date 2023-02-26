@@ -317,10 +317,10 @@ module mkRetryHandleSQ#(
             rnrWaitCntReg <= rnrWaitCntReg - 1;
         end
 
-        $display(
-            "time=%0t: retry rnrWait", $time,
-            ", rnrWaitCntReg=%h", rnrWaitCntReg
-        );
+        // $display(
+        //     "time=%0t: retry rnrWait", $time,
+        //     ", rnrWaitCntReg=%h", rnrWaitCntReg
+        // );
     endrule
 
     rule modifyPartialRetryWR if (cntrl.isRTS && retryHandleStateReg[0] == RETRY_ST_MODIFY_PARTIAL_RETRY_WR);

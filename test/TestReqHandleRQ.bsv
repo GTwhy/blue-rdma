@@ -665,9 +665,9 @@ module mkTestReqHandleAbnormalCase#(ReqHandleErrType errType)(Empty);
                 //     ", aeth=", fshow(aeth)
                 // );
             end
-            $display(
-                "time=%0t: response bth=", $time, fshow(bth)
-            );
+            // $display(
+            //     "time=%0t: response bth=", $time, fshow(bth)
+            // );
         end
     endrule
 

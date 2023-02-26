@@ -664,9 +664,9 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
         pendingWorkReqBuf.fifoIfc.enq(pendingWR);
 
         retryTestState  <= TEST_RESP_HANDLE_FOLLOWING_RESP_GEN;
-        $display(
-            "time=%0t:", $time, " retry response for WR=", fshow(pendingWR)
-        );
+        // $display(
+        //     "time=%0t:", $time, " retry response for WR=", fshow(pendingWR)
+        // );
     endrule
 
     rule genFollowingResp4Flush if (
@@ -682,10 +682,10 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
         // FollowingAckNum - 2 because previous stage generate a response
         // to be flushed
         followingAckCnt <= fromInteger(valueOf(FollowingAckNum) - 2);
-        $display(
-            "time=%0t:", $time,
-            " normal response to be flushed for following WR=", fshow(pendingWR)
-        );
+        // $display(
+        //     "time=%0t:", $time,
+        //     " normal response to be flushed for following WR=", fshow(pendingWR)
+        // );
     endrule
 
     rule genFollowingWR if (
@@ -704,10 +704,10 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
         else begin
             followingAckCnt.decr(1);
         end
-        $display(
-            "time=%0t:", $time,
-            " other following WR=", fshow(pendingWR)
-        );
+        // $display(
+        //     "time=%0t:", $time,
+        //     " other following WR=", fshow(pendingWR)
+        // );
     endrule
 
     rule genNestedRetryResp if (
@@ -729,10 +729,10 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
         genRetryResp4WR(retryRestartWR);
 
         retryTestState <= TEST_RESP_HANDLE_WAIT_RETRY_RESTART;
-        $display(
-            "time=%0t:", $time,
-            " retry response again for WR=%h", retryRestartWR.wr.id
-        );
+        // $display(
+        //     "time=%0t:", $time,
+        //     " retry response again for WR=%h", retryRestartWR.wr.id
+        // );
     endrule
 
     rule waitRetryRestart if (retryTestState == TEST_RESP_HANDLE_WAIT_RETRY_RESTART);
@@ -773,9 +773,9 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
 
         retryTestState  <= TEST_RESP_HANDLE_FOLLOWING_NORMAL_RESP_GEN;
         followingAckCnt <= fromInteger(valueOf(FollowingAckNum) - 1);
-        $display(
-            "time=%0t:", $time, " normal response for WR=%h", retryPendingWR.wr.id
-        );
+        // $display(
+        //     "time=%0t:", $time, " normal response for WR=%h", retryPendingWR.wr.id
+        // );
     endrule
 
     rule genFollowingNormaResp if (
@@ -792,10 +792,10 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
         else begin
             followingAckCnt.decr(1);
         end
-        $display(
-            "time=%0t:", $time,
-            " normal response for following WR=%h", followingPendingWR.wr.id
-        );
+        // $display(
+        //     "time=%0t:", $time,
+        //     " normal response for following WR=%h", followingPendingWR.wr.id
+        // );
     endrule
 
     rule compareWorkCompWithPendingWorkReq;

@@ -453,6 +453,25 @@ module mkReqHandleRQ#(
         endaction
     endfunction
 
+    // TODO: fix conflict between issueDmaReqOrDiscard and genMiddleOrLastResp,
+    // between retryStateChange and retryFlush
+    (* conflict_free = "checkEPSN, \
+                        checkSupportedReqOpCode, \
+                        checkNormalReqOpCodeSeq, \
+                        checkRNR, \
+                        queryPerm4NormalReq, \
+                        checkPerm4NormalReq, \
+                        queryPerm4DupReadReq, \
+                        checkPerm4DupReadReq, \
+                        calcNormalSendWriteReqDmaLen, \
+                        issueDmaReqOrDiscard, \
+                        checkShouldGenRespAndWaitAtomicResp, \
+                        queryPerm4DupAtomicReq, \
+                        checkPerm4DupAtomicReq, \
+                        genFirstOrOnlyResp, \
+                        genWorkCompReq, \
+                        errFlush, \
+                        retryStateChange" *)
     rule checkEPSN if (
         cntrl.isNonErr                     &&
         retryFlushStateReg == RQ_NOT_RETRY &&
@@ -1630,17 +1649,17 @@ module mkReqHandleRQ#(
         end
         if (maybeMiddleOrLastHeader matches tagged Valid .middleOrLastHeader) begin
             headerQ.enq(middleOrLastHeader);
-            $display("time=%0t: generate middle or last response header", $time);
+            // $display("time=%0t: generate middle or last response header", $time);
         end
 
         isGenMultiPktRespReg <= !isLastRespPkt;
-        $display(
-            "time=%0t: 15th stage, bth.opcode=", $time, fshow(bth.opcode),
-            ", bth.psn=%h", bth.psn, ", bth.ackReq=", fshow(bth.ackReq),
-            ", curRespPsn=%h", cntrl.contextRQ.getCurRespPsn,
-            ", isLastRespPkt=", fshow(isLastRespPkt),
-            ", reqStatus=", fshow(reqStatus)
-        );
+        // $display(
+        //     "time=%0t: 15th stage, bth.opcode=", $time, fshow(bth.opcode),
+        //     ", bth.psn=%h", bth.psn, ", bth.ackReq=", fshow(bth.ackReq),
+        //     ", curRespPsn=%h", cntrl.contextRQ.getCurRespPsn,
+        //     ", isLastRespPkt=", fshow(isLastRespPkt),
+        //     ", reqStatus=", fshow(reqStatus)
+        // );
     endrule
 
     rule genWorkCompReq if (cntrl.isNonErr || cntrl.isERR); // This rule still runs at retry or error state
