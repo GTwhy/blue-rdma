@@ -28,8 +28,8 @@ function Maybe#(WorkComp) genWorkComp4WorkReq(
             status  : wcGenReqSQ.wcStatus,
             len     : wr.len,
             pkey    : cntrl.getPKEY,
-            dqpn    : cntrl.getDQPN,
-            sqpn    : cntrl.getSQPN,
+            dqpn    : cntrl.getSQPN,
+            sqpn    : cntrl.getDQPN,
             immDt   : tagged Invalid,
             rkey2Inv: tagged Invalid
         };
@@ -53,8 +53,8 @@ function Maybe#(WorkComp) genErrFlushWorkComp4WorkReq(
             status  : IBV_WC_WR_FLUSH_ERR,
             len     : wr.len,
             pkey    : cntrl.getPKEY,
-            dqpn    : cntrl.getDQPN,
-            sqpn    : cntrl.getSQPN,
+            dqpn    : cntrl.getSQPN,
+            sqpn    : cntrl.getDQPN,
             immDt   : tagged Invalid,
             rkey2Inv: tagged Invalid
         };
@@ -142,9 +142,9 @@ module mkWorkCompGenSQ#(
             "maybeWorkComp assertion @ mkWorkCompGenSQ",
             $format("maybeWorkComp=", fshow(maybeWorkComp), " should be valid")
         );
-        let workComp = unwrapMaybe(maybeWorkComp);
+        let workComp          = unwrapMaybe(maybeWorkComp);
         let isWorkCompSuccess = workComp.status == IBV_WC_SUCCESS;
-        let isCompQueueFull = False;
+        // let isCompQueueFull   = False;
 
         // $display(
         //     "time=%0t: wcGenReqSQ=", $time, fshow(wcGenReqSQ),
@@ -171,24 +171,25 @@ module mkWorkCompGenSQ#(
             end
 
             if (needWorkCompWhenNormal) begin
-                if (workCompOutQ4SQ.notFull) begin
-                    workCompOutQ4SQ.enq(workComp);
-                end
-                else begin
-                    isCompQueueFull = True;
-                end
+                // if (workCompOutQ4SQ.notFull) begin
+                workCompOutQ4SQ.enq(workComp);
+                // end
+                // else begin
+                //     isCompQueueFull = True;
+                // end
             end
         end
         else begin
-            if (workCompOutQ4SQ.notFull) begin
-                workCompOutQ4SQ.enq(workComp);
-            end
-            else begin
-                isCompQueueFull = True;
-            end
+            // if (workCompOutQ4SQ.notFull) begin
+            workCompOutQ4SQ.enq(workComp);
+            // end
+            // else begin
+            //     isCompQueueFull = True;
+            // end
         end
 
-        let hasErrWorkCompOrCompQueueFullSQ = !isWorkCompSuccess || isCompQueueFull;
+        // TODO: handle CQ full
+        let hasErrWorkCompOrCompQueueFullSQ = !isWorkCompSuccess; // || isCompQueueFull;
         if (hasErrWorkCompOrCompQueueFullSQ || pulseHasErrFromRQ) begin
             cntrl.setStateErr;
             workCompGenStateReg <= WC_GEN_ST_ERR_FLUSH;
@@ -226,7 +227,7 @@ module mkWorkCompGenSQ#(
         );
         let errFlushWC = unwrapMaybe(maybeErrFlushWC);
 
-        let isCompQueueFull = False;
+        // let isCompQueueFull = False;
         if (isFirstErrPartialAckWorkReqReg) begin
             // If the first error response is partial ACK to WR,
             // then skip the first full ACK to the WR,
@@ -243,11 +244,11 @@ module mkWorkCompGenSQ#(
                 )
             );
         end
-        else if (workCompOutQ4SQ.notFull) begin
-            workCompOutQ4SQ.enq(errFlushWC);
-        end
+        // else if (workCompOutQ4SQ.notFull) begin
+        //     isCompQueueFull = True;
+        // end
         else begin
-            isCompQueueFull = True;
+            workCompOutQ4SQ.enq(errFlushWC);
         end
         // $display(
         //     "time=%0t: flush pendingWorkCompQ4SQ, errFlushWC=",
@@ -281,8 +282,8 @@ function Maybe#(WorkComp) genWorkComp4RecvReq(
             status  : wcGenReqRQ.wcStatus,
             len     : wcGenReqRQ.len,
             pkey    : cntrl.getPKEY,
-            dqpn    : cntrl.getDQPN,
-            sqpn    : cntrl.getSQPN,
+            dqpn    : cntrl.getSQPN,
+            sqpn    : cntrl.getDQPN,
             immDt   : wcGenReqRQ.immDt,
             rkey2Inv: wcGenReqRQ.rkey2Inv
         };
@@ -310,8 +311,8 @@ function Maybe#(WorkComp) genErrFlushWorkComp4WorkCompGenReqRQ(
             status  : IBV_WC_WR_FLUSH_ERR,
             len     : wcGenReqRQ.len,
             pkey    : cntrl.getPKEY,
-            dqpn    : cntrl.getDQPN,
-            sqpn    : cntrl.getSQPN,
+            dqpn    : cntrl.getSQPN,
+            sqpn    : cntrl.getDQPN,
             immDt   : wcGenReqRQ.immDt,
             rkey2Inv: wcGenReqRQ.rkey2Inv
         };
@@ -332,8 +333,8 @@ function WorkComp genErrFlushWorkComp4RecvReq(
         status  : IBV_WC_WR_FLUSH_ERR,
         len     : rr.len,
         pkey    : cntrl.getPKEY,
-        dqpn    : cntrl.getDQPN,
-        sqpn    : cntrl.getSQPN,
+        dqpn    : cntrl.getSQPN,
+        sqpn    : cntrl.getDQPN,
         immDt   : tagged Invalid,
         rkey2Inv: tagged Invalid
     };
@@ -380,11 +381,12 @@ module mkWorkCompGenRQ#(
         let isWriteImmReq    = isWriteImmReqRdmaOpCode(reqOpCode);
         let isLastOrOnlyReq  = isLastOrOnlyRdmaOpCode(reqOpCode);
 
-        let isCompQueueFull           = False;
         let maybeWorkComp             = genWorkComp4RecvReq(cntrl, wcGenReqRQ);
         let isWorkCompSuccess         = wcGenReqRQ.wcStatus == IBV_WC_SUCCESS;
+        // let isCompQueueFull           = False;
         let needWaitDmaRespWhenNormal = !wcGenReqRQ.isZeroDmaLen && (isSendReq || isWriteReq);
 
+        // TODO: handle CQ full
         if (isWorkCompSuccess) begin
             if (isLastOrOnlyReq && (isSendReq || isWriteImmReq)) begin
                 immAssert(
@@ -397,12 +399,12 @@ module mkWorkCompGenRQ#(
                 );
                 let workComp = unwrapMaybe(maybeWorkComp);
 
-                if (workCompOutQ4RQ.notFull) begin
-                    workCompOutQ4RQ.enq(workComp);
-                end
-                else begin
-                    isCompQueueFull = True;
-                end
+                // if (workCompOutQ4RQ.notFull) begin
+                workCompOutQ4RQ.enq(workComp);
+                // end
+                // else begin
+                //     isCompQueueFull = True;
+                // end
             end
 
             if (needWaitDmaRespWhenNormal) begin
@@ -433,12 +435,12 @@ module mkWorkCompGenRQ#(
             workCompGenStateReg <= WC_GEN_ST_ERR_FLUSH;
 
             if (maybeWorkComp matches tagged Valid .workComp) begin
-                if (workCompOutQ4RQ.notFull) begin
-                    workCompOutQ4RQ.enq(workComp);
-                end
-                else begin
-                    isCompQueueFull = True;
-                end
+                // if (workCompOutQ4RQ.notFull) begin
+                workCompOutQ4RQ.enq(workComp);
+                // end
+                // else begin
+                //     isCompQueueFull = True;
+                // end
             end
         end
         // $display(
@@ -456,7 +458,7 @@ module mkWorkCompGenRQ#(
         let isSendReq   = isSendReqRdmaOpCode(reqOpCode);
         let isWriteImmReq    = isWriteImmReqRdmaOpCode(reqOpCode);
         let isFirstOrOnlyReq = isFirstOrOnlyRdmaOpCode(reqOpCode);
-        let isCompQueueFull  = False;
+        // let isCompQueueFull  = False;
 
         let maybeErrFlushWC = genErrFlushWorkComp4WorkCompGenReqRQ(cntrl, wcGenReqRQ);
         if (maybeErrFlushWC matches tagged Valid .errFlushWC) begin
@@ -474,21 +476,21 @@ module mkWorkCompGenRQ#(
                 // When error, generate WC in RQ on first or only send request packets,
                 // since the middle or last send request packets might be discarded.
                 if ((isSendReq && isFirstOrOnlyReq) || isWriteImmReq) begin
-                    if (workCompOutQ4RQ.notFull) begin
-                        workCompOutQ4RQ.enq(errFlushWC);
-                    end
-                    else begin
-                        isCompQueueFull = True;
-                    end
+                    // if (workCompOutQ4RQ.notFull) begin
+                    workCompOutQ4RQ.enq(errFlushWC);
+                    // end
+                    // else begin
+                    //     isCompQueueFull = True;
+                    // end
                 end
             end
             else begin
-                if (workCompOutQ4RQ.notFull) begin
-                    workCompOutQ4RQ.enq(errFlushWC);
-                end
-                else begin
-                    isCompQueueFull = True;
-                end
+                // if (workCompOutQ4RQ.notFull) begin
+                workCompOutQ4RQ.enq(errFlushWC);
+                // end
+                // else begin
+                //     isCompQueueFull = True;
+                // end
             end
         end
 

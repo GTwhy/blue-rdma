@@ -128,9 +128,37 @@ module mkRQ#(
     interface workCompStatusPipeOutRQ = workCompGenRQ.workCompStatusPipeOutRQ;
 endmodule
 
+// pipeIn1 has priority over pipeIn2
+function PipeOut#(anytype) fixedBinaryPipeOutArbiter(
+    PipeOut#(anytype) pipeIn1, PipeOut#(anytype) pipeIn2
+);
+    let notEmpty = pipeIn1.notEmpty || pipeIn2.notEmpty;
+    let resultIfc = interface PipeOut#(anytype);
+        method anytype first() if (notEmpty);
+            if (pipeIn1.notEmpty) begin
+                return pipeIn1.first;
+            end
+            else begin
+                return pipeIn2.first;
+            end
+        endmethod
+
+        method Action deq() if (notEmpty);
+            if (pipeIn1.notEmpty) begin
+                pipeIn1.deq;
+            end
+            else begin
+                pipeIn2.deq;
+            end
+        endmethod
+
+        method Bool notEmpty() = notEmpty;
+    endinterface;
+
+    return resultIfc;
+endfunction
+
 interface QP;
-    // interface Put#(RecvReq) putRecvReq;
-    // interface Put#(WorkReq) putWorkReq;
     interface DataStreamPipeOut rdmaReqRespPipeOut;
     interface PipeOut#(WorkComp) workCompPipeOutRQ;
     interface PipeOut#(WorkComp) workCompPipeOutSQ;
@@ -147,36 +175,6 @@ module mkQP#(
     RdmaPktMetaDataAndPayloadPipeOut reqPktPipeIn,
     RdmaPktMetaDataAndPayloadPipeOut respPktPipeIn
 )(QP);
-    function DataStreamPipeOut arbitrateDataStreamInsideQP(
-        DataStreamPipeOut rdmaRespPipeOut,
-        DataStreamPipeOut rdmaReqPipeOut
-    );
-        let notEmpty = rdmaRespPipeOut.notEmpty || rdmaReqPipeOut.notEmpty;
-        let resultIfc = interface DataStreamPipeOut;
-            method DataStream first() if (notEmpty);
-                if (rdmaRespPipeOut.notEmpty) begin
-                    return rdmaRespPipeOut.first;
-                end
-                else begin
-                    return rdmaReqPipeOut.first;
-                end
-            endmethod
-
-            method Action deq() if (notEmpty);
-                if (rdmaRespPipeOut.notEmpty) begin
-                    rdmaRespPipeOut.deq;
-                end
-                else begin
-                    rdmaReqPipeOut.deq;
-                end
-            endmethod
-
-            method Bool notEmpty() = notEmpty;
-        endinterface;
-
-        return resultIfc;
-    endfunction
-
     // TODO: change WR and RR queues to mkSizedFIFOF
     FIFOF#(RecvReq) recvReqQ <- mkFIFOF;
     FIFOF#(WorkReq) workReqQ <- mkFIFOF;
@@ -221,11 +219,8 @@ module mkQP#(
         end
     endrule
 
-    // interface putRecvReq = toPut(recvReqQ);
-    // interface putWorkReq = toPut(workReqQ);
-    interface rdmaReqRespPipeOut = arbitrateDataStreamInsideQP(
-        rq.rdmaRespDataStreamPipeOut,
-        sq.rdmaReqDataStreamPipeOut
+    interface rdmaReqRespPipeOut = fixedBinaryPipeOutArbiter(
+        rq.rdmaRespDataStreamPipeOut, sq.rdmaReqDataStreamPipeOut
     );
     interface workCompPipeOutRQ = rq.workCompPipeOutRQ;
     interface workCompPipeOutSQ = sq.workCompPipeOutSQ;
@@ -266,6 +261,7 @@ interface TransportLayerRDMA;
     interface DataStreamPipeOut rdmaDataStreamPipeOut;
     interface Put#(RecvReq) putRecvReq;
     interface Put#(WorkReq) putWorkReq;
+    interface PipeOut#(WorkComp) workCompPipeOut;
     // interface PipeOut#(WorkComp) workCompPipeOutRQ;
     // interface PipeOut#(WorkComp) workCompPipeOutSQ;
 endinterface
@@ -303,6 +299,8 @@ module mkTransportLayerRDMA(TransportLayerRDMA);
     DmaWriteArbiter#(MAX_QP) dmaWriteSrvVec <- mkDmaWriteAribter(dmaWriteSrv);
 
     Vector#(MAX_QP, DataStreamPipeOut) qpDataStreamPipeOutVec = newVector;
+    Vector#(MAX_QP, PipeOut#(WorkComp)) qpRecvWorkCompPipeOutVec = newVector;
+    Vector#(MAX_QP, PipeOut#(WorkComp)) qpSendWorkCompPipeOutVec = newVector;
     for (Integer idx = 0; idx < valueOf(MAX_QP); idx = idx + 1) begin
         let permCheck4RQ = permCheckArbiter[2 * idx];
         let permCheck4SQ = permCheckArbiter[2 * idx + 1];
@@ -329,21 +327,27 @@ module mkTransportLayerRDMA(TransportLayerRDMA);
             "].cnpPipeOut empty assertion @ mkTransportLayerRDMA"
         ));
         // TODO: support CQ
-        mkSink(qp.workCompPipeOutRQ);
-        mkSink(qp.workCompPipeOutSQ);
+        qpRecvWorkCompPipeOutVec[idx] = qp.workCompPipeOutRQ;
+        qpSendWorkCompPipeOutVec[idx] = qp.workCompPipeOutSQ;
     end
 
-    function Bool dataStreamHasLockFunc(DataStream ds) = !ds.isLast;
-    let arbitratedPipeOut <- mkPipeOutArbiter(qpDataStreamPipeOutVec, dataStreamHasLockFunc);
+    function Bool isDataStreamFinished(DataStream ds) = ds.isLast;
     // TODO: connect to UDP
-    // mkSink(arbitratedPipeOut);
+    let dataStreamPipeOut <- mkPipeOutArbiter(qpDataStreamPipeOutVec, isDataStreamFinished);
+
+    function Bool isWorkCompFinished(WorkComp wc) = True;
+    let recvWorkCompPipeOut <- mkPipeOutArbiter(qpRecvWorkCompPipeOutVec, isWorkCompFinished);
+    let sendWorkCompPipeOut <- mkPipeOutArbiter(qpSendWorkCompPipeOutVec, isWorkCompFinished);
 
     interface rdmaDataStreamInput   = toPut(inputDataStreamQ);
-    interface rdmaDataStreamPipeOut = arbitratedPipeOut;
+    interface rdmaDataStreamPipeOut = dataStreamPipeOut;
     interface putRecvReq            = toPut(inputRecvReqQ);
     interface putWorkReq            = toPut(inputWorkReqQ);
-    // interface workCompPipeOutRQ     = singleQP.workCompPipeOutRQ;
-    // interface workCompPipeOutSQ     = singleQP.workCompPipeOutSQ;
+    interface workCompPipeOut       = fixedBinaryPipeOutArbiter(
+        recvWorkCompPipeOut, sendWorkCompPipeOut
+    );
+    // interface workCompPipeOutRQ     = recvWorkCompPipeOut;
+    // interface workCompPipeOutSQ     = sendWorkCompPipeOut;
 endmodule
 
 // TODO: connect to DMA IP

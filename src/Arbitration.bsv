@@ -290,75 +290,7 @@ provisos(
     //         tuple2(True, isReqFinished(portReqQ.first)) :
     //         tuple2(False, False);
     // endfunction
-/*
-    rule arbitrateRequest if (!lockArbiterReg);
-        for (Integer idx = 0; idx < valueOf(portSz); idx = idx + 1) begin
-            let hasReq = portHasReqFunc(inputPipeOutVec[idx]);
-            // let { hasReq, hasLock } = clientHasReqAndLockFunc(
-            //     isReqFinished, inputPipeOutVec[idx]
-            // );
-            if (hasReq) begin
-                arbiter.clients[idx].request;
-                // if (hasLock) begin
-                //     arbiter.clients[idx].lock;
-                // end
-            end
-        end
-    endrule
 
-    rule grantRequest;
-        let grantIdx = arbiter.getGrantIdx;
-        let granted = arbiter.clients[grantIdx].grant;
-        immAssert(
-            !(lockArbiterReg && granted),
-            "lockArbiterReg assertion @ mkServerArbiter",
-            $format(
-                "lockArbiterReg=", fshow(lockArbiterReg),
-                " and granted=", fshow(granted),
-                " should not be true at the same time"
-            )
-        );
-        let curGrantIdx = lockArbiterReg ? preGrantIdxReg : grantIdx;
-        // let grantHasLock = arbiter.clients[grantIdx].lock;
-        // if (granted) begin
-        let pipePayload = inputPipeOutVec[curGrantIdx].first;
-        inputPipeOutVec[curGrantIdx].deq;
-        pipeOutQ.enq(pipePayload);
-
-        let reqHasLock = isReqFinished(pipePayload);
-        // reqLockVec[curGrantIdx] <= reqHasLock;
-        lockArbiterReg <= reqHasLock;
-        // Save grant index at the first fragment of a request that no need to lock
-        if (granted) begin
-            preGrantIdxReg <= grantIdx;
-            $display(
-                "time=%0t:", $time,
-                " grant to pipePayload=", fshow(pipePayload),
-                ", grantIdx=%0d", grantIdx,
-                ", granted=", fshow(granted),
-                ", reqHasLock=", fshow(reqHasLock)
-            );
-        end
-        $display(
-            "time=%0t:", $time,
-            " reqHasLock=", fshow(reqHasLock),
-            ", lockArbiterReg=", fshow(lockArbiterReg),
-            ", curGrantIdx=%0d", curGrantIdx,
-            ", preGrantIdxReg=%0d", preGrantIdxReg
-        );
-        // if (granted) begin
-        //     let pipePayload = inputPipeOutVec[grantIdx].first;
-        //     inputPipeOutVec[grantIdx].deq;
-        //     pipeOutQ.enq(pipePayload);
-
-        //     let reqHasLock = isReqFinished(pipePayload);
-        //     $display(
-        //         "time=%0t:", $time, " reqHasLock=", fshow(reqHasLock),
-        //         ", pipePayload=", fshow(pipePayload)
-        //     );
-        // end
-    endrule
-*/
     rule arbitrateRequest;
         let requestVec = map(portHasReqFunc, inputPipeOutVec);
         let { granted, grantIdx, nextPriorityVec } = arbitrate(priorityVecReg, requestVec);
