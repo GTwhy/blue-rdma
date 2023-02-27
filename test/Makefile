@@ -3,6 +3,8 @@ include ../Makefile.base
 TESTFILE ?= TestExtractAndPrependPipeOut.bsv
 TOP ?= mkTestHeaderAndDataStreamConversion
 
+SIMEXE = $(BUILDDIR)/$(TOP).exe
+
 compile:
 	mkdir -p $(BUILDDIR)
 	bsc -elab -sim -verbose $(BLUESIMFLAGS) $(DEBUGFLAGS) $(DIRFLAGS) $(MISCFLAGS) $(RECOMPILEFLAGS) $(RUNTIMEFLAGS) $(SCHEDFLAGS) $(TRANSFLAGS) -g $(TOP) $(TESTFILE)

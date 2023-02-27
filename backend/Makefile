@@ -12,14 +12,7 @@ export XDC = $(XDCDIR)
 export OUTPUT = $(OUTPUTDIR)
 export SYNTHONLY = $(ONLYSYNTH)
 
-compile:
-	mkdir -p $(BUILDDIR)
-	bsc -elab -sim -verbose $(BLUESIMFLAGS) $(DEBUGFLAGS) $(DIRFLAGS) $(MISCFLAGS) $(RECOMPILEFLAGS) $(RUNTIMEFLAGS) $(SCHEDFLAGS) $(TRANSFLAGS) -g $(TOP) $(TARGETFILE)
-
-link: compile
-	bsc -sim $(BLUESIMFLAGS) $(DIRFLAGS) $(RECOMPILEFLAGS) $(RUNTIMEFLAGS) $(SCHEDFLAGS) $(TRANSFLAGS) -e $(TOPMODULE) -o $(SIMEXE)
-
-verilog: link
+verilog:
 	bsc $(VERILOGFLAGS) $(DIRFLAGS) $(MISCFLAGS) $(RECOMPILEFLAGS) $(RUNTIMEFLAGS) $(TRANSFLAGS) -g $(TOPMODULE) $(TARGETFILE)
 	mkdir -p $(VLOGDIR)
 	bluetcl listVlogFiles.tcl -bdir $(BUILDDIR) -vdir $(BUILDDIR) $(TOPMODULE) $(TOPMODULE) | grep -i '\.v' | xargs -I {} cp {} $(VLOGDIR)
@@ -30,5 +23,5 @@ vivado: verilog
 clean:
 	rm -rf $(BUILDDIR) $(OUTPUTDIR) $(VLOGDIR) .Xil *.jou *.log
 
-.PHONY: compile link verilog vivado clean
+.PHONY: verilog vivado clean
 .DEFAULT_GOAL := verilog
