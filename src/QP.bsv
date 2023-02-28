@@ -276,7 +276,7 @@ module mkTransportLayerRDMA(TransportLayerRDMA);
 
     let pdMetaData <- mkMetaDataPDs;
     let permCheckMR <- mkPermCheckMR(pdMetaData);
-    let tlb <- mkTLB;
+    // let tlb <- mkTLB;
     let qpMetaData <- mkMetaDataQPs;
 
     let { workReqPipeOutVec, recvPipeOutVec } <- mkWorkReqAndRecvReqDispatcher(

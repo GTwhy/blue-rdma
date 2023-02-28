@@ -830,41 +830,42 @@ endmodule
 module mkSimMetaData4SinigleQP#(QpType qpType, PMTU pmtu)(MetaDataQPs);
     let cntrl <- mkSimController(qpType, pmtu);
 
-    FIFOF#(QKEY)   createReqQ <- mkFIFOF;
-    FIFOF#(QPN)   createRespQ <- mkFIFOF;
-    FIFOF#(QPN)   destroyReqQ <- mkFIFOF;
-    FIFOF#(Bool) destroyRespQ <- mkFIFOF;
+    // FIFOF#(QKEY)   createReqQ <- mkFIFOF;
+    // FIFOF#(QPN)   createRespQ <- mkFIFOF;
+    // FIFOF#(QPN)   destroyReqQ <- mkFIFOF;
+    // FIFOF#(Bool) destroyRespQ <- mkFIFOF;
 
-    rule handleCreateQP;
-        createReqQ.deq;
-        let qpn = getDefaultQPN;
-        createRespQ.enq(qpn);
+    // rule handleCreateQP;
+    //     createReqQ.deq;
+    //     let qpn = getDefaultQPN;
+    //     createRespQ.enq(qpn);
+    // endrule
+
+    // rule handleDestroyQP;
+    //     destroyReqQ.deq;
+    //     let destroyResp = True;
+    //     destroyRespQ.enq(destroyResp);
+    // endrule
+
+    // interface createQP  = toGPServer(createReqQ, createRespQ);
+    // interface destroyQP = toGPServer(destroyReqQ, destroyRespQ);
+
+    FIFOF#(ReqQP)   reqQ <- mkFIFOF;
+    FIFOF#(RespQP) respQ <- mkFIFOF;
+
+    rule handleSrvPort;
+        let req = reqQ.first;
+        reqQ.deq;
+
+        let resp = RespQP {
+            successOrNot: True,
+            pdHandler   : req.pdHandler,
+            qpn         : req.qpn
+        };
+        respQ.enq(resp);
     endrule
 
-    rule handleDestroyQP;
-        destroyReqQ.deq;
-        let destroyResp = True;
-        destroyRespQ.enq(destroyResp);
-    endrule
-
-    // method Action createQP(QKEY qkey);
-    //     noAction;
-    // endmethod
-
-    // method ActionValue#(QPN) createResp();
-    //     return dontCareValue;
-    // endmethod
-
-    // method Action destroyQP(QPN qpn);
-    //     noAction;
-    // endmethod
-
-    // method ActionValue#(Bool) destroyResp();
-    //     return True;
-    // endmethod
-
-    interface createQP  = toGPServer(createReqQ, createRespQ);
-    interface destroyQP = toGPServer(destroyReqQ, destroyRespQ);
+    interface srvPort = toGPServer(reqQ, respQ);
 
     method Bool isValidQP(QPN qpn) = qpn == getDefaultQPN;
 
