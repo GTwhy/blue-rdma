@@ -150,7 +150,7 @@ module mkTestRespHandleNormalOrDupOrGhostRespCase#(
     let pmtu = IBV_MTU_256;
 
     let qpMetaData <- mkSimMetaData4SinigleQP(qpType, pmtu);
-    let qpIndex = getIndexQP(getDefaultQPN);
+    let qpIndex = getDefaultIndexQP;
     let cntrl = qpMetaData.getCntrlByIdxQP(qpIndex);
 
     // WorkReq generation
@@ -381,7 +381,7 @@ module mkTestRespHandleAbnormalCase#(TestRespHandleRespType respType)(Empty);
     let pmtu = IBV_MTU_256;
 
     let qpMetaData <- mkSimMetaData4SinigleQP(qpType, pmtu);
-    let qpIndex = getIndexQP(getDefaultQPN);
+    let qpIndex = getDefaultIndexQP;
     let cntrl = qpMetaData.getCntrlByIdxQP(qpIndex);
 
     // WorkReq generation
@@ -440,7 +440,8 @@ module mkTestRespHandleAbnormalCase#(TestRespHandleRespType respType)(Empty);
     // This controller will be set to error state,
     // since it cannot generate WR when error state,
     // so use a dedicated controller for WC.
-    let cntrl4WorkComp <- mkSimController(qpType, pmtu);
+    let setExpectedPsnAsNextPSN = False;
+    let cntrl4WorkComp <- mkSimController(qpType, pmtu, setExpectedPsnAsNextPSN);
     let workCompPipeOut <- mkWorkCompGenSQ(
         cntrl4WorkComp,
         payloadConsumer.respPipeOut,
@@ -532,7 +533,7 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
     let pmtu = IBV_MTU_256;
 
     let qpMetaData <- mkSimMetaData4SinigleQP(qpType, pmtu);
-    let qpIndex = getIndexQP(getDefaultQPN);
+    let qpIndex = getDefaultIndexQP;
     let cntrl = qpMetaData.getCntrlByIdxQP(qpIndex);
 
     // WorkReq generation
@@ -548,10 +549,6 @@ module mkTestRespHandleRetryCase#(Bool rnrOrSeqErr, Bool nestedRetry)(Empty);
         mkExistingPendingWorkReqPipeOut(cntrl, workReqPipeOut);
     let pendingWorkReqPipeOut4RespGen = existingPendingWorkReqPipeOutVec[0];
     let pendingWorkReqPipeOut4WorkComp <- mkBufferN(32, existingPendingWorkReqPipeOutVec[1]);
-    // let pendingWorkReqPipeOut4PendingQ = existingPendingWorkReqPipeOutVec[2];
-    // let pendingWorkReq2Q <- mkConnectPendingWorkReqPipeOut2PendingWorkReqQ(
-    //     pendingWorkReqPipeOut4PendingQ, pendingWorkReqBuf.fifoIfc
-    // );
 
     // Generate RDMA responses
     FIFOF#(PendingWorkReq) pendingWorkReqQ4NormalResp <- mkFIFOF;

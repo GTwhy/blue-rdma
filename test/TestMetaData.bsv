@@ -47,6 +47,7 @@ module mkTestMetaDataPDs(Empty);
                 allocOrNot: True,
                 pdKey     : pdKey,
                 pdHandler : dontCareValue
+                // cbIndex   : dontCareValue
             };
             pdMetaDataDUT.srvPort.request.put(allocReq);
             pdReqCnt.incr(1);
@@ -145,6 +146,7 @@ module mkTestMetaDataPDs(Empty);
                 allocOrNot: False,
                 pdKey     : dontCareValue,
                 pdHandler : pdHandler2Remove
+                // cbIndex   : dontCareValue
             };
             pdMetaDataDUT.srvPort.request.put(deAllocReq);
             pdReqCnt.incr(1);
@@ -227,6 +229,7 @@ module mkTestMetaDataMRs(Empty);
                 lkeyOrNot    : False,
                 lkey         : dontCareValue,
                 rkey         : dontCareValue
+                // cbIndex      : dontCareValue
             };
 
             mrMetaDataDUT.srvPort.request.put(allocReq);
@@ -326,6 +329,7 @@ module mkTestMetaDataMRs(Empty);
                 lkeyOrNot    : False,
                 lkey         : dontCareValue,
                 rkey         : rkey2Remove
+                // cbIndex      : dontCareValue
             };
 
             mrMetaDataDUT.srvPort.request.put(deAllocReq);
@@ -394,11 +398,18 @@ module mkTestMetaDataQPs(Empty);
     let pdHandlerPipeOut4InsertResp <- mkBufferN(2, pdHandlerPipeOutVec[1]);
     let pdHandlerPipeOut4Search <- mkBufferN(valueOf(MAX_QP), pdHandlerPipeOutVec[2]);
     FIFOF#(QPN) qpnQ4Search <- mkSizedFIFOF(valueOf(MAX_QP));
-    FIFOF#(QPN) qpnQ4Pop <- mkSizedFIFOF(valueOf(MAX_QP));
+    FIFOF#(QPN) qpnQ4Destroy <- mkSizedFIFOF(valueOf(MAX_QP));
 
     Reg#(SeqTestState) qpTestStateReg <- mkReg(TEST_ST_FILL);
 
     let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
+
+    function Tuple2#(
+        Bit#(TSub#(QPN_WIDTH, QP_INDEX_WIDTH)),
+        Bit#(TSub#(QPN_WIDTH, QP_INDEX_WIDTH))
+    ) extractCommonPartFromPdHandlerAndQPN(HandlerPD pdHandler, QPN qpn);
+        return tuple2(truncate(pdHandler), truncate(qpn));
+    endfunction
 
     rule createQPs if (qpTestStateReg == TEST_ST_FILL);
         if (qpReqCnt < fromInteger(valueOf(MAX_QP))) begin
@@ -407,9 +418,15 @@ module mkTestMetaDataQPs(Empty);
             pdHandlerPipeOut4InsertReq.deq;
 
             let createReq = ReqQP {
-                createOrNot: True,
-                pdHandler  : curPdHandler,
-                qpn        : dontCareValue
+                qpReqType   : REQ_QP_CREATE,
+                pdHandler   : curPdHandler,
+                qpn         : dontCareValue,
+                qpAttrMast  : dontCareValue,
+                qpAttr      : dontCareValue,
+                qpInitAttr  : QpInitAttr {
+                    qpType  : IBV_QPT_RC,
+                    sqSigAll: False
+                }
             };
             qpMetaDataDUT.srvPort.request.put(createReq);
         end
@@ -429,27 +446,26 @@ module mkTestMetaDataQPs(Empty);
         let qpn = createResp.qpn;
         let pdHandler = createResp.pdHandler;
         qpnQ4Search.enq(qpn);
-        qpnQ4Pop.enq(qpn);
+        qpnQ4Destroy.enq(qpn);
 
-        let refPdHandler = pdHandlerPipeOut4InsertResp.first;
+        let refHandlerPD = pdHandlerPipeOut4InsertResp.first;
         pdHandlerPipeOut4InsertResp.deq;
 
-        Bit#(TSub#(QPN_WIDTH, QP_INDEX_WIDTH)) refPart = truncateLSB(refPdHandler);
-        Bit#(TSub#(QPN_WIDTH, QP_INDEX_WIDTH)) qpnPart = truncate(qpn);
+        let { pdPart, qpnPart } = extractCommonPartFromPdHandlerAndQPN(refHandlerPD, qpn);
         immAssert(
-            qpnPart == refPart && pdHandler == refPdHandler,
+            qpnPart == pdPart && pdHandler == refHandlerPD,
             "qpnPart assertion @ mkTestMetaDataQPs",
             $format(
-                "qpnPart=%h should == refPart=%h",
-                qpnPart, refPart,
-                " and pdHandler=%h should == refPdHandler=%h",
-                pdHandler, refPdHandler
+                "qpnPart=%h should == pdPart=%h",
+                qpnPart, pdPart,
+                " and pdHandler=%h should == refHandlerPD=%h",
+                pdHandler, refHandlerPD
             )
         );
 
         // $display(
-        //     "time=%0t: qpn=%h should match refPdHandler=%h and pdHandler=%h",
-        //     $time, qpn, refPdHandler, pdHandler
+        //     "time=%0t: qpn=%h should match refHandlerPD=%h and pdHandler=%h",
+        //     $time, qpn, refHandlerPD, pdHandler
         // );
     endrule
 
@@ -520,15 +536,18 @@ module mkTestMetaDataQPs(Empty);
     rule destroyQPs if (qpTestStateReg == TEST_ST_POP);
         if (qpReqCnt < fromInteger(valueOf(MAX_QP))) begin
             qpReqCnt.incr(1);
-            let qpn2Remove = qpnQ4Pop.first;
-            qpnQ4Pop.deq;
+            let qpn2Destroy = qpnQ4Destroy.first;
+            qpnQ4Destroy.deq;
 
-            let removeReq = ReqQP {
-                createOrNot: False,
-                pdHandler  : dontCareValue,
-                qpn        : qpn2Remove
+            let destroyReq = ReqQP {
+                qpReqType : REQ_QP_DESTROY,
+                pdHandler : dontCareValue,
+                qpn       : qpn2Destroy,
+                qpAttrMast: dontCareValue,
+                qpAttr    : dontCareValue,
+                qpInitAttr: dontCareValue
             };
-            qpMetaDataDUT.srvPort.request.put(removeReq);
+            qpMetaDataDUT.srvPort.request.put(destroyReq);
         end
     endrule
 
@@ -544,30 +563,32 @@ module mkTestMetaDataQPs(Empty);
             qpRespCnt.incr(1);
         end
 
-        let removeResp <- qpMetaDataDUT.srvPort.response.get;
-        let pdHandler = removeResp.pdHandler;
-        let qpn = removeResp.qpn;
+        let destroyResp <- qpMetaDataDUT.srvPort.response.get;
+        let pdHandler = destroyResp.pdHandler;
+        let qpn = destroyResp.qpn;
         immAssert(
-            removeResp.successOrNot,
-            "removeResp.successOrNot assertion @ mkTestMetaDataQPs",
+            destroyResp.successOrNot,
+            "destroyResp.successOrNot assertion @ mkTestMetaDataQPs",
             $format(
-                "removeResp.successOrNot=", fshow(removeResp.successOrNot),
+                "destroyResp.successOrNot=", fshow(destroyResp.successOrNot),
                 " should be true when qpRespCnt=%0d", qpRespCnt
             )
         );
 
-        Bit#(TSub#(QPN_WIDTH, QP_INDEX_WIDTH))  pdPart = truncateLSB(pdHandler);
-        Bit#(TSub#(QPN_WIDTH, QP_INDEX_WIDTH)) qpnPart = truncate(qpn);
+        let { pdPart, qpnPart } = extractCommonPartFromPdHandlerAndQPN(pdHandler, qpn);
         immAssert(
             qpnPart == pdPart,
             "qpnPart assertion @ mkTestMetaDataQPs",
             $format(
                 "qpnPart=%h should == pdPart=%h",
-                qpnPart, pdPart
+                qpnPart, pdPart,
+                ", when qpn=%h, pdHandler=%h",
+                qpn, pdHandler
             )
         );
+
         // $display(
-        //     "time=%0t: removeResp=", $time, fshow(removeResp),
+        //     "time=%0t: destroyResp=", $time, fshow(destroyResp),
         //     " should be true when qpRespCnt=%0d", qpRespCnt
         // );
     endrule
@@ -618,6 +639,7 @@ module mkTestPermCheckMR(Empty);
             allocOrNot: True,
             pdKey     : pdKey,
             pdHandler : dontCareValue
+            // cbIndex   : dontCareValue
         };
         pdMetaData.srvPort.request.put(allocReqPD);
 
@@ -681,6 +703,7 @@ module mkTestPermCheckMR(Empty);
                 lkeyOrNot: False,
                 rkey     : dontCareValue,
                 lkey     : dontCareValue
+                // cbIndex  : dontCareValue
             };
             mrMetaData.srvPort.request.put(allocReqMR);
 
@@ -886,6 +909,317 @@ module mkTestPermCheckMR(Empty);
         mrCheckStateReg <= TEST_ST_FILL;
 
         // $display("time=%0t: clear", $time);
+    endrule
+endmodule
+
+(* synthesize *)
+module mkTestMetaDataSrv(Empty);
+    let pdMetaData  <- mkMetaDataPDs;
+    let qpMetaData  <- mkMetaDataQPs;
+    let metaDataSrv <- mkMetaDataSrv(pdMetaData, qpMetaData);
+
+    let pdNum = valueOf(MAX_PD);
+    let qpNum = valueOf(MAX_QP);
+    let qpPerPD = valueOf(TDiv#(MAX_QP, MAX_PD));
+
+    PipeOut#(KeyPD) pdKeyPipeOut <- mkGenericRandomPipeOut;
+
+    FIFOF#(HandlerPD) pdHandlerQ4Fill <- mkSizedFIFOF(pdNum);
+    FIFOF#(HandlerPD) pdHandlerQ4Pop  <- mkSizedFIFOF(pdNum);
+    FIFOF#(QPN) qpnQ4Modify <- mkSizedFIFOF(qpNum);
+    FIFOF#(QPN) qpnQ4Destroy <- mkSizedFIFOF(qpNum);
+
+    Count#(Bit#(TLog#(TAdd#(1, MAX_PD))))  pdReqCnt <- mkCount(0);
+    Count#(Bit#(TLog#(TAdd#(1, MAX_PD)))) pdRespCnt <- mkCount(0);
+    Count#(Bit#(TLog#(TAdd#(1, MAX_QP))))  qpReqCnt <- mkCount(0);
+    Count#(Bit#(TLog#(TAdd#(1, MAX_QP)))) qpRespCnt <- mkCount(0);
+    Count#(Bit#(TLog#(TDiv#(MAX_QP, MAX_PD)))) qpPerPdCnt <- mkCount(0);
+
+    Reg#(SeqTestState) srvCheckStateReg <- mkReg(TEST_ST_FILL);
+    let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
+
+    rule allocPDs if (pdReqCnt < fromInteger(pdNum) && srvCheckStateReg == TEST_ST_FILL);
+        pdReqCnt.incr(1);
+        let pdKey = pdKeyPipeOut.first;
+        pdKeyPipeOut.deq;
+
+        let allocReqPD = ReqPD {
+            allocOrNot: True,
+            pdKey     : pdKey,
+            pdHandler : dontCareValue
+        };
+        metaDataSrv.request.put(tagged Req4PD allocReqPD);
+        // $display("time=%0t: pdKey=%h", $time, pdKey);
+    endrule
+
+    rule allocRespPDs if (pdRespCnt < fromInteger(pdNum) && srvCheckStateReg == TEST_ST_FILL);
+        pdRespCnt.incr(1);
+        let maybeAllocRespPD <- metaDataSrv.response.get;
+        if (maybeAllocRespPD matches tagged Resp4PD .allocRespPD) begin
+            immAssert(
+                allocRespPD.successOrNot,
+                "allocRespPD.successOrNot assertion @ mkTestMetaDataSrv",
+                $format(
+                    "allocRespPD.successOrNot=", fshow(allocRespPD.successOrNot),
+                    " should be true when pdRespCnt=%0d", pdRespCnt
+                )
+            );
+            pdHandlerQ4Fill.enq(allocRespPD.pdHandler);
+            pdHandlerQ4Pop.enq(allocRespPD.pdHandler);
+        end
+        else begin
+            immFail(
+                "maybeAllocRespPD assertion @ mkTestMetaDataSrv",
+                $format(
+                    "maybeAllocRespPD=", fshow(maybeAllocRespPD),
+                    " should be Resp4PD"
+                )
+            );
+        end
+    endrule
+
+    rule createQPs if (
+        pdReqCnt  == fromInteger(pdNum) &&
+        pdRespCnt == fromInteger(pdNum) &&
+        qpReqCnt   < fromInteger(qpNum) &&
+        srvCheckStateReg == TEST_ST_FILL
+    );
+        if (qpPerPdCnt == fromInteger(qpPerPD - 1)) begin
+            qpPerPdCnt <= 0;
+            pdHandlerQ4Fill.deq;
+        end
+        else begin
+            qpPerPdCnt.incr(1);
+        end
+        qpReqCnt.incr(1);
+
+        let pdHandler = pdHandlerQ4Fill.first;
+
+        let createReqQP = ReqQP {
+            qpReqType   : REQ_QP_CREATE,
+            pdHandler   : pdHandler,
+            qpn         : dontCareValue,
+            qpAttrMast  : dontCareValue,
+            qpAttr      : dontCareValue,
+            qpInitAttr  : QpInitAttr {
+                qpType  : IBV_QPT_RC,
+                sqSigAll: False
+            }
+        };
+        metaDataSrv.request.put(tagged Req4QP createReqQP);
+    endrule
+
+    rule createResp if (
+        pdReqCnt  == fromInteger(pdNum) &&
+        pdRespCnt == fromInteger(pdNum) &&
+        srvCheckStateReg == TEST_ST_FILL
+    );
+        if (qpRespCnt == fromInteger(qpNum - 1)) begin
+            qpReqCnt  <= 0;
+            qpRespCnt <= 0;
+            srvCheckStateReg <= TEST_ST_ACT;
+        end
+        else begin
+            qpRespCnt.incr(1);
+        end
+
+        let maybeCreateRespQP <- metaDataSrv.response.get;
+        if (maybeCreateRespQP matches tagged Resp4QP .createRespQP) begin
+            immAssert(
+                createRespQP.successOrNot,
+                "createRespQP.successOrNot assertion @ mkTestMetaDataSrv",
+                $format(
+                    "createRespQP.successOrNot=", fshow(createRespQP.successOrNot),
+                    " should be true when qpRespCnt=%0d", qpRespCnt
+                )
+            );
+
+            let qpn = createRespQP.qpn;
+            qpnQ4Modify.enq(qpn);
+            // $display(
+            //     "time=%0t: createRespQP=", $time, fshow(createRespQP),
+            //     " should be success, and qpn=%h, qpRespCnt=%h",
+            //     qpn, qpRespCnt
+            // );
+        end
+        else begin
+            immFail(
+                "maybeCreateRespQP assertion @ mkTestMetaDataSrv",
+                $format(
+                    "maybeCreateRespQP=", fshow(maybeCreateRespQP),
+                    " should be Resp4QP"
+                )
+            );
+        end
+    endrule
+
+    rule modifyQPs if (qpReqCnt < fromInteger(qpNum) && srvCheckStateReg == TEST_ST_ACT);
+        qpReqCnt.incr(1);
+
+        let qpn = qpnQ4Modify.first;
+        qpnQ4Modify.deq;
+
+        QpAttr qpAttr  = dontCareValue;
+        qpAttr.qpState = IBV_QPS_INIT;
+        let modifyReqQP = ReqQP {
+            qpReqType   : REQ_QP_MODIFY,
+            pdHandler   : dontCareValue,
+            qpn         : qpn,
+            qpAttrMast  : dontCareValue,
+            qpAttr      : qpAttr,
+            qpInitAttr  : dontCareValue
+        };
+        metaDataSrv.request.put(tagged Req4QP modifyReqQP);
+    endrule
+
+    rule modifyResp if (srvCheckStateReg == TEST_ST_ACT);
+        if (qpRespCnt == fromInteger(qpNum - 1)) begin
+            pdReqCnt  <= 0;
+            pdRespCnt <= 0;
+            qpReqCnt  <= 0;
+            qpRespCnt <= 0;
+            srvCheckStateReg <= TEST_ST_POP;
+        end
+        else begin
+            qpRespCnt.incr(1);
+        end
+
+        let maybeModifyRespQP <- metaDataSrv.response.get;
+        if (maybeModifyRespQP matches tagged Resp4QP .modifyRespQP) begin
+            immAssert(
+                modifyRespQP.successOrNot,
+                "modifyRespQP.successOrNot assertion @ mkTestMetaDataSrv",
+                $format(
+                    "modifyRespQP.successOrNot=", fshow(modifyRespQP.successOrNot),
+                    " should be true when qpRespCnt=%0d", qpRespCnt
+                )
+            );
+
+            let qpn = modifyRespQP.qpn;
+            qpnQ4Destroy.enq(qpn);
+            // $display(
+            //     "time=%0t: modifyRespQP=", $time, fshow(modifyRespQP),
+            //     " should be success, and qpNum=%0d, qpRespCnt=%h",
+            //     qpNum, qpRespCnt
+            // );
+        end
+        else begin
+            immFail(
+                "maybeModifyRespQP assertion @ mkTestMetaDataSrv",
+                $format(
+                    "maybeModifyRespQP=", fshow(maybeModifyRespQP),
+                    " should be Resp4QP"
+                )
+            );
+        end
+    endrule
+
+    rule destroyQPs if (qpReqCnt < fromInteger(qpNum) && srvCheckStateReg == TEST_ST_POP);
+        qpReqCnt.incr(1);
+        let qpn2Destroy = qpnQ4Destroy.first;
+        qpnQ4Destroy.deq;
+
+        let destroyReqQP = ReqQP {
+            qpReqType : REQ_QP_DESTROY,
+            pdHandler : dontCareValue,
+            qpn       : qpn2Destroy,
+            qpAttrMast: dontCareValue,
+            qpAttr    : dontCareValue,
+            qpInitAttr: dontCareValue
+        };
+        metaDataSrv.request.put(tagged Req4QP destroyReqQP);
+        // $display("time=%0t: qpn2Destroy=%h", $time, qpn2Destroy);
+    endrule
+
+    rule destroyResp if (qpRespCnt < fromInteger(qpNum) && srvCheckStateReg == TEST_ST_POP);
+        countDown.decr;
+        qpRespCnt.incr(1);
+
+        let maybeDestroyRespQP <- metaDataSrv.response.get;
+        if (maybeDestroyRespQP matches tagged Resp4QP .destroyRespQP) begin
+            immAssert(
+                destroyRespQP.successOrNot,
+                "destroyRespQP.successOrNot assertion @ mkTestMetaDataSrv",
+                $format(
+                    "destroyResp.successOrNot=", fshow(destroyRespQP.successOrNot),
+                    " should be true when qpRespCnt=%0d", qpRespCnt
+                )
+            );
+            // $display(
+            //     "time=%0t: destroyRespQP=", $time, fshow(destroyRespQP),
+            //     " should be success when qpRespCnt=%0d", qpRespCnt
+            // );
+        end
+        else begin
+            immFail(
+                "maybeDestroyRespQP assertion @ mkTestMetaDataSrv",
+                $format(
+                    "maybeDestroyRespQP=", fshow(maybeDestroyRespQP),
+                    " should be Resp4QP"
+                )
+            );
+        end
+    endrule
+
+    rule deAllocPDs if (
+        qpReqCnt  == fromInteger(qpNum) &&
+        qpRespCnt == fromInteger(qpNum) &&
+        pdReqCnt   < fromInteger(pdNum) &&
+        srvCheckStateReg == TEST_ST_POP
+    );
+        pdReqCnt.incr(1);
+        let pdHandler2Remove = pdHandlerQ4Pop.first;
+        pdHandlerQ4Pop.deq;
+
+        let deAllocReqPD = ReqPD {
+            allocOrNot: False,
+            pdKey     : dontCareValue,
+            pdHandler : pdHandler2Remove
+        };
+        metaDataSrv.request.put(tagged Req4PD deAllocReqPD);
+    endrule
+
+    rule deAllocResp if (
+        qpReqCnt  == fromInteger(qpNum) &&
+        qpRespCnt == fromInteger(qpNum) &&
+        srvCheckStateReg == TEST_ST_POP
+    );
+        if (pdRespCnt == fromInteger(pdNum - 1)) begin
+            pdReqCnt   <= 0;
+            pdRespCnt  <= 0;
+            qpReqCnt   <= 0;
+            qpRespCnt  <= 0;
+            qpPerPdCnt <= 0;
+            srvCheckStateReg <= TEST_ST_FILL;
+        end
+        else begin
+            pdRespCnt.incr(1);
+        end
+
+        let maybeDeAllocRespPD <- metaDataSrv.response.get;
+        if (maybeDeAllocRespPD matches tagged Resp4PD .deAllocRespPD) begin
+            immAssert(
+                deAllocRespPD.successOrNot,
+                "deAllocRespPD.successOrNot assertion @ mkTestMetaDataSrv",
+                $format(
+                    "deAllocRespPD.successOrNot=", fshow(deAllocRespPD.successOrNot),
+                    " should be true when pdRespCnt=%0d", pdRespCnt
+                )
+            );
+            // $display(
+            //     "time=%0t: deAllocRespPD=", $time, fshow(deAllocRespPD),
+            //     " should be success when pdRespCnt=%0d", pdRespCnt
+            // );
+        end
+        else begin
+            immFail(
+                "maybeDeAllocRespPD assertion @ mkTestMetaDataSrv",
+                $format(
+                    "maybeDeAllocRespPD=", fshow(maybeDeAllocRespPD),
+                    " should be Resp4PD"
+                )
+            );
+        end
     endrule
 endmodule
 

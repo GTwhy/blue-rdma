@@ -11,7 +11,7 @@ typedef 256 DATA_BUS_WIDTH;
 
 typedef TExp#(31) MAX_MR_SIZE;   // 2GB
 typedef TExp#(21) PAGE_SIZE_CAP; // 2MB
-typedef 4         MAX_QP;
+typedef 8         MAX_QP;
 typedef 32        MAX_QP_WR;
 typedef 1         MAX_SGE;
 typedef 8         MAX_CQ;
@@ -24,9 +24,9 @@ typedef MAX_QP_WR MAX_SRQ_WR;
 typedef MAX_SGE   MAX_SRQ_SGE;
 // End must-be-power-of-2
 
-typedef 4                   MAX_SEND_SGE;
-typedef 4                   MAX_RECV_SGE;
-typedef 0                   MAX_INLINE_DATA; // No inline data
+typedef 1 MAX_SEND_SGE;
+typedef 1 MAX_RECV_SGE;
+typedef 0 MAX_INLINE_DATA; // No inline data
 
 /*
 struct ibv_device_attr {

@@ -349,7 +349,6 @@ endinterface
 module mkWorkCompGenRQ#(
     Controller cntrl,
     PipeOut#(PayloadConResp) payloadConRespPipeIn,
-    // RecvReqBuf recvReqBuf,
     PipeOut#(WorkCompGenReqRQ) wcGenReqPipeInFromRQ
 )(WorkCompGenRQ);
     FIFOF#(WorkComp)    workCompOutQ4RQ <- mkSizedFIFOF(valueOf(MAX_CQE));

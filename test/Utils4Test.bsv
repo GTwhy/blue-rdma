@@ -1,7 +1,8 @@
+import Array :: *;
 import ClientServer :: *;
 import Cntrs :: *;
 import FIFOF :: *;
-import Array :: *;
+import GetPut :: *;
 import PAClib :: *;
 import Randomizable :: *;
 import Vector :: *;
@@ -17,10 +18,15 @@ import Settings :: *;
 import Utils :: *;
 
 typedef 0 DEFAULT_QPN;
+typedef 0 DEFAULT_QP_IDX;
 typedef 10000 MAX_CMP_CNT;
 
 function QPN getDefaultQPN();
     return fromInteger(valueOf(DEFAULT_QPN));
+endfunction
+
+function IndexQP getDefaultIndexQP();
+    return fromInteger(valueOf(DEFAULT_QP_IDX));
 endfunction
 
 interface CountDown;
@@ -313,8 +319,9 @@ endmodule
 module mkRandomValueInRangePipeOut#(
     // Both min and max are inclusive
     anytype min, anytype max
-)(Vector#(vSz, PipeOut#(anytype)))
-provisos (Bits#(anytype, anysize), Bounded#(anytype), FShow#(anytype), Ord#(anytype));
+)(Vector#(vSz, PipeOut#(anytype))) provisos(
+    Bits#(anytype, anysize), Bounded#(anytype), FShow#(anytype), Ord#(anytype)
+);
     Randomize#(anytype) randomVal <- mkConstrainedRandomizer(min, max);
     FIFOF#(anytype) randomValQ <- mkFIFOF;
     let resultPipeOutVec <- mkForkVector(convertFifo2PipeOut(randomValQ));
@@ -711,8 +718,20 @@ module mkExistingPendingWorkReqPipeOut#(
     FIFOF#(PendingWorkReq) pendingWorkReqOutQ <- mkFIFOF;
     let pendingWorkReqPipeOut = convertFifo2PipeOut(pendingWorkReqOutQ);
 
-    rule setExpectedPSN if (cntrl.isInit);
-        cntrl.contextRQ.restoreEPSN(cntrl.getNPSN);
+    // rule setExpectedPSN if (cntrl.isInit);
+    //     cntrl.contextRQ.restoreEPSN(cntrl.getNPSN);
+    // endrule
+
+    rule checkExpectedPSN if (cntrl.isInit);
+        immAssert(
+            cntrl.contextRQ.getEPSN == cntrl.getNPSN,
+            "ePSN == nPSN assertion @ mkExistingPendingWorkReqPipeOut",
+            $format(
+                "cntrl.contextRQ.getEPSN=%h should == cntrl.getNPSN=%h",
+                cntrl.contextRQ.getEPSN, cntrl.getNPSN,
+                " which is required by mkExistingPendingWorkReqPipeOut"
+            )
+        );
     endrule
 
     rule genExistingPendingWorkReq if (cntrl.isRTS);
@@ -749,40 +768,155 @@ module mkExistingPendingWorkReqPipeOut#(
     return resultPipeOutVec;
 endmodule
 
-module mkSimController#(QpType qpType, PMTU pmtu)(Controller);
+module mkSimQpAttrPipeOut#(
+    PMTU pmtu, Bool setExpectedPsnAsNextPSN
+)(PipeOut#(QpAttr));
     PSN minPSN = 0;
     PSN maxPSN = maxBound;
 
-    let cntrl <- mkController;
-    Randomize#(PSN) randomEPSN <- mkConstrainedRandomizer(minPSN, maxPSN);
-    Randomize#(PSN) randomNPSN <- mkConstrainedRandomizer(minPSN, maxPSN);
+    Randomize#(PSN)  randomEPSN <- mkConstrainedRandomizer(minPSN, maxPSN);
+    Randomize#(PSN)  randomNPSN <- mkConstrainedRandomizer(minPSN, maxPSN);
     Randomize#(PKEY) randomPKEY <- mkGenericRandomizer;
     Randomize#(QKEY) randomQKEY <- mkGenericRandomizer;
-    Reg#(Bool) initializedReg <- mkReg(False);
 
-    rule initRandomizer if (!initializedReg);
+    Reg#(Bool) randInitedReg <- mkReg(False);
+
+    FIFOF#(QpAttr) qpAttrQ <- mkFIFOF;
+
+    rule initRandomizer if (!randInitedReg);
         randomEPSN.cntrl.init;
         randomNPSN.cntrl.init;
         randomPKEY.cntrl.init;
         randomQKEY.cntrl.init;
-        initializedReg <= True;
+
+        randInitedReg <= True;
     endrule
 
-    rule initController if (initializedReg && cntrl.getQPS == IBV_QPS_RESET);
+    rule genQpAttr if (randInitedReg);
         let epsn <- randomEPSN.next;
         let npsn <- randomNPSN.next;
         let pkey <- randomPKEY.next;
         let qkey <- randomQKEY.next;
+
+        if (setExpectedPsnAsNextPSN) begin
+            epsn = npsn;
+        end
+
+        let qpAttr = QpAttr {
+            qpState          : dontCareValue,
+            curQpState       : dontCareValue,
+            pmtu             : pmtu,
+            qkey             : qkey,
+            rqPSN            : epsn,
+            sqPSN            : npsn,
+            dqpn             : getDefaultQPN,
+            qpAcessFlags     : IBV_ACCESS_REMOTE_WRITE,
+            cap              : QpCapacity {
+                maxSendWR    : fromInteger(valueOf(MAX_QP_WR)),
+                maxRecvWR    : fromInteger(valueOf(MAX_QP_WR)),
+                maxSendSGE   : fromInteger(valueOf(MAX_SEND_SGE)),
+                maxRecvSGE   : fromInteger(valueOf(MAX_RECV_SGE)),
+                maxInlineData: fromInteger(valueOf(MAX_INLINE_DATA))
+            },
+            pkeyIndex        : pkey,
+            sqDraining       : False,
+            maxReadAtomic    : fromInteger(valueOf(MAX_QP_RD_ATOM)),
+            maxDestReadAtomic: fromInteger(valueOf(MAX_QP_RD_ATOM)),
+            minRnrTimer      : 1, // minRnrTimer 1 - 0.01 milliseconds delay
+            timeout          : 1, // maxTimeOut 0 - infinite, 1 - 8.192 usec (0.000008 sec)
+            retryCnt         : 3,
+            rnrRetry         : 3
+        };
+        qpAttrQ.enq(qpAttr);
+    endrule
+
+    return convertFifo2PipeOut(qpAttrQ);
+endmodule
+/*
+module mkSimMetaDataSrv#(
+    QpType qpType, PMTU pmtu, Bool setExpectedPsnAsNextPSN
+)(Tuple3#(MetaDataPDs, MetaDataQPs, MetaDataSrv));
+    let pdMetaData  <- mkMetaDataPDs;
+    let qpMetaData  <- mkMetaDataQPs;
+    let metaDataSrv <- mkMetaDataSrv(pdMetaData, qpMetaData);
+
+    let qpInitAttr = QpInitAttr {
+        qpType  : qpType,
+        sqSigAll: False
+    };
+    let qpAttrPipeOut <- mkSimQpAttrPipeOut(pmtu, setExpectedPsnAsNextPSN);
+    let initMetaData  <- mkInitMetaData(metaDataSrv, qpInitAttr, qpAttrPipeOut);
+
+    return tuple3(pdMetaData, qpMetaData, metaDataSrv);
+endmodule
+*/
+module mkSimController#(
+    QpType qpType, PMTU pmtu, Bool setExpectedPsnAsNextPSN
+)(Controller);
+    let qpAttrPipeOut <- mkSimQpAttrPipeOut(pmtu, setExpectedPsnAsNextPSN);
+    let cntrl <- mkController;
+
+    Reg#(Bool) qpCreateDoneReg <- mkReg(False);
+    Reg#(Bool)   qpInitDoneReg <- mkReg(False);
+    Reg#(Bool) qpModifyDoneReg <- mkReg(False);
+
+    rule createQP if (!qpCreateDoneReg);
+        let qpInitAttr = QpInitAttr {
+            qpType  : qpType,
+            sqSigAll: False
+        };
+
+        let qpCreateReq = ReqQP {
+            qpReqType : REQ_QP_CREATE,
+            pdHandler : dontCareValue,
+            qpn       : getDefaultQPN,
+            qpAttrMast: dontCareValue,
+            qpAttr    : dontCareValue,
+            qpInitAttr: qpInitAttr
+        };
+
+        cntrl.srvPort.request.put(qpCreateReq);
+        qpCreateDoneReg <= True;
+    endrule
+
+    rule initQP if (qpCreateDoneReg && !qpInitDoneReg);
+        let qpCreateResp <- cntrl.srvPort.response.get;
+        immAssert(
+            qpCreateResp.successOrNot,
+            "qpCreateResp.successOrNot assertion @ mkSimController",
+            $format(
+                "qpCreateResp.successOrNot=", fshow(qpCreateResp.successOrNot),
+                " should be true when create QP"
+            )
+        );
+
+        let qpAttr = qpAttrPipeOut.first;
+        qpAttr.qpState = IBV_QPS_INIT;
+
+        let qpInitReq = ReqQP {
+            qpReqType : REQ_QP_MODIFY,
+            pdHandler : dontCareValue,
+            qpn       : getDefaultQPN,
+            qpAttrMast: dontCareValue,
+            qpAttr    : qpAttr,
+            qpInitAttr: dontCareValue
+        };
+
+        cntrl.srvPort.request.put(qpInitReq);
+        qpInitDoneReg <= True;
+/*
         cntrl.initialize(
             qpType,
             3, // maxRnrCnt
             3, // maxRetryCnt
             1, // maxTimeOut 0 - infinite, 1 - 8.192 usec (0.000008 sec)
             1, // minRnrTimer 1 - 0.01 milliseconds delay
+            IBV_ACCESS_REMOTE_WRITE, // qpAcessFlags
             fromInteger(valueOf(MAX_QP_WR)), // pendingWorkReqNum
             fromInteger(valueOf(MAX_QP_WR)), // pendingRecvReqNum
             fromInteger(valueOf(MAX_QP_RD_ATOM)), // pendingReadAtomicReqNum
-            False, // sigAll
+            fromInteger(valueOf(MAX_QP_RD_ATOM)), // pendingDestReadAtomicReqNum
+            False, // sqSigAll
             getDefaultQPN, // sqpn
             getDefaultQPN, // dqpn
             pkey,
@@ -791,14 +925,58 @@ module mkSimController#(QpType qpType, PMTU pmtu)(Controller);
             npsn,
             epsn
         );
+*/
     endrule
 
-    rule setRTR if (initializedReg && cntrl.isInit);
-        cntrl.setStateRTR;
+    // rule setRTR if (cntrl.isInit);
+    //     cntrl.setStateRTR;
+    // endrule
+
+    rule setRTS if (qpCreateDoneReg && qpInitDoneReg && !qpModifyDoneReg);
+        let qpInitResp <- cntrl.srvPort.response.get;
+
+        immAssert(
+            qpInitResp.successOrNot,
+            "qpInitResp.successOrNot assertion @ mkSimController",
+            $format(
+                "qpInitResp.successOrNot=", fshow(qpInitResp.successOrNot),
+                " should be true when qpInitResp=", fshow(qpInitResp)
+            )
+        );
+
+        let qpAttr = qpAttrPipeOut.first;
+        qpAttrPipeOut.deq;
+
+        qpAttr.qpState = IBV_QPS_RTS;
+        let qpModifyReq = ReqQP {
+            qpReqType : REQ_QP_MODIFY,
+            pdHandler : dontCareValue,
+            qpn       : getDefaultQPN,
+            qpAttrMast: dontCareValue,
+            qpAttr    : qpAttr,
+            qpInitAttr: dontCareValue
+        };
+
+        cntrl.srvPort.request.put(qpModifyReq);
+        qpModifyDoneReg <= True;
     endrule
 
-    rule setRTS if (initializedReg && cntrl.isRTR);
-        cntrl.setStateRTS;
+    rule setResp if (qpCreateDoneReg && qpInitDoneReg && qpModifyDoneReg);
+        let qpModifyResp <- cntrl.srvPort.response.get;
+
+        immAssert(
+            qpModifyResp.successOrNot,
+            "qpModifyResp.successOrNot assertion @ mkSimController",
+            $format(
+                "qpModifyResp.successOrNot=", fshow(qpModifyResp.successOrNot),
+                " should be true when qpModifyResp=", fshow(qpModifyResp)
+            )
+        );
+        // $display(
+        //     "time=%0t: qpModifyResp=", $time, fshow(qpModifyResp),
+        //     " should be success, and qpModifyResp.qpn=%h",
+        //     $time, qpModifyResp.qpn
+        // );
     endrule
 
     return cntrl;
@@ -813,42 +991,13 @@ module mkSimPermCheckMR#(Bool mrCheckPassOrFail)(PermCheckMR);
         checkRespQ.enq(mrCheckPassOrFail);
     endrule
 
-    // method Action checkReq(PermCheckInfo permCheckInfo);
-    //     checkReqQ.enq(permCheckInfo);
-    // endmethod
-
-    // method ActionValue#(Bool) checkResp();
-    //     let permCheckInfo = checkReqQ.first;
-    //     checkReqQ.deq;
-
-    //     return mrCheckPassOrFail;
-    // endmethod
-
     return toGPServer(checkReqQ, checkRespQ);
 endmodule
 
 module mkSimMetaData4SinigleQP#(QpType qpType, PMTU pmtu)(MetaDataQPs);
-    let cntrl <- mkSimController(qpType, pmtu);
-
-    // FIFOF#(QKEY)   createReqQ <- mkFIFOF;
-    // FIFOF#(QPN)   createRespQ <- mkFIFOF;
-    // FIFOF#(QPN)   destroyReqQ <- mkFIFOF;
-    // FIFOF#(Bool) destroyRespQ <- mkFIFOF;
-
-    // rule handleCreateQP;
-    //     createReqQ.deq;
-    //     let qpn = getDefaultQPN;
-    //     createRespQ.enq(qpn);
-    // endrule
-
-    // rule handleDestroyQP;
-    //     destroyReqQ.deq;
-    //     let destroyResp = True;
-    //     destroyRespQ.enq(destroyResp);
-    // endrule
-
-    // interface createQP  = toGPServer(createReqQ, createRespQ);
-    // interface destroyQP = toGPServer(destroyReqQ, destroyRespQ);
+    // TODO: merage mkExistingPendingWorkReqPipeOut into here
+    let setExpectedPsnAsNextPSN = True;
+    let cntrl <- mkSimController(qpType, pmtu, setExpectedPsnAsNextPSN);
 
     FIFOF#(ReqQP)   reqQ <- mkFIFOF;
     FIFOF#(RespQP) respQ <- mkFIFOF;
@@ -860,7 +1009,9 @@ module mkSimMetaData4SinigleQP#(QpType qpType, PMTU pmtu)(MetaDataQPs);
         let resp = RespQP {
             successOrNot: True,
             pdHandler   : req.pdHandler,
-            qpn         : req.qpn
+            qpn         : req.qpn,
+            qpAttr      : req.qpAttr,
+            qpInitAttr  : req.qpInitAttr
         };
         respQ.enq(resp);
     endrule
@@ -906,7 +1057,6 @@ module mkSimGenRecvReq#(Controller cntrl)(Vector#(vSz, PipeOut#(RecvReq)));
 endmodule
 
 module mkSimRetryHandlerWithLimitExcErr(RetryHandleSQ);
-    // FIFOF#(PendingWorkReq) emptyQ <- mkFIFOF;
     method Bool hasRetryErr() = True;
     method Bool isRetryDone() = False;
     method Bool isRetrying() = False;
@@ -924,7 +1074,6 @@ module mkSimRetryHandlerWithLimitExcErr(RetryHandleSQ);
     );
         noAction;
     endmethod
-    // interface retryWorkReqPipeOut = convertFifo2PipeOut(emptyQ);
 endmodule
 
 module mkSimInputPktBuf4SingleQP#(
@@ -1020,15 +1169,15 @@ endmodule
 
 module mkActionValueFunc2Pipe#(
     function ActionValue#(tb) avfn(ta inputVal), PipeOut#(ta) pipeIn
-)(PipeOut #(tb)) provisos (Bits #(ta, taSz), Bits #(tb, tbSz));
+)(PipeOut #(tb)) provisos(Bits #(ta, taSz), Bits #(tb, tbSz));
     // let resultPipeOut <- mkTap(avfn, pipeIn); // No delay
     let resultPipeOut <- mkAVFn_to_Pipe(avfn, pipeIn); // One cycle delay
     return resultPipeOut;
 endmodule
 
 module mkDebugSink#(PipeOut#(anytype) pipeIn)(Empty) provisos(FShow#(anytype));
-   rule drain;
-      pipeIn.deq;
-      $display("time=%0t: mkDebugSink drain ", $time, fshow(pipeIn.first));
-   endrule
+    rule drain;
+        pipeIn.deq;
+        $display("time=%0t: mkDebugSink drain ", $time, fshow(pipeIn.first));
+    endrule
 endmodule

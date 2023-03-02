@@ -19,11 +19,16 @@ typedef 0 INFINITE_TIMEOUT;
 typedef TMul#(8192, TExp#(30)) MAX_TIMEOUT_NS;
 typedef TMul#(655360, 1000)    MAX_RNR_WAIT_NS;
 
-typedef 16'hFFFF DEFAULT_PKEY;
+typedef 16'hFFFF     DEFAULT_PKEY;
+typedef 32'hFFFFFFFF DEFAULT_QKEY;
 
 typedef 64 ATOMIC_ADDR_BIT_ALIGNMENT;
 
 typedef 32 PD_HANDLE_WIDTH;
+
+typedef 8 QP_CAP_CNT_WIDTH;
+// typedef 32 QP_CAP_CNT_WIDTH;
+typedef 8 PENDING_READ_ATOMIC_REQ_CNT_WIDTH;
 
 // Derived settings
 typedef AETH_VALUE_WIDTH TIMER_WIDTH;
@@ -82,8 +87,12 @@ typedef Bit#(PAD_WIDTH)               PadMask;
 typedef Bit#(TAdd#(1, DATA_BUS_BIT_NUM_WIDTH))  BusBitNum;
 typedef Bit#(TAdd#(1, DATA_BUS_BYTE_NUM_WIDTH)) ByteEnBitNum;
 
-typedef Bit#(TLog#(TAdd#(1, MAX_QP_WR)))      PendingReqCnt;
-typedef Bit#(TLog#(TAdd#(1, MAX_QP_RD_ATOM))) PendingReadAtomicReqCnt;
+// typedef Bit#(TLog#(TAdd#(1, MAX_QP_WR)))        PendingReqCnt;
+// typedef Bit#(TLog#(TAdd#(1, MAX_QP_RD_ATOM)))   PendingReadAtomicReqCnt;
+typedef Bit#(PENDING_READ_ATOMIC_REQ_CNT_WIDTH) PendingReadAtomicReqCnt;
+typedef Bit#(QP_CAP_CNT_WIDTH) PendingReqCnt;
+typedef Bit#(QP_CAP_CNT_WIDTH) InlineDataSize;
+typedef Bit#(QP_CAP_CNT_WIDTH) ScatterGatherElemCnt;
 
 // typedef Bit#(PMTU_VALUE_MAX_WIDTH) PmtuValueWidth;
 typedef Bit#(TLog#(MAX_PMTU))      PmtuMask;
@@ -276,9 +285,9 @@ typedef union tagged {
     struct {
         DmaWriteMetaData atomicRespDmaWriteMetaData;
         Long atomicRespPayload;
-     } AtomicRespInfoAndPayload;
+    } AtomicRespInfoAndPayload;
     DmaWriteMetaData SendWriteReqReadRespInfo;
-} PayloadConInfo deriving(Bits, Eq, FShow);
+} PayloadConInfo deriving(Bits, FShow);
 
 typedef struct {
     PmtuFragNum fragNum;
@@ -317,7 +326,7 @@ typedef enum {
     IBV_QPS_SQE,
     IBV_QPS_ERR,
     IBV_QPS_UNKNOWN
-} QpState deriving(Bits, Eq);
+} QpState deriving(Bits, Eq, FShow);
 
 typedef enum {
     IBV_QPT_RC = 2,
@@ -338,7 +347,7 @@ typedef enum {
     IBV_ACCESS_ZERO_BASED    = 32, // (1 << 5)
     IBV_ACCESS_ON_DEMAND     = 64, // (1 << 6)
     IBV_ACCESS_HUGETLB       = 128 // (1 << 7)
-    // IBV_ACCESS_RELAXED_ORDERING	= IBV_ACCESS_OPTIONAL_FIRST,
+    // IBV_ACCESS_RELAXED_ORDERING    = IBV_ACCESS_OPTIONAL_FIRST,
 } MemAccessTypeFlags deriving(Bits, Eq, FShow);
 
 typedef enum {
@@ -348,6 +357,78 @@ typedef enum {
     IBV_MTU_2048 = 4,
     IBV_MTU_4096 = 5
 } PMTU deriving(Bits, Eq, FShow);
+
+typedef struct {
+    PendingReqCnt        maxSendWR;
+    PendingReqCnt        maxRecvWR;
+    ScatterGatherElemCnt maxSendSGE;
+    ScatterGatherElemCnt maxRecvSGE;
+    InlineDataSize       maxInlineData;
+} QpCapacity deriving(Bits, FShow);
+
+typedef struct {
+    QpState                 qpState;
+    QpState                 curQpState;
+    PMTU                    pmtu;
+    QKEY                    qkey;
+    PSN                     rqPSN;
+    PSN                     sqPSN;
+    QPN                     dqpn;
+    MemAccessTypeFlags      qpAcessFlags;
+    QpCapacity              cap;
+    PKEY                    pkeyIndex;
+    Bool                    sqDraining;
+    PendingReadAtomicReqCnt maxReadAtomic;
+    PendingReadAtomicReqCnt maxDestReadAtomic;
+    RnrTimer                minRnrTimer;
+    TimeOutTimer            timeout;
+    RetryCnt                retryCnt;
+    RetryCnt                rnrRetry;
+    // PKEY                    alt_pkey_index;
+    // enum ibv_mig_state      path_mig_state;
+    // struct ibv_ah_attr      ah_attr;
+    // struct ibv_ah_attr      alt_ah_attr;
+    // uint8_t                 en_sqd_async_notify;
+    // uint8_t                 port_num;
+    // uint8_t                 alt_port_num;
+    // uint8_t                 alt_timeout;
+    // uint32_t                rate_limit;
+} QpAttr deriving(Bits, FShow);
+
+typedef struct {
+    QpType qpType;
+    Bool   sqSigAll;
+} QpInitAttr deriving(Bits, FShow);
+
+typedef enum {
+    IBV_QP_STATE               = 1,       // 1 << 0
+    IBV_QP_CUR_STATE           = 2,       // 1 << 1
+    IBV_QP_EN_SQD_ASYNC_NOTIFY = 4,       // 1 << 2
+    IBV_QP_ACCESS_FLAGS        = 8,       // 1 << 3
+    IBV_QP_PKEY_INDEX          = 16,      // 1 << 4
+    IBV_QP_PORT                = 32,      // 1 << 5
+    IBV_QP_QKEY                = 64,      // 1 << 6
+    IBV_QP_AV                  = 128,     // 1 << 7
+    IBV_QP_PATH_MTU            = 256,     // 1 << 8
+    IBV_QP_TIMEOUT             = 512,     // 1 << 9
+    IBV_QP_RETRY_CNT           = 1024,    // 1 << 10
+    IBV_QP_RNR_RETRY           = 2048,    // 1 << 11
+    IBV_QP_RQ_PSN              = 4096,    // 1 << 12
+    IBV_QP_MAX_QP_RD_ATOMIC    = 8192,    // 1 << 13
+    IBV_QP_ALT_PATH            = 16384,   // 1 << 14
+    IBV_QP_MIN_RNR_TIMER       = 32768,   // 1 << 15
+    IBV_QP_SQ_PSN              = 65536,   // 1 << 16
+    IBV_QP_MAX_DEST_RD_ATOMIC  = 131072,  // 1 << 17
+    IBV_QP_PATH_MIG_STATE      = 262144,  // 1 << 18
+    IBV_QP_CAP                 = 524288,  // 1 << 19
+    IBV_QP_DEST_QPN            = 1048576, // 1 << 20
+    // These bits were supported on older kernels, but never exposed from libibverbs
+    // _IBV_QP_SMAC               = 1 << 21,
+    // _IBV_QP_ALT_SMAC           = 1 << 22,
+    // _IBV_QP_VID                = 1 << 23,
+    // _IBV_QP_ALT_VID            = 1 << 24,
+    IBV_QP_RATE_LIMIT          = 33554432 // 1 << 25
+} QpAttrMask deriving(Bits, Eq, FShow);
 
 // WorkReq related
 
@@ -543,24 +624,24 @@ typedef struct {
 // Async event related
 
 typedef enum {
-	IBV_EVENT_CQ_ERR,
-	IBV_EVENT_QP_FATAL,
-	IBV_EVENT_QP_REQ_ERR,
-	IBV_EVENT_QP_ACCESS_ERR,
-	IBV_EVENT_COMM_EST,
-	IBV_EVENT_SQ_DRAINED,
-	IBV_EVENT_PATH_MIG,
-	IBV_EVENT_PATH_MIG_ERR,
-	IBV_EVENT_DEVICE_FATAL,
-	IBV_EVENT_PORT_ACTIVE,
-	IBV_EVENT_PORT_ERR,
-	IBV_EVENT_LID_CHANGE,
-	IBV_EVENT_PKEY_CHANGE,
-	IBV_EVENT_SM_CHANGE,
-	IBV_EVENT_SRQ_ERR,
-	IBV_EVENT_SRQ_LIMIT_REACHED,
-	IBV_EVENT_QP_LAST_WQE_REACHED,
-	IBV_EVENT_CLIENT_REREGISTER,
-	IBV_EVENT_GID_CHANGE,
-	IBV_EVENT_WQ_FATAL
+    IBV_EVENT_CQ_ERR,
+    IBV_EVENT_QP_FATAL,
+    IBV_EVENT_QP_REQ_ERR,
+    IBV_EVENT_QP_ACCESS_ERR,
+    IBV_EVENT_COMM_EST,
+    IBV_EVENT_SQ_DRAINED,
+    IBV_EVENT_PATH_MIG,
+    IBV_EVENT_PATH_MIG_ERR,
+    IBV_EVENT_DEVICE_FATAL,
+    IBV_EVENT_PORT_ACTIVE,
+    IBV_EVENT_PORT_ERR,
+    IBV_EVENT_LID_CHANGE,
+    IBV_EVENT_PKEY_CHANGE,
+    IBV_EVENT_SM_CHANGE,
+    IBV_EVENT_SRQ_ERR,
+    IBV_EVENT_SRQ_LIMIT_REACHED,
+    IBV_EVENT_QP_LAST_WQE_REACHED,
+    IBV_EVENT_CLIENT_REREGISTER,
+    IBV_EVENT_GID_CHANGE,
+    IBV_EVENT_WQ_FATAL
 } AsyncEventType deriving(Bits, Eq);

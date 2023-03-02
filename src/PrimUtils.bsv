@@ -67,8 +67,8 @@ function Action immAssert(Bool condition, String assertName, Fmt assertFmtMsg);
         // let pos = printPosition(getEvalPosition(condition));
         if (!condition) begin
             $display(
-              "ImmAssert failed in %m @time=%0t: %s-- %s: ",
-              $time, pos, assertName, assertFmtMsg
+                "ImmAssert failed in %m @time=%0t: %s-- %s: ",
+                $time, pos, assertName, assertFmtMsg
             );
             $finish(1);
         end

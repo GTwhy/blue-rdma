@@ -5,6 +5,7 @@ import Vector :: *;
 import Controller :: *;
 import DataTypes :: *;
 import Headers :: *;
+import MetaData :: *;
 import PrimUtils :: *;
 import RetryHandleSQ :: *;
 import SpecialFIFOF :: *;
@@ -64,7 +65,10 @@ module mkTestRetryHandleSQ#(TestRetryCase retryCase)(Empty);
     let qpType = IBV_QPT_XRC_SEND;
     let pmtu = IBV_MTU_256;
 
-    let cntrl <- mkSimController(qpType, pmtu);
+    let qpMetaData <- mkSimMetaData4SinigleQP(qpType, pmtu);
+    let qpIndex = getDefaultIndexQP;
+    let cntrl = qpMetaData.getCntrlByIdxQP(qpIndex);
+
     PendingWorkReqBuf pendingWorkReqBuf <- mkScanFIFOF;
     let retryWorkReqPipeOut = scanOut2PipeOut(pendingWorkReqBuf);
 
@@ -126,7 +130,7 @@ module mkTestRetryHandleSQ#(TestRetryCase retryCase)(Empty);
         end
         isPartialRetryWorkReqReg <= isPartialRetry;
         retryHandleTestStateReg <= TEST_RETRY_TRIGGERED;
-        $display("time=%0t: test retry triggered", $time);
+        // $display("time=%0t: test retry triggered", $time);
     endrule
 
     rule retryWait4Start if (
@@ -163,10 +167,10 @@ module mkTestRetryHandleSQ#(TestRetryCase retryCase)(Empty);
         );
 
         retryHandleTestStateReg <= TEST_RETRY_RESTART_TRIGGERED;
-        $display(
-            "time=%0t: test retry restarted", $time,
-            ", firstRetryWR.wr.id=%h", firstRetryWR.wr.id
-        );
+        // $display(
+        //     "time=%0t: test retry restarted", $time,
+        //     ", firstRetryWR.wr.id=%h", firstRetryWR.wr.id
+        // );
     endrule
 
     rule retryWait4Restart if (
@@ -238,14 +242,14 @@ module mkTestRetryHandleSQ#(TestRetryCase retryCase)(Empty);
         end
 
         countDown.decr;
-        $display(
-            "time=%0t: compare", $time,
-            " retryWR.wr.id=%h == refRetryWR.wr.id=%h",
-            retryWR.wr.id, refRetryWR.wr.id,
-            ", retryHandleTestStateReg=", fshow(retryHandleTestStateReg)
-            // ", retryWR=", fshow(retryWR),
-            // ", refRetryWR=", fshow(refRetryWR)
-        );
+        // $display(
+        //     "time=%0t: compare", $time,
+        //     " retryWR.wr.id=%h == refRetryWR.wr.id=%h",
+        //     retryWR.wr.id, refRetryWR.wr.id,
+        //     ", retryHandleTestStateReg=", fshow(retryHandleTestStateReg)
+        //     // ", retryWR=", fshow(retryWR),
+        //     // ", refRetryWR=", fshow(refRetryWR)
+        // );
     endrule
 
     rule retryDone if (
@@ -255,6 +259,6 @@ module mkTestRetryHandleSQ#(TestRetryCase retryCase)(Empty);
         pendingWorkReqBuf.fifoIfc.clear;
         dut.resetRetryCntBySQ;
         dut.resetTimeOutBySQ;
-        $display("time=%0t: test retry done", $time);
+        // $display("time=%0t: test retry done", $time);
     endrule
 endmodule

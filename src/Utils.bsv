@@ -161,8 +161,9 @@ function ByteEn genByteEn(ByteEnBitNum fragValidByteNum);
     return reverseBits((1 << fragValidByteNum) - 1);
 endfunction
 
-function ByteEnBitNum calcLastFragValidByteNum(Bit#(nSz) len)
-provisos(Add#(DATA_BUS_BYTE_NUM_WIDTH, anysizeK, nSz), Add#(1, anysizeJ, nSz));
+function ByteEnBitNum calcLastFragValidByteNum(Bit#(nSz) len) provisos(
+    Add#(DATA_BUS_BYTE_NUM_WIDTH, anysizeK, nSz), Add#(1, anysizeJ, nSz)
+);
     BusByteWidthMask busByteWidthMask = maxBound;
     ByteEnBitNum lastFragValidByteNum = zeroExtend(truncate(len) & busByteWidthMask);
 
@@ -729,14 +730,6 @@ function BTH extractBTH(HeaderData headerData);
     return bth;
 endfunction
 
-// function BTH extractBTH2(DATA fragData);
-//     let bth = unpack(fragData[
-//         valueOf(DATA_BUS_WIDTH)-1 :
-//         valueOf(DATA_BUS_WIDTH) - valueOf(BTH_WIDTH)
-//     ]);
-//     return bth;
-// endfunction
-
 function AETH extractAETH(HeaderData headerData);
     let aeth = unpack(headerData[
         valueOf(HEADER_MAX_DATA_WIDTH) - valueOf(BTH_WIDTH) -1 :
@@ -1096,14 +1089,6 @@ function RetryReason getRetryReasonFromAETH(AETH aeth);
     endcase;
 endfunction
 
-// function Maybe#(WorkCompStatus) getErrWorkCompStatusFromRetryReason(RetryReason rr);
-//     return case (rr)
-//         RETRY_REASON_RNR    : tagged Valid IBV_WC_RNR_RETRY_EXC_ERR;
-//         RETRY_REASON_SEQ_ERR: tagged Valid IBV_WC_RETRY_EXC_ERR;
-//         default             : tagged Invalid;
-//     endcase;
-// endfunction
-
 function Bool checkNormalRespOpCodeSeqSQ(
     RdmaOpCode preOpCode, RdmaOpCode curOpCode
 );
@@ -1418,49 +1403,6 @@ function WorkCompFlags rdmaOpCode2WorkCompFlagsRQ(RdmaOpCode opcode);
         default                       : IBV_WC_NO_FLAGS;
     endcase;
 endfunction
-
-// Payload related
-
-// module mkDataStreamFromDmaReadResp#(PipeOut#(DmaReadResp) respPipeOut)(DataStreamPipeOut);
-//     function DataStream getDmaReadRespData(DmaReadResp dmaReadResp) = dmaReadResp.data;
-//     DataStreamPipeOut ret <- mkFunc2Pipe(getDmaReadRespData, respPipeOut);
-//     return ret;
-// endmodule
-
-// module mkSegDataStreamPipeOutFromDmaReadResp#(
-//     Get#(DmaReadResp) resp,
-//     PMTU pmtu
-// )(DataStreamPipeOut);
-//     DataStreamPipeOut dataStreamPipeOut <-
-//         mkDataStreamPipeOutFromDmaReadResp(resp);
-//     let ret <- mkSegmentDataStreamByPmtu(dataStreamPipeOut, pmtu);
-//     return ret;
-// endmodule
-
-// module mkSegDataStreamPipeOutFromDmaReadResp#(
-//     Get#(DmaReadResp) resp,
-//     PMTU pmtu,
-//     WorkReqID wrID
-// )(DataStreamPipeOut);
-//     function Action checkDmaReadResp(DmaReadResp resp);
-//         action
-//             immAssert(
-//                 resp.wrID == wrID,
-//                 "wrID assertion @ mkSegDataStreamPipeOutFromDmaReadResp",
-//                 $format("resp.wrID=%h should == wrID=%h", resp.wrID, wrID)
-//             );
-//         endaction
-//     endfunction
-//     function DataStream getDmaReadRespData(DmaReadResp dmaReadResp) = dmaReadResp.data;
-
-//     PipeOut#(DmaReadResp) dmaReadRespPipeOut <- mkSource_from_fav(resp.get);
-//     DataStreamPipeOut dataStreamPipeOut <- mkFunc2Pipe(
-//         getDmaReadRespData,
-//         fn_tee_to_Action(checkDmaReadResp, dmaReadRespPipeOut)
-//     );
-//     let ret <- mkSegmentDataStreamByPmtu(dataStreamPipeOut, pmtu);
-//     return ret;
-// endmodule
 
 // PipeOut related
 

@@ -301,7 +301,7 @@ module mkInputRdmaPktBufAndHeaderValidation#(
             let dqpn = (bth.trans == TRANS_TYPE_XRC && !isRespPkt) ? xrceth.srqn : bth.dqpn;
 
             let maybePdHandler = qpMetaData.getPD(dqpn);
-            // let isValidDQPN = isValid(maybePdHandler);
+            // TODO: check DQPN == cntrl.getSQPN
             let cntrl = qpMetaData.getCntrlByQPN(dqpn);
             if (maybePdHandler matches tagged Valid .pdHandler) begin
                 let validateResult = validateHeader(bth.trans, deth.qkey, cntrl, isRespPkt);

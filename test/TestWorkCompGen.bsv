@@ -5,6 +5,7 @@ import Vector :: *;
 import Headers :: *;
 import Controller :: *;
 import DataTypes :: *;
+import MetaData :: *;
 import PrimUtils :: *;
 import Settings :: *;
 import Utils :: *;
@@ -33,16 +34,15 @@ module mkTestWorkCompGenSQ#(Bool isNormalCase)(Empty);
     let qpType = IBV_QPT_XRC_SEND;
     let pmtu = IBV_MTU_512;
 
-    let cntrl <- mkSimController(qpType, pmtu);
-    // PendingWorkReqBuf pendingWorkReqBuf <- mkScanFIFOF;
-
     // WorkReq generation
     Vector#(1, PipeOut#(WorkReq)) workReqPipeOutVec <-
         mkRandomWorkReq(minDmaLength, maxDmaLength);
     // It needs extra controller to generate pending WR,
     // since WC might change controller to error state,
     // which prevent generating pending WR.
-    let cntrl4PendingWorkReqGen <- mkSimController(qpType, pmtu);
+    let qpMetaData <- mkSimMetaData4SinigleQP(qpType, pmtu);
+    let qpIndex = getDefaultIndexQP;
+    let cntrl4PendingWorkReqGen = qpMetaData.getCntrlByIdxQP(qpIndex);
     Vector#(2, PipeOut#(PendingWorkReq)) existingPendingWorkReqPipeOutVec <-
         mkExistingPendingWorkReqPipeOut(cntrl4PendingWorkReqGen, workReqPipeOutVec[0]);
     let pendingWorkReqPipeOut4WorkCompReq = existingPendingWorkReqPipeOutVec[0];
@@ -57,6 +57,10 @@ module mkTestWorkCompGenSQ#(Bool isNormalCase)(Empty);
     FIFOF#(WorkCompGenReqSQ) wcGenReqQ4RespHandleInSQ <- mkFIFOF;
     // WC status from RQ
     FIFOF#(WorkCompStatus) workCompStatusQFromRQ <- mkFIFOF;
+
+    // Controller for DUT that will be triggered into error state
+    let setExpectedPsnAsNextPSN = False;
+    let cntrl <- mkSimController(qpType, pmtu, setExpectedPsnAsNextPSN);
 
     // DUT
     let workCompPipeOut <- mkWorkCompGenSQ(
@@ -143,10 +147,10 @@ module mkTestWorkCompGenSQ#(Bool isNormalCase)(Empty);
             )
         );
 
-        countDown.decr;
         // $display(
         //     "time=%0t: WC=", $time, fshow(workCompSQ), " not match WR=", fshow(pendingWR.wr)
         // );
+        countDown.decr;
     endrule
 endmodule
 
@@ -175,7 +179,9 @@ module mkTestWorkCompGenRQ#(Bool isNormalCase)(Empty);
     // It needs extra controller to generate pending WR,
     // since WC might change controller to error state,
     // which prevent generating pending WR.
-    let cntrl4PendingWorkReqGen <- mkSimController(qpType, pmtu);
+    let qpMetaData <- mkSimMetaData4SinigleQP(qpType, pmtu);
+    let qpIndex = getDefaultIndexQP;
+    let cntrl4PendingWorkReqGen = qpMetaData.getCntrlByIdxQP(qpIndex);
     Vector#(1, PipeOut#(PendingWorkReq)) pendingWorkReqPipeOutVec <-
         mkExistingPendingWorkReqPipeOut(cntrl4PendingWorkReqGen, workReqPipeOutVec[0]);
 
@@ -190,7 +196,9 @@ module mkTestWorkCompGenRQ#(Bool isNormalCase)(Empty);
     // WC requests
     FIFOF#(WorkCompGenReqRQ) workCompGenReqQ4RQ <- mkFIFOF;
 
-    let cntrl <- mkSimController(qpType, pmtu);
+    let setExpectedPsnAsNextPSN = False;
+    let cntrl <- mkSimController(qpType, pmtu, setExpectedPsnAsNextPSN);
+
     // DUT
     let dut <- mkWorkCompGenRQ(
         cntrl,
@@ -341,7 +349,7 @@ module mkTestWorkCompGenRQ#(Bool isNormalCase)(Empty);
             )
         );
 
-        countDown.decr;
         // $display("time=%0t: WC=", $time, fshow(workCompRQ));
+        countDown.decr;
     endrule
 endmodule

@@ -1,5 +1,4 @@
 import ClientServer :: *;
-// import Connectable :: *;
 import FIFOF :: *;
 import GetPut :: *;
 import PAClib :: *;
@@ -7,108 +6,7 @@ import Vector :: *;
 
 import PrimUtils :: *;
 import Utils :: *;
-/*
-interface ArbiterClient;
-    method Action request();
-    // method Action lock();
-    method Bool grant();
-endinterface
 
-interface Arbiter#(numeric type portSz);
-    interface Vector#(portSz, ArbiterClient) clients;
-    method    Bit#(TLog#(portSz))            getGrantIdx;
-endinterface
-
-module mkRoundRobinArbiter(Arbiter#(portSz));
-    let portNum = valueOf(portSz);
-
-    // Initially, priority is given to client 0
-    Vector#(portSz, Bool) initPriorityVec = replicate(False);
-    initPriorityVec[0] = True;
-    Reg#(Vector#(portSz, Bool)) priorityVecReg <- mkReg(initPriorityVec);
-    // Reg#(Vector#(portSz, Bool)) preGrantVecReg <- mkReg(replicate(False));
-    // Reg#(Bit#(TLog#(portSz)))   preGrantIdxReg <- mkReg(0);
-
-    Wire#(Bit#(TLog#(portSz)))   grantIdx <- mkBypassWire;
-    Wire#(Vector#(portSz, Bool)) grantVec <- mkBypassWire;
-    Vector#(portSz, PulseWire) requestVec <- replicateM(mkPulseWire);
-    Vector#(portSz, PulseWire) reqLockVec <- replicateM(mkPulseWire);
-
-    function Bool isTrue(Bool inputVal) = inputVal;
-
-    (* no_implicit_conditions, fire_when_enabled *)
-    rule every;
-        // calculate the grantVec
-        Vector#(portSz, Bool) tmpReqVec = replicate(False);
-        Vector#(portSz, Bool) tmpGrantVec = replicate(False);
-        Bit#(TLog#(portSz))   tmpGrantIdx = 0;
-
-        Bool found = True;
-        // Bool fixed = False;
-        for (Integer x = 0; x < (2 * portNum); x = x + 1) begin
-            Integer y = (x % portNum);
-
-            let hasReq = requestVec[y];
-            tmpReqVec[y] = hasReq;
-            // let hasLock = reqLockVec[y];
-            let hasPriority = priorityVecReg[y];
-
-            if (hasPriority) begin
-                found = False;
-                // fixed = hasReq && hasLock;
-            end
-
-            if (!found && hasReq) begin
-                tmpGrantVec[y] = True;
-                tmpGrantIdx    = fromInteger(y);
-                found = True;
-            end
-        end
-
-        // let sticky = !isZero(pack(preGrantVecReg) & pack(requestVec));
-        // Update the RWire
-        grantVec <= tmpGrantVec;
-        grantIdx <= tmpGrantIdx;
-        // grantVec <= sticky ? preGrantVecReg : tmpGrantVec;
-        // grantIdx <= sticky ? preGrantIdxReg : tmpGrantIdx;
-
-        // If a grant was given, update the priority vector so that
-        // client now has lowest priority.
-        if (any(isTrue, tmpGrantVec)) begin
-            $display("time=%0t: Updating priorities", $time);
-            priorityVecReg <= rotateR(tmpGrantVec);
-            // preGrantVecReg <= tmpGrantVec;
-            // preGrantIdxReg <= tmpGrantIdx;
-        end
-        $display("time=%0t: priority vector: %b", $time, priorityVecReg);
-        $display("time=%0t:  request vector: %b", $time, tmpReqVec);
-        $display("time=%0t:    Grant vector: %b", $time, tmpGrantVec);
-        $display("time=%0t:        grantIdx: %0d", $time, tmpGrantIdx);
-        // $display("time=%0t:           fixed=", $time, fshow(fixed));
-    endrule
-
-    // Now create the vector of interfaces
-    Vector#(portSz, ArbiterClient) clientVec = newVector;
-    for (Integer x = 0; x < portNum; x = x + 1) begin
-        clientVec[x] = (interface ArbiterClient
-            method Action request();
-                requestVec[x].send;
-            endmethod
-
-            // method Action lock();
-            //     reqLockVec[x].send;
-            // endmethod
-
-            method Bool grant();
-                return grantVec[x];
-            endmethod
-        endinterface);
-    end
-
-    interface clients = clientVec;
-    method Bit#(TLog#(portSz)) getGrantIdx() = grantIdx;
-endmodule
-*/
 function Tuple3#(Bool, Bit#(TLog#(portSz)), Vector#(portSz, Bool)) arbitrate(
     Vector#(portSz, Bool) priorityVec, Vector#(portSz, Bool) requestVec
 );
@@ -147,8 +45,7 @@ module mkServerArbiter#(
     Server#(reqType, respType) srv,
     function Bool isReqFinished(reqType request),
     function Bool isRespFinished(respType response)
-)(Vector#(portSz, Server#(reqType, respType)))
-provisos(
+)(Vector#(portSz, Server#(reqType, respType))) provisos(
     FShow#(reqType), FShow#(respType),
     Bits#(reqType, reqSz),
     Bits#(respType, respSz),
@@ -167,22 +64,8 @@ provisos(
 
     Vector#(portSz, FIFOF#(reqType))   reqVec <- replicateM(mkFIFOF);
     Vector#(portSz, FIFOF#(respType)) respVec <- replicateM(mkFIFOF);
-    // Vector#(portSz, Wire#(Bool))   reqLockVec <- replicateM(mkDWire(True));
 
     function Bool portHasReqFunc(FIFOF#(reqType) portReqQ) = portReqQ.notEmpty;
-
-    // function Bool portHasReqLockFunc(FIFOF#(reqType) portReqQ);
-    //     return portReqQ.notEmpty ? isReqFinished(portReqQ.first) : False;
-    // endfunction
-
-    // function Tuple2#(Bool, Bool) clientHasReqAndLockFunc(
-    //     function Bool isReqFinished(reqType request),
-    //     FIFOF#(reqType) portReqQ
-    // );
-    //     return portReqQ.notEmpty ?
-    //         tuple2(True, isReqFinished(portReqQ.first)) :
-    //         tuple2(False, False);
-    // endfunction
 
     function Server#(reqType, respType) fifoTuple2Server(
         Tuple2#(FIFOF#(reqType), FIFOF#(respType)) fifoTuple
@@ -263,8 +146,7 @@ endmodule
 module mkPipeOutArbiter#(
     Vector#(portSz, PipeOut#(anytype)) inputPipeOutVec,
     function Bool isPipePayloadFinished(anytype pipePayload)
-)(PipeOut#(anytype))
-provisos(
+)(PipeOut#(anytype)) provisos(
     FShow#(anytype),
     Bits#(anytype, tSz),
     Add#(1, anysize, portSz),
@@ -281,15 +163,6 @@ provisos(
     Reg#(Vector#(portSz, Bool)) priorityVecReg <- mkReg(initPriorityVec);
 
     function Bool portHasReqFunc(PipeOut#(anytype) pipeIn) = pipeIn.notEmpty;
-
-    // function Tuple2#(Bool, Bool) clientHasReqAndLockFunc(
-    //     function Bool isReqFinished(reqType request),
-    //     PipeOut#(reqType) portReqQ
-    // );
-    //     return portReqQ.notEmpty ?
-    //         tuple2(True, isReqFinished(portReqQ.first)) :
-    //         tuple2(False, False);
-    // endfunction
 
     rule arbitrateRequest;
         let requestVec = map(portHasReqFunc, inputPipeOutVec);

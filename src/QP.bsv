@@ -226,28 +226,30 @@ module mkQP#(
     interface workCompPipeOutSQ = sq.workCompPipeOutSQ;
 endmodule
 
+typedef union tagged {
+    WorkReq WR;
+    RecvReq RR;
+} WorkReqOrRecvReq deriving(Bits);
+
 // TODO: check QP state when dispatching WR and RR
 module mkWorkReqAndRecvReqDispatcher#(
-    PipeOut#(WorkReq) workReqPipeIn,
-    PipeOut#(RecvReq) recvReqPipeIn
+    PipeOut#(WorkReqOrRecvReq) workReqOrRecvReqPipeIn
 )(Tuple2#(Vector#(MAX_QP, PipeOut#(WorkReq)), Vector#(MAX_QP, PipeOut#(RecvReq))));
     Vector#(MAX_QP, FIFOF#(WorkReq)) workReqOutVec <- replicateM(mkFIFOF);
     Vector#(MAX_QP, FIFOF#(RecvReq)) recvReqOutVec <- replicateM(mkFIFOF);
 
-    rule dispatchWR;
-        let wr = workReqPipeIn.first;
-        workReqPipeIn.deq;
-
-        let qpIndex = getIndexQP(wr.sqpn);
-        workReqOutVec[qpIndex].enq(wr);
-    endrule
-
-    rule displatchRR;
-        let rr = recvReqPipeIn.first;
-        recvReqPipeIn.deq;
-
-        let qpIndex = getIndexQP(rr.sqpn);
-        recvReqOutVec[qpIndex].enq(rr);
+    rule dispatchWorkReqOrRecvReq;
+        case (workReqOrRecvReqPipeIn.first) matches
+            tagged WR .wr: begin
+                let qpIndex = getIndexQP(wr.sqpn);
+                workReqOutVec[qpIndex].enq(wr);
+            end
+            tagged RR .rr: begin
+                let qpIndex = getIndexQP(rr.sqpn);
+                recvReqOutVec[qpIndex].enq(rr);
+            end
+        endcase
+        workReqOrRecvReqPipeIn.deq;
     endrule
 
     return tuple2(
@@ -259,11 +261,8 @@ endmodule
 interface TransportLayerRDMA;
     interface Put#(DataStream) rdmaDataStreamInput;
     interface DataStreamPipeOut rdmaDataStreamPipeOut;
-    interface Put#(RecvReq) putRecvReq;
-    interface Put#(WorkReq) putWorkReq;
-    interface PipeOut#(WorkComp) workCompPipeOut;
-    // interface PipeOut#(WorkComp) workCompPipeOutRQ;
-    // interface PipeOut#(WorkComp) workCompPipeOutSQ;
+    interface Server#(WorkReqOrRecvReq, WorkComp) srvWorkReqRecvReqWorkComp;
+    // interface MetaDataSrv srvMetaData;
 endinterface
 
 (* synthesize *)
@@ -271,17 +270,22 @@ module mkTransportLayerRDMA(TransportLayerRDMA);
     FIFOF#(DataStream) inputDataStreamQ <- mkFIFOF;
     let rdmaReqRespPipeIn = convertFifo2PipeOut(inputDataStreamQ);
 
-    FIFOF#(WorkReq) inputWorkReqQ <- mkFIFOF;
-    FIFOF#(RecvReq) inputRecvReqQ <- mkFIFOF;
+    FIFOF#(WorkReqOrRecvReq) inputWorkReqOrRecvReqQ <- mkFIFOF;
 
-    let pdMetaData <- mkMetaDataPDs;
+    let pdMetaData  <- mkMetaDataPDs;
     let permCheckMR <- mkPermCheckMR(pdMetaData);
-    // let tlb <- mkTLB;
-    let qpMetaData <- mkMetaDataQPs;
+    let qpMetaData  <- mkMetaDataQPs;
+    let metaDataSrv <- mkMetaDataSrv(pdMetaData, qpMetaData);
+
+    let qpInitAttr = QpInitAttr {
+        qpType  : IBV_QPT_RC,
+        sqSigAll: False
+    };
+    let qpAttrPipeOut <- mkQpAttrPipeOut;
+    let initMetaData <- mkInitMetaData(metaDataSrv, qpInitAttr, qpAttrPipeOut);
 
     let { workReqPipeOutVec, recvPipeOutVec } <- mkWorkReqAndRecvReqDispatcher(
-        convertFifo2PipeOut(inputWorkReqQ),
-        convertFifo2PipeOut(inputRecvReqQ)
+        convertFifo2PipeOut(inputWorkReqOrRecvReqQ)
     );
 
     PermCheckArbiter#(TMul#(2, MAX_QP)) permCheckArbiter <- mkPermCheckAribter(permCheckMR);
@@ -298,9 +302,10 @@ module mkTransportLayerRDMA(TransportLayerRDMA);
     DmaReadArbiter#(MAX_QP)   dmaReadSrvVec <- mkDmaReadAribter(dmaReadSrv);
     DmaWriteArbiter#(MAX_QP) dmaWriteSrvVec <- mkDmaWriteAribter(dmaWriteSrv);
 
-    Vector#(MAX_QP, DataStreamPipeOut) qpDataStreamPipeOutVec = newVector;
+    Vector#(MAX_QP, DataStreamPipeOut)    qpDataStreamPipeOutVec = newVector;
     Vector#(MAX_QP, PipeOut#(WorkComp)) qpRecvWorkCompPipeOutVec = newVector;
     Vector#(MAX_QP, PipeOut#(WorkComp)) qpSendWorkCompPipeOutVec = newVector;
+
     for (Integer idx = 0; idx < valueOf(MAX_QP); idx = idx + 1) begin
         let permCheck4RQ = permCheckArbiter[2 * idx];
         let permCheck4SQ = permCheckArbiter[2 * idx + 1];
@@ -338,16 +343,14 @@ module mkTransportLayerRDMA(TransportLayerRDMA);
     function Bool isWorkCompFinished(WorkComp wc) = True;
     let recvWorkCompPipeOut <- mkPipeOutArbiter(qpRecvWorkCompPipeOutVec, isWorkCompFinished);
     let sendWorkCompPipeOut <- mkPipeOutArbiter(qpSendWorkCompPipeOutVec, isWorkCompFinished);
+    let workCompPipeOut = fixedBinaryPipeOutArbiter(
+        recvWorkCompPipeOut, sendWorkCompPipeOut
+    );
 
     interface rdmaDataStreamInput   = toPut(inputDataStreamQ);
     interface rdmaDataStreamPipeOut = dataStreamPipeOut;
-    interface putRecvReq            = toPut(inputRecvReqQ);
-    interface putWorkReq            = toPut(inputWorkReqQ);
-    interface workCompPipeOut       = fixedBinaryPipeOutArbiter(
-        recvWorkCompPipeOut, sendWorkCompPipeOut
-    );
-    // interface workCompPipeOutRQ     = recvWorkCompPipeOut;
-    // interface workCompPipeOutSQ     = sendWorkCompPipeOut;
+    interface srvWorkReqRecvReqWorkComp = toGPServer(inputWorkReqOrRecvReqQ, workCompPipeOut);
+    // interface srvMetaData = metaDataSrv;
 endmodule
 
 // TODO: connect to DMA IP

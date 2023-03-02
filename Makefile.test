@@ -38,6 +38,7 @@ TestMetaData.bsv                 = mkTestMetaDataMRs \
                                     mkTestMetaDataPDs \
                                     mkTestMetaDataQPs \
                                     mkTestPermCheckMR \
+                                    mkTestMetaDataSrv \
                                     mkTestBramCache \
                                     mkTestTLB
 TestPayloadConAndGen.bsv         = mkTestPayloadConAndGenNormalCase
@@ -77,10 +78,12 @@ TestWorkCompGen.bsv              = mkTestWorkCompGenNormalCaseRQ \
                                     mkTestWorkCompGenErrFlushCaseSQ
 
 all: $(TESTBENCHS)
-.PHONY: all TESTBENCHS %.bsv
 
 %.bsv:
-	$(foreach testcase, $($@), $(shell cd $(TESTDIR) && make simulate TESTFILE=$@ TOP=$(testcase) > $(LOGDIR)/$@-$(testcase).log))
+	$(foreach testcase, $($@), $(shell cd $(TESTDIR) && make simulate TESTFILE=$@ TOPMODULE=$(testcase) > $(LOGDIR)/$@-$(testcase).log 2>&1))
 
 clean:
 	rm -f $(LOGDIR)/*.log
+
+.PHONY: all TESTBENCHS %.bsv clean
+.DEFAULT_GOAL := all

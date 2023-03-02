@@ -246,8 +246,9 @@ function PipeOut#(anytype) scanOut2PipeOut(ScanFIFOF#(qSz, anytype) scanQ);
     endinterface;
 endfunction
 
-function Bool isFull(Bit#(cntSz) nextEnqPtr, Bit#(cntSz) nextDeqPtr)
-provisos(Add#(1, anysize, cntSz));
+function Bool isFull(
+    Bit#(cntSz) nextEnqPtr, Bit#(cntSz) nextDeqPtr
+) provisos(Add#(1, anysize, cntSz));
     return (getMSB(nextEnqPtr) != getMSB(nextDeqPtr)) &&
         (removeMSB(nextEnqPtr) == removeMSB(nextDeqPtr));
 endfunction

@@ -594,8 +594,7 @@ endmodule
 
 typedef Vector#(portSz, DmaReadSrv) DmaReadArbiter#(numeric type portSz);
 
-module mkDmaReadAribter#(DmaReadSrv dmaReadSrv)(DmaReadArbiter#(portSz))
-provisos(
+module mkDmaReadAribter#(DmaReadSrv dmaReadSrv)(DmaReadArbiter#(portSz)) provisos(
     Add#(1, anysize, portSz),
     Add#(TLog#(portSz), 1, TLog#(TAdd#(portSz, 1))) // portSz must be power of 2
 );
@@ -612,8 +611,7 @@ endmodule
 
 typedef Vector#(portSz, DmaWriteSrv) DmaWriteArbiter#(numeric type portSz);
 
-module mkDmaWriteAribter#(DmaWriteSrv dmaWriteSrv)(DmaWriteArbiter#(portSz))
-provisos(
+module mkDmaWriteAribter#(DmaWriteSrv dmaWriteSrv)(DmaWriteArbiter#(portSz)) provisos(
     Add#(1, anysize, portSz),
     Add#(TLog#(portSz), 1, TLog#(TAdd#(portSz, 1))) // portSz must be power of 2
 );

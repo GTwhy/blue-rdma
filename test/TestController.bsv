@@ -13,7 +13,10 @@ module mkTestCntrlInVec(Empty);
     let qpType = IBV_QPT_XRC_RECV;
     let pmtu = IBV_MTU_1024;
 
-    Vector#(MAX_QP, Controller) cntrlVec <- replicateM(mkSimController(qpType, pmtu));
+    let setExpectedPsnAsNextPSN = False;
+    Vector#(MAX_QP, Controller) cntrlVec <- replicateM(mkSimController(
+        qpType, pmtu, setExpectedPsnAsNextPSN
+    ));
     Array#(Controller) cntrlArray = vectorToArray(cntrlVec);
     List#(Controller) cntrlList = toList(cntrlVec);
 
@@ -65,11 +68,11 @@ module mkTestCntrlInVec(Empty);
             )
         );
         immAssert(
-            cntrl1.contextRQ.getCurRespPsn == cntrl2.contextRQ.getEPSN,
+            cntrl1.contextRQ.getCurRespPSN == cntrl2.contextRQ.getEPSN,
             "curRespPsn assertion @ mkTestCntrlInVec",
             $format(
                 "curRespPsn=%h == cntrl2.contextRQ.getEPSN=%h",
-                cntrl1.contextRQ.getCurRespPsn, cntrl2.contextRQ.getEPSN
+                cntrl1.contextRQ.getCurRespPSN, cntrl2.contextRQ.getEPSN
             )
         );
         // $display(

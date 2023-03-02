@@ -20,8 +20,9 @@ module mkTestReceiveCNP(Empty);
     let pmtu = IBV_MTU_256;
 
     let qpMetaData <- mkSimMetaData4SinigleQP(qpType, pmtu);
-    let qpIndex = getIndexQP(getDefaultQPN);
+    let qpIndex = getDefaultIndexQP;
     let cntrl = qpMetaData.getCntrlByIdxQP(qpIndex);
+
     let cnpDataStream = buildCNP(cntrl);
     let cnpDataStreamPipeIn <- mkConstantPipeOut(cnpDataStream);
     let headerAndMetaDataAndPayloadPipeOut <- mkExtractHeaderFromRdmaPktPipeOut(
@@ -103,14 +104,11 @@ module mkTestReceiveCNP(Empty);
                 " should both be false"
             )
         );
-        // immAssert(
-        //     !dut.pktMetaData.notEmpty && !dut.payload.notEmpty,
-        //     "no PktMetaData and payload assertion @ mkTestReceiveCNP",
-        //     $format(
-        //         "dut.pktMetaData.notEmpty=", fshow(dut.pktMetaData.notEmpty),
-        //         " and dut.payload.notEmpty=", fshow(dut.payload.notEmpty),
-        //         " should both be false"
-        //     )
+        // $display(
+        //     "time=%0t:", $time,
+        //     " cnpBth.trans=", fshow(cnpBth.trans),
+        //     " cnpBth.opcode=", fshow(cnpBth.opcode),
+        //     " not match ROCE_CNP=%h", valueOf(ROCE_CNP)
         // );
         countDown.decr;
     endrule

@@ -18,7 +18,7 @@ for FILE in $FILES; do
     # echo $FILE
     TESTCASES=`grep -Phzo 'synthesize.*?\nmodule\s+\S+(?=\()' $FILE | xargs -0  -I {}  echo "{}" | grep module | cut -d ' ' -f 2`
     for TESTCASE in $TESTCASES; do
-        make -j8 TESTFILE=$FILE TOP=$TESTCASE 2>&1 | tee -a $TEST_LOG
+        make -j8 TESTFILE=$FILE TOPMODULE=$TESTCASE 2>&1 | tee -a $TEST_LOG
     done
 done
 

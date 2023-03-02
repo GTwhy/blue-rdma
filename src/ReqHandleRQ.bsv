@@ -1247,15 +1247,15 @@ module mkReqHandleRQ#(
                         // Duplicate atomic requests will be checked in later stages
                     end
                     default: begin
-                    immFail(
-                        "unreachible case @ mkReqHandleRQ",
-                        $format(
-                            "isSendReq=", fshow(isSendReq),
-                            "isWriteReq=", fshow(isWriteReq),
-                            "isReadReq=", fshow(isReadReq),
-                            "isAtomicReq=", fshow(isAtomicReq)
-                        )
-                    );
+                        immFail(
+                            "unreachible case @ mkReqHandleRQ",
+                            $format(
+                                "isSendReq=", fshow(isSendReq),
+                                "isWriteReq=", fshow(isWriteReq),
+                                "isReadReq=", fshow(isReadReq),
+                                "isAtomicReq=", fshow(isAtomicReq)
+                            )
+                        );
                     end
                 endcase
             end
@@ -1625,13 +1625,13 @@ module mkReqHandleRQ#(
             end
         end
         else begin
-            cntrl.contextRQ.setCurRespPsn(cntrl.contextRQ.getCurRespPsn + 1);
+            cntrl.contextRQ.setCurRespPsn(cntrl.contextRQ.getCurRespPSN + 1);
             cntrl.contextRQ.setRespPktNum(cntrl.contextRQ.getRespPktNum - 1);
         end
 
         let maybeMiddleOrLastHeader = genMiddleOrLastRespHeader(
             bth.opcode, reqStatus, permCheckInfo.totalLen, cntrl,
-            cntrl.contextRQ.getCurRespPsn, msn, isLastRespPkt
+            cntrl.contextRQ.getCurRespPSN, msn, isLastRespPkt
         );
         if (
             reqStatus == RDMA_REQ_ST_NORMAL ||
@@ -1656,7 +1656,7 @@ module mkReqHandleRQ#(
         // $display(
         //     "time=%0t: 15th stage, bth.opcode=", $time, fshow(bth.opcode),
         //     ", bth.psn=%h", bth.psn, ", bth.ackReq=", fshow(bth.ackReq),
-        //     ", curRespPsn=%h", cntrl.contextRQ.getCurRespPsn,
+        //     ", curRespPsn=%h", cntrl.contextRQ.getCurRespPSN,
         //     ", isLastRespPkt=", fshow(isLastRespPkt),
         //     ", reqStatus=", fshow(reqStatus)
         // );

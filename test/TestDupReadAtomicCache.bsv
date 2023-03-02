@@ -6,6 +6,7 @@ import Controller :: *;
 import DataTypes :: *;
 import DupReadAtomicCache :: *;
 import Headers :: *;
+import MetaData :: *;
 import PrimUtils :: *;
 import Utils :: *;
 import Utils4Test :: *;
@@ -30,7 +31,9 @@ module mkTestDupReadAtomicCache(Empty);
     FIFOF#(AtomicCache) atomicSearchReqQ <- mkFIFOF;
     FIFOF#(AtomicCache) atomicSearchRespQ <- mkFIFOF;
 
-    let cntrl <- mkSimController(qpType, pmtu);
+    let setExpectedPsnAsNextPSN = False;
+    let cntrl <- mkSimController(qpType, pmtu, setExpectedPsnAsNextPSN);
+
     let dut <- mkDupReadAtomicCache(cntrl);
 
     let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
@@ -164,8 +167,6 @@ module mkTestDupReadAtomicCache(Empty);
     endrule
 
     rule searchAtomicResp;
-        countDown.decr;
-
         let exptectedAtomicCache = atomicSearchRespQ.first;
         atomicSearchRespQ.deq;
 
@@ -206,5 +207,13 @@ module mkTestDupReadAtomicCache(Empty);
                 fshow(exptectedAtomicRespOrig)
             )
         );
+
+        // $display(
+        //     "time=%0t:", $time,
+        //     " searchAtomicRespOrig=", fshow(searchAtomicRespOrig),
+        //     " should == exptectedAtomicRespOrig=",
+        //     fshow(exptectedAtomicRespOrig)
+        // );
+        countDown.decr;
     endrule
 endmodule

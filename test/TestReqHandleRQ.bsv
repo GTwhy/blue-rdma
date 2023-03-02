@@ -74,7 +74,7 @@ module mkTestReqHandleNormalAndDupReqCase#(Bool normalOrDupReq)(Empty);
     let pmtu = IBV_MTU_256;
 
     let qpMetaData <- mkSimMetaData4SinigleQP(qpType, pmtu);
-    let qpIndex = getIndexQP(getDefaultQPN);
+    let qpIndex = getDefaultIndexQP;
     let cntrl = qpMetaData.getCntrlByIdxQP(qpIndex);
 
     // WorkReq generation
@@ -452,7 +452,7 @@ module mkTestReqHandleAbnormalCase#(ReqHandleErrType errType)(Empty);
     let pmtu = IBV_MTU_256;
 
     let qpMetaData <- mkSimMetaData4SinigleQP(qpType, pmtu);
-    let qpIndex = getIndexQP(getDefaultQPN);
+    let qpIndex = getDefaultIndexQP;
     let cntrl = qpMetaData.getCntrlByIdxQP(qpIndex);
 
     // WorkReq generation
@@ -734,7 +734,7 @@ module mkTestReqHandleRetryCase#(Bool rnrOrSeqErr)(Empty);
     let pmtu = IBV_MTU_256;
 
     let qpMetaData <- mkSimMetaData4SinigleQP(qpType, pmtu);
-    let qpIndex = getIndexQP(getDefaultQPN);
+    let qpIndex = getDefaultIndexQP;
     let cntrl = qpMetaData.getCntrlByIdxQP(qpIndex);
 
     // WorkReq generation

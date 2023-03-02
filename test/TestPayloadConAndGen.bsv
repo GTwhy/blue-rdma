@@ -6,6 +6,7 @@ import Vector :: *;
 import Headers :: *;
 import Controller :: *;
 import DataTypes :: *;
+import MetaData :: *;
 import PayloadConAndGen :: *;
 import PrimUtils :: *;
 import Settings :: *;
@@ -24,7 +25,8 @@ module mkTestPayloadConAndGenNormalCase(Empty);
     FIFOF#(PayloadConReq) payloadConReqQ <- mkFIFOF;
     FIFOF#(PSN) payloadConReqPsnQ <- mkFIFOF;
 
-    let cntrl <- mkSimController(qpType, pmtu);
+    let setExpectedPsnAsNextPSN = False;
+    let cntrl <- mkSimController(qpType, pmtu, setExpectedPsnAsNextPSN);
 
     Vector#(2, PipeOut#(PktLen)) pktLenPipeOutVec <-
         mkRandomValueInRangePipeOut(minpktLen, maxpktLen);
@@ -156,6 +158,11 @@ module mkTestPayloadConAndGenNormalCase(Empty);
             )
         );
 
+        // $display(
+        //     "time=%0t:", $time,
+        //     " dmaReadPayload=", fshow(dmaReadPayload),
+        //     " should == dmaWritePayload=", fshow(dmaWritePayload)
+        // );
         countDown.decr;
     endrule
 endmodule

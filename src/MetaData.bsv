@@ -4,6 +4,7 @@ import ClientServer :: *;
 import Cntrs :: *;
 import Connectable :: * ;
 import FIFOF :: *;
+import PAClib :: *;
 import Vector :: *;
 
 import Controller :: *;
@@ -13,6 +14,7 @@ import PrimUtils :: *;
 import Settings :: *;
 import Utils :: *;
 
+/*
 interface TagVector#(numeric type vSz, type anytype);
     method Action insertReq(anytype insertVal);
     method ActionValue#(UInt#(TLog#(vSz))) insertResp();
@@ -137,100 +139,6 @@ module mkTagVector(TagVector#(vSz, anytype)) provisos(
     method Bool notEmpty() = !emptyReg;
     method Bool notFull()  = !fullReg;
 endmodule
-/*
-interface TagVecWrapper#(numeric type vSz, type vecItemType, type allocRespType, type deAllocReqType);
-    interface Server#(vecItemType, Maybe#(allocRespType)) allocSrv;
-    interface Server#(deAllocReqType, Bool) deAllocSrv;
-    method Maybe#(vecItemType) getItem(UInt#(TLog#(vSz)) index);
-    method Action clear();
-    method Bool notEmpty();
-    method Bool notFull();
-endinterface
-
-module mkTagVecWrapper#(
-    function allocRespType genAllocResp(UInt#(TLog#(vSz)) tagVecIdx, vecItemType vecItem),
-    function UInt#(TLog#(vSz)) genDeAllocIdx(deAllocReqType deAllocReq)
-)(TagVecWrapper#(vSz, vecItemType, allocRespType, deAllocReqType)) provisos(
-    Bits#(vecItemType, tSz),
-    Bits#(allocRespType, allocRespSz),
-    Bits#(deAllocReqType, deAllocReqSz),
-    Add#(TLog#(vSz), 1, TLog#(TAdd#(vSz, 1))) // vSz must be power of 2
-);
-    TagVector#(vSz, vecItemType) tagVec <- mkTagVector;
-
-    FIFOF#(Maybe#(vecItemType)) pendingAllocReqQ <- mkFIFOF;
-    FIFOF#(Bool)              pendingDeAllocReqQ <- mkFIFOF;
-
-    FIFOF#(vecItemType)                allocReqQ <- mkFIFOF;
-    FIFOF#(Maybe#(allocRespType)) allocRespQ <- mkFIFOF;
-
-    FIFOF#(deAllocReqType) deAllocReqQ <- mkFIFOF;
-    FIFOF#(Bool)             deAllocRespQ <- mkFIFOF;
-
-    rule handleAllocReq;
-        let vecItem = allocReqQ.first;
-        allocReqQ.deq;
-
-        if (tagVec.notFull) begin
-            pendingAllocReqQ.enq(tagged Valid vecItem);
-            tagVec.insertReq(vecItem);
-        end
-        else begin
-            pendingAllocReqQ.enq(tagged Invalid);
-        end
-    endrule
-
-    rule handleAllocResp;
-        let maybeVecItem = pendingAllocReqQ.first;
-        pendingAllocReqQ.deq;
-
-        if (maybeVecItem matches tagged Valid .vecItem) begin
-            let tagVecIdx <- tagVec.insertResp;
-            let allocResp = genAllocResp(tagVecIdx, vecItem);
-            allocRespQ.enq(tagged Valid allocResp);
-        end
-        else begin
-            allocRespQ.enq(tagged Invalid);
-        end
-    endrule
-
-    rule handleDeAllocReq;
-        let deAllocReq = deAllocReqQ.first;
-        deAllocReqQ.deq;
-
-        let vecItemIdx = genDeAllocIdx(deAllocReq);
-
-        if (tagVec.notEmpty) begin
-            tagVec.removeReq(vecItemIdx);
-        end
-        pendingDeAllocReqQ.enq(tagVec.notEmpty);
-    endrule
-
-    rule handleDeAllocResp;
-        let pendingDeAllocReq = pendingDeAllocReqQ.first;
-        pendingDeAllocReqQ.deq;
-
-        if (pendingDeAllocReq) begin
-            let deAllocResp <- tagVec.removeResp;
-        end
-        deAllocRespQ.enq(pendingDeAllocReq);
-    endrule
-
-    interface allocSrv   = toGPServer(allocReqQ, allocRespQ);
-    interface deAllocSrv = toGPServer(deAllocReqQ, deAllocRespQ);
-    method Maybe#(vecItemType) getItem(UInt#(TLog#(vSz)) index) = tagVec.getItem(index);
-    method Action clear();
-        tagVec.clear;
-        pendingAllocReqQ.clear;
-        pendingDeAllocReqQ.clear;
-        allocReqQ.clear;
-        allocRespQ.clear;
-        deAllocReqQ.clear;
-        deAllocRespQ.clear;
-    endmethod
-    method Bool notEmpty() = tagVec.notEmpty;
-    method Bool notFull() = tagVec.notFull;
-endmodule
 */
 interface TagVecSrv#(numeric type vSz, type anytype);
     interface Server#(
@@ -293,7 +201,7 @@ module mkTagVecSrv(TagVecSrv#(vSz, anytype)) provisos(
                     );
 
                     insertIdx = unwrapMaybe(maybeIndex);
-                    tagVec[insertIdx] <= True;
+                    tagVec[insertIdx]  <= True;
                     dataVec[insertIdx] <= insertVal;
                     inserted = True;
                 end
@@ -387,6 +295,7 @@ typedef struct {
     Bool lkeyOrNot;
     LKEY lkey;
     RKEY rkey;
+    // IndexCB cbIndex;
 } ReqMR deriving(Bits, FShow);
 
 typedef struct {
@@ -394,6 +303,7 @@ typedef struct {
     MemRegion mr;
     LKEY lkey;
     RKEY rkey;
+    // IndexCB cbIndex;
 } RespMR deriving(Bits, FShow);
 
 typedef Server#(ReqMR, RespMR) SrvPortMR;
@@ -407,8 +317,11 @@ interface MetaDataMRs;
     method Bool notFull();
 endinterface
 
-module mkMetaDataMRs(MetaDataMRs);
+module mkMetaDataMRs(MetaDataMRs) provisos(
+    Add#(TMul#(MAX_MR_PER_PD, MAX_PD), 0, MAX_MR) // MAX_MR == MAX_MR_PER_PD * MAX_PD
+);
     TagVecSrv#(MAX_MR_PER_PD, MemRegion) mrTagVec <- mkTagVecSrv;
+    // FIFOF#(IndexCB) cbIndexQ <- mkFIFOF;
 
     function Tuple2#(LKEY, RKEY) genLocalAndRmtKey(IndexMR mrIndex, MemRegion mr);
         LKEY lkey = { pack(mrIndex), mr.lkeyPart };
@@ -422,23 +335,28 @@ module mkMetaDataMRs(MetaDataMRs);
     interface srvPort = interface SrvPortMR;
         interface request = interface Put#(ReqMR);
             method Action put(ReqMR mrReq);
-                IndexMR mrIndex = mrReq.lkeyOrNot ?
+                let mrIndex = mrReq.lkeyOrNot ?
                     lkey2IndexMR(mrReq.lkey) : rkey2IndexMR(mrReq.rkey);
                 mrTagVec.srvPort.request.put(tuple3(
                     mrReq.allocOrNot, mrReq.mr, mrIndex
                 ));
+                // cbIndexQ.enq(mrReq.cbIndex);
             endmethod
         endinterface;
 
         interface response = interface Get#(RespMR);
             method ActionValue#(RespMR) get();
                 let { successOrNot, mrIndex, mr } <- mrTagVec.srvPort.response.get;
+                // let cbIndex = cbIndexQ.first;
+                // cbIndexQ.deq;
+
                 let { lkey, rkey } = genLocalAndRmtKey(mrIndex, mr);
                 let mrResp = RespMR {
                     successOrNot: successOrNot,
                     mr          : mr,
                     lkey        : lkey,
                     rkey        : rkey
+                    // cbIndex     : cbIndex
                 };
                 return mrResp;
             endmethod
@@ -718,18 +636,19 @@ interface MetaDataPDs;
     method Bool notFull();
 endinterface
 
+function IndexPD getIndexPD(HandlerPD pdHandler) = unpack(truncateLSB(pdHandler));
+
 module mkMetaDataPDs(MetaDataPDs);
     TagVecSrv#(MAX_PD, KeyPD) pdTagVec <- mkTagVecSrv;
     Vector#(MAX_PD, MetaDataMRs) pdMrVec <- replicateM(mkMetaDataMRs);
 
-    function IndexPD getIndexPD(HandlerPD pdHandler) = unpack(truncateLSB(pdHandler));
     function Action clearAllMRs(MetaDataMRs mrMetaData);
         action
             mrMetaData.clear;
         endaction
     endfunction
 
-    interface srvPort = interface SrvPortMR;
+    interface srvPort = interface SrvPortPD;
         interface request = interface Put#(ReqPD);
             method Action put(ReqPD pdReq);
                 IndexPD pdIndex = getIndexPD(pdReq.pdHandler);
@@ -742,6 +661,7 @@ module mkMetaDataPDs(MetaDataPDs);
         interface response = interface Get#(RespPD);
             method ActionValue#(RespPD) get();
                 let { successOrNot, pdIndex, pdKey } <- pdTagVec.srvPort.response.get;
+
                 HandlerPD pdHandler = { pack(pdIndex), pdKey };
                 let pdResp = RespPD {
                     successOrNot: successOrNot,
@@ -878,20 +798,6 @@ module mkMetaDataQPs(MetaDataQPs);
     method Bool notFull()  = qpTagVec.notFull;
 endmodule
 */
-typedef struct {
-    Bool createOrNot;
-    HandlerPD pdHandler;
-    QPN qpn;
-} ReqQP deriving(Bits, FShow);
-
-typedef struct {
-    Bool successOrNot;
-    QPN qpn;
-    HandlerPD pdHandler;
-} RespQP deriving(Bits, FShow);
-
-typedef Server#(ReqQP, RespQP) SrvPortQP;
-
 interface MetaDataQPs;
     interface SrvPortQP srvPort;
     method Bool isValidQP(QPN qpn);
@@ -905,52 +811,134 @@ endinterface
 
 function IndexQP getIndexQP(QPN qpn) = unpack(truncateLSB(qpn));
 
+function QPN genQPN(IndexQP qpIndex, HandlerPD pdHandler);
+    return { pack(qpIndex), truncate(pdHandler) };
+endfunction
+
 module mkMetaDataQPs(MetaDataQPs);
     TagVecSrv#(MAX_QP, HandlerPD) qpTagVec <- mkTagVecSrv;
     Vector#(MAX_QP, Controller) qpCntrlVec <- replicateM(mkController);
+    FIFOF#(Tuple2#(Bool, ReqQP)) qpReqQ4Resp <- mkFIFOF;
+    FIFOF#(ReqQP) qpReqQ4Cntrl <- mkFIFOF;
+
+    rule handleReqQP;
+        let qpReq = qpReqQ4Cntrl.first;
+        qpReqQ4Cntrl.deq;
+
+        let tagVecRespSuccess = True;
+        case (qpReq.qpReqType)
+            REQ_QP_CREATE,
+            REQ_QP_DESTROY: begin
+                let { successOrNot, qpIndex, pdHandler } <- qpTagVec.srvPort.response.get;
+                tagVecRespSuccess = successOrNot;
+                let cntrl = qpCntrlVec[qpIndex];
+
+                if (tagVecRespSuccess) begin
+                    let qpn = genQPN(qpIndex, pdHandler);
+                    qpReq.qpn = qpn;
+                    qpReq.pdHandler = pdHandler;
+                    cntrl.srvPort.request.put(qpReq);
+                end
+            end
+            REQ_QP_MODIFY,
+            REQ_QP_QUERY : begin
+                let qpIndex = getIndexQP(qpReq.qpn);
+                let cntrl = qpCntrlVec[qpIndex];
+
+                cntrl.srvPort.request.put(qpReq);
+            end
+            default: begin
+                immFail(
+                    "unreachible case @ mkMetaDataQPs",
+                    $format("qpReq.qpReqType=", fshow(qpReq.qpReqType))
+                );
+            end
+        endcase
+        qpReqQ4Resp.enq(tuple2(tagVecRespSuccess, qpReq));
+    endrule
 
     interface srvPort = interface SrvPortQP;
         interface request = interface Put#(ReqQP);
             method Action put(ReqQP qpReq);
-                IndexQP qpIndex = getIndexQP(qpReq.qpn);
-                qpTagVec.srvPort.request.put(tuple3(
-                    qpReq.createOrNot, qpReq.pdHandler, qpIndex
-                ));
+                case (qpReq.qpReqType)
+                    REQ_QP_CREATE ,
+                    REQ_QP_DESTROY: begin
+                        let qpCreateOrNot = qpReq.qpReqType == REQ_QP_CREATE;
+                        let qpIndex = getIndexQP(qpReq.qpn);
+                        qpTagVec.srvPort.request.put(tuple3(
+                            qpCreateOrNot, qpReq.pdHandler, qpIndex
+                        ));
+                    end
+                    REQ_QP_MODIFY,
+                    REQ_QP_QUERY : begin end
+                    default: begin
+                        immFail(
+                            "unreachible case @ mkMetaDataQPs",
+                            $format("qpReq.qpReqType=", fshow(qpReq.qpReqType))
+                        );
+                    end
+                endcase
+
+                qpReqQ4Cntrl.enq(qpReq);
             endmethod
         endinterface;
 
         interface response = interface Get#(RespQP);
             method ActionValue#(RespQP) get();
-                let { successOrNot, qpIndex, pdHandler } <- qpTagVec.srvPort.response.get;
-                QPN qpn = { pack(qpIndex), truncateLSB(pdHandler) };
+                let { tagVecRespSuccess, qpReq } = qpReqQ4Resp.first;
+                qpReqQ4Resp.deq;
+
+                // immAssert(
+                //     tagVecRespSuccess,
+                //     "tagVecRespSuccess assertion @ mkMetaDataQPs",
+                //     $format(
+                //         "tagVecRespSuccess=", fshow(tagVecRespSuccess),
+                //         " should be valid when qpReq.qpReqType=", fshow(qpReq.qpReqType),
+                //         " and qpReq.qpn=%h", qpReq.qpn
+                //     )
+                // );
+
+                let qpIndex = getIndexQP(qpReq.qpn);
+                let cntrl = qpCntrlVec[qpIndex];
                 let qpResp = RespQP {
-                    successOrNot: successOrNot,
-                    qpn         : qpn,
-                    pdHandler   : pdHandler
+                    successOrNot: False,
+                    qpn         : qpReq.qpn,
+                    pdHandler   : qpReq.pdHandler,
+                    qpAttr      : qpReq.qpAttr,
+                    qpInitAttr  : qpReq.qpInitAttr
                 };
+
+                case (qpReq.qpReqType)
+                    REQ_QP_CREATE ,
+                    REQ_QP_MODIFY ,
+                    REQ_QP_QUERY  ,
+                    REQ_QP_DESTROY: begin
+                        if (tagVecRespSuccess) begin
+                            qpResp <- cntrl.srvPort.response.get;
+                        end
+                    end
+                    default: begin
+                        immFail(
+                            "unreachible case @ mkMetaDataQPs",
+                            $format(
+                                "request QPN=%h", qpReq.qpn, "qpReqType=", fshow(qpReq.qpReqType)
+                            )
+                        );
+                    end
+                endcase
+
+                // $display(
+                //     "time=%0t:", $time,
+                //     " tagVecRespSuccess=", fshow(tagVecRespSuccess),
+                //     " qpResp.successOrNot=", fshow(qpResp.successOrNot),
+                //     " qpReq.qpn=%h, qpIndex=%h, qpReq.pdHandler=%h",
+                //     qpReq.qpn, qpIndex, qpReq.pdHandler
+                // );
                 return qpResp;
             endmethod
         endinterface;
     endinterface;
-/*
-    method Action createQP(HandlerPD pdHandler);
-        qpTagVec.insertReq(pdHandler);
-        pdHandlerOutQ.enq(pdHandler);
-    endmethod
-    method ActionValue#(QPN) createResp();
-        let qpIndex <- qpTagVec.insertResp;
-        let pdHandler = pdHandlerOutQ.first;
-        pdHandlerOutQ.deq;
-        QPN qpn = { pack(qpIndex), truncateLSB(pdHandler) };
-        return qpn;
-    endmethod
 
-    method Action destroyQP(QPN qpn);
-        let qpIndex = getIndexQP(qpn);
-        qpTagVec.removeReq(qpIndex);
-    endmethod
-    method ActionValue#(Bool) destroyResp() = qpTagVec.removeResp;
-*/
     method Bool isValidQP(QPN qpn);
         let qpIndex = getIndexQP(qpn);
         return isValid(qpTagVec.getItem(qpIndex));
@@ -1161,8 +1149,7 @@ endmodule
 
 typedef Vector#(portSz, PermCheckMR) PermCheckArbiter#(numeric type portSz);
 
-module mkPermCheckAribter#(PermCheckMR permCheckMR)(PermCheckArbiter#(portSz))
-provisos(
+module mkPermCheckAribter#(PermCheckMR permCheckMR)(PermCheckArbiter#(portSz)) provisos(
     Add#(1, anysize, portSz),
     Add#(TLog#(portSz), 1, TLog#(TAdd#(portSz, 1))) // portSz must be power of 2
 );
@@ -1175,6 +1162,418 @@ provisos(
         isPermCheckRespFinished
     );
     return arbiter;
+endmodule
+
+// TODO: remove this module
+module mkQpAttrPipeOut(PipeOut#(QpAttr));
+    FIFOF#(QpAttr) qpAttrQ <- mkFIFOF;
+    Count#(Bit#(TLog#(TAdd#(1, MAX_QP)))) dqpnCnt <- mkCount(0);
+
+    rule genQpAttr if (dqpnCnt < fromInteger(valueOf(MAX_QP)));
+        QPN dqpn = zeroExtendLSB(dqpnCnt);
+        dqpnCnt.incr(1);
+
+        let qpAttr = QpAttr {
+            qpState          : dontCareValue,
+            curQpState       : dontCareValue,
+            pmtu             : IBV_MTU_1024,
+            qkey             : fromInteger(valueOf(DEFAULT_QKEY)),
+            rqPSN            : 0,
+            sqPSN            : 0,
+            dqpn             : dqpn,
+            qpAcessFlags     : IBV_ACCESS_REMOTE_WRITE,
+            cap              : QpCapacity {
+                maxSendWR    : fromInteger(valueOf(MAX_QP_WR)),
+                maxRecvWR    : fromInteger(valueOf(MAX_QP_WR)),
+                maxSendSGE   : fromInteger(valueOf(MAX_SEND_SGE)),
+                maxRecvSGE   : fromInteger(valueOf(MAX_RECV_SGE)),
+                maxInlineData: fromInteger(valueOf(MAX_INLINE_DATA))
+            },
+            pkeyIndex        : fromInteger(valueOf(DEFAULT_PKEY)),
+            sqDraining       : False,
+            maxReadAtomic    : fromInteger(valueOf(MAX_QP_RD_ATOM)),
+            maxDestReadAtomic: fromInteger(valueOf(MAX_QP_RD_ATOM)),
+            minRnrTimer      : 1, // minRnrTimer 1 - 0.01 milliseconds delay
+            timeout          : 1, // maxTimeOut 0 - infinite, 1 - 8.192 usec (0.000008 sec)
+            retryCnt         : 3,
+            rnrRetry         : 3
+        };
+
+        qpAttrQ.enq(qpAttr);
+    endrule
+
+    return convertFifo2PipeOut(qpAttrQ);
+endmodule
+
+// TODO: move to Utils4Test, and change QP state as Reset -> Init -> RTR -> RTS
+module mkInitMetaData#(
+    MetaDataSrv metaDataSrv, QpInitAttr qpInitAttr, PipeOut#(QpAttr) qpAttrPipeIn
+)(Empty);
+    let pdNum = valueOf(MAX_PD);
+    let qpNum = valueOf(MAX_QP);
+    let qpPerPD = valueOf(TDiv#(MAX_QP, MAX_PD));
+
+    FIFOF#(HandlerPD) pdHandlerQ4Fill <- mkSizedFIFOF(pdNum);
+    FIFOF#(QPN)             qpnQ4Init <- mkSizedFIFOF(qpNum);
+    FIFOF#(QPN)           qpnQ4Modify <- mkSizedFIFOF(qpNum);
+
+    Count#(Bit#(TLog#(MAX_PD)))                  pdKeyCnt <- mkCount(fromInteger(pdNum - 1));
+    Count#(Bit#(TLog#(TAdd#(1, MAX_PD))))        pdReqCnt <- mkCount(fromInteger(pdNum));
+    Count#(Bit#(TLog#(MAX_PD)))                 pdRespCnt <- mkCount(fromInteger(pdNum - 1));
+    Count#(Bit#(TLog#(TAdd#(1, MAX_QP))))        qpReqCnt <- mkCount(fromInteger(qpNum));
+    Count#(Bit#(TLog#(MAX_QP)))                 qpRespCnt <- mkCount(fromInteger(qpNum - 1));
+    Count#(Bit#(TLog#(TDiv#(MAX_QP, MAX_PD)))) qpPerPdCnt <- mkCount(fromInteger(qpPerPD - 1));
+
+    Reg#(Bool)   pdInitDoneReg <- mkReg(False);
+    Reg#(Bool) qpCreateDoneReg <- mkReg(False);
+    Reg#(Bool)   qpInitDoneReg <- mkReg(False);
+    Reg#(Bool) qpModifyDoneReg <- mkReg(False);
+
+    Vector#(MAX_QP, Reg#(Bool)) qpModifyDoneRegVec <- replicateM(mkReg(False));
+
+    rule reqAllocPDs if (!isZero(pdReqCnt) && !pdInitDoneReg);
+        pdReqCnt.decr(1);
+
+        KeyPD pdKey = zeroExtend(pdKeyCnt);
+        pdKeyCnt.incr(1);
+
+        let allocReqPD = ReqPD {
+            allocOrNot: True,
+            pdKey     : pdKey,
+            pdHandler : dontCareValue
+        };
+        metaDataSrv.request.put(tagged Req4PD allocReqPD);
+    endrule
+
+    rule respAllocPDs if (!pdInitDoneReg);
+        if (isZero(pdRespCnt)) begin
+            pdInitDoneReg <= True;
+        end
+        else begin
+            pdRespCnt.decr(1);
+        end
+
+        let maybeAllocRespPD <- metaDataSrv.response.get;
+        if (maybeAllocRespPD matches tagged Resp4PD .allocRespPD) begin
+            immAssert(
+                allocRespPD.successOrNot,
+                "allocRespPD.successOrNot assertion @ mkInitMetaData",
+                $format(
+                    "allocRespPD.successOrNot=", fshow(allocRespPD.successOrNot),
+                    " should be true when pdRespCnt=%0d", pdRespCnt
+                )
+            );
+            pdHandlerQ4Fill.enq(allocRespPD.pdHandler);
+        end
+        else begin
+            immFail(
+                "maybeAllocRespPD assertion @ mkInitMetaData",
+                $format(
+                    "maybeAllocRespPD=", fshow(maybeAllocRespPD),
+                    " should be Resp4PD"
+                )
+            );
+        end
+    endrule
+
+    rule reqCreateQPs if (!isZero(qpReqCnt) && pdInitDoneReg && !qpCreateDoneReg);
+        qpReqCnt.decr(1);
+
+        if (isZero(qpPerPdCnt)) begin
+            qpPerPdCnt <= fromInteger(qpPerPD - 1);
+            pdHandlerQ4Fill.deq;
+        end
+        else begin
+            qpPerPdCnt.decr(1);
+        end
+
+        let pdHandler = pdHandlerQ4Fill.first;
+
+        let createReqQP = ReqQP {
+            qpReqType   : REQ_QP_CREATE,
+            pdHandler   : pdHandler,
+            qpn         : dontCareValue,
+            qpAttrMast  : dontCareValue,
+            qpAttr      : dontCareValue,
+            qpInitAttr  : qpInitAttr
+        };
+        metaDataSrv.request.put(tagged Req4QP createReqQP);
+    endrule
+
+    rule respCreateQPs if (pdInitDoneReg && !qpCreateDoneReg);
+        if (isZero(qpRespCnt)) begin
+            qpReqCnt  <= fromInteger(qpNum);
+            qpRespCnt <= fromInteger(qpNum - 1);
+            qpCreateDoneReg <= True;
+        end
+        else begin
+            qpRespCnt.decr(1);
+        end
+
+        let maybeCreateRespQP <- metaDataSrv.response.get;
+        if (maybeCreateRespQP matches tagged Resp4QP .createRespQP) begin
+            immAssert(
+                createRespQP.successOrNot,
+                "createRespQP.successOrNot assertion @ mkInitMetaData",
+                $format(
+                    "createRespQP.successOrNot=", fshow(createRespQP.successOrNot),
+                    " should be true when qpRespCnt=%0d", qpRespCnt
+                )
+            );
+
+            let qpn = createRespQP.qpn;
+            qpnQ4Init.enq(qpn);
+            // $display(
+            //     "time=%0t: createRespQP=", $time, fshow(createRespQP),
+            //     " should be success, and qpn=%h, qpRespCnt=%h",
+            //     qpn, qpRespCnt
+            // );
+        end
+        else begin
+            immFail(
+                "maybeCreateRespQP assertion @ mkInitMetaData",
+                $format(
+                    "maybeCreateRespQP=", fshow(maybeCreateRespQP),
+                    " should be Resp4QP"
+                )
+            );
+        end
+    endrule
+
+    rule reqInitQPs if (
+        !isZero(qpReqCnt) &&
+        pdInitDoneReg     &&
+        qpCreateDoneReg   &&
+        !qpInitDoneReg
+    );
+        qpReqCnt.decr(1);
+
+        let qpn = qpnQ4Init.first;
+        qpnQ4Init.deq;
+
+        let qpAttr = qpAttrPipeIn.first;
+        qpAttr.qpState = IBV_QPS_INIT;
+        let initReqQP = ReqQP {
+            qpReqType   : REQ_QP_MODIFY,
+            pdHandler   : dontCareValue,
+            qpn         : qpn,
+            qpAttrMast  : dontCareValue,
+            qpAttr      : qpAttr,
+            qpInitAttr  : dontCareValue
+        };
+        metaDataSrv.request.put(tagged Req4QP initReqQP);
+    endrule
+
+    rule respInitQPs if (pdInitDoneReg && qpCreateDoneReg && !qpInitDoneReg);
+        if (isZero(qpRespCnt)) begin
+            qpReqCnt  <= fromInteger(qpNum);
+            qpRespCnt <= fromInteger(qpNum - 1);
+            qpInitDoneReg <= True;
+        end
+        else begin
+            qpRespCnt.decr(1);
+        end
+
+        let maybeInitRespQP <- metaDataSrv.response.get;
+        if (maybeInitRespQP matches tagged Resp4QP .initRespQP) begin
+            immAssert(
+                initRespQP.successOrNot,
+                "initRespQP.successOrNot assertion @ mkInitMetaData",
+                $format(
+                    "initRespQP.successOrNot=", fshow(initRespQP.successOrNot),
+                    " should be true when qpRespCnt=%0d", qpRespCnt
+                )
+            );
+
+            let qpn = initRespQP.qpn;
+            qpnQ4Modify.enq(qpn);
+            // $display(
+            //     "time=%0t: initRespQP=", $time, fshow(initRespQP),
+            //     " should be success, and qpn=%h, qpRespCnt=%h",
+            //     $time, qpn, qpRespCnt
+            // );
+        end
+        else begin
+            immFail(
+                "maybeInitRespQP assertion @ mkInitMetaData",
+                $format(
+                    "maybeInitRespQP=", fshow(maybeInitRespQP),
+                    " should be Resp4QP"
+                )
+            );
+        end
+    endrule
+
+    rule reqModifyQPs if (
+        !isZero(qpReqCnt) &&
+        pdInitDoneReg     &&
+        qpCreateDoneReg   &&
+        qpInitDoneReg     &&
+        !qpModifyDoneReg
+    );
+        qpReqCnt.decr(1);
+
+        let qpn = qpnQ4Modify.first;
+        qpnQ4Modify.deq;
+
+        let qpAttr = qpAttrPipeIn.first;
+        qpAttrPipeIn.deq;
+
+        qpAttr.qpState = IBV_QPS_RTS;
+        let modifyReqQP = ReqQP {
+            qpReqType   : REQ_QP_MODIFY,
+            pdHandler   : dontCareValue,
+            qpn         : qpn,
+            qpAttrMast  : dontCareValue,
+            qpAttr      : qpAttr,
+            qpInitAttr  : dontCareValue
+        };
+        metaDataSrv.request.put(tagged Req4QP modifyReqQP);
+    endrule
+
+    rule respModifyQPs if (
+        pdInitDoneReg   &&
+        qpCreateDoneReg &&
+        qpInitDoneReg   &&
+        !qpModifyDoneReg
+    );
+        if (isZero(qpRespCnt)) begin
+            qpModifyDoneReg <= True;
+        end
+        else begin
+            qpRespCnt.decr(1);
+        end
+
+        let maybeModifyRespQP <- metaDataSrv.response.get;
+        if (maybeModifyRespQP matches tagged Resp4QP .modifyRespQP) begin
+            immAssert(
+                modifyRespQP.successOrNot,
+                "modifyRespQP.successOrNot assertion @ mkInitMetaData",
+                $format(
+                    "modifyRespQP.successOrNot=", fshow(modifyRespQP.successOrNot),
+                    " should be true when qpRespCnt=%0d", qpRespCnt,
+                    ", modifyRespQP=", fshow(modifyRespQP)
+                )
+            );
+            // $display(
+            //     "time=%0t: modifyRespQP=", $time, fshow(modifyRespQP),
+            //     " should be success, and modifyRespQP.qpn=%h, qpRespCnt=%h",
+            //     $time, modifyRespQP.qpn, qpRespCnt
+            // );
+        end
+        else begin
+            immFail(
+                "maybeModifyRespQP assertion @ mkInitMetaData",
+                $format(
+                    "maybeModifyRespQP=", fshow(maybeModifyRespQP),
+                    " should be Resp4QP"
+                )
+            );
+        end
+    endrule
+endmodule
+
+// MetaDataSrv related
+
+typedef union tagged {
+    ReqPD Req4PD;
+    ReqMR Req4MR;
+    ReqQP Req4QP;
+} MetaDataReq deriving(Bits, FShow);
+
+typedef union tagged {
+    RespPD Resp4PD;
+    RespMR Resp4MR;
+    RespQP Resp4QP;
+} MetaDataResp deriving(Bits, FShow);
+
+typedef Server#(MetaDataReq, MetaDataResp) MetaDataSrv;
+
+// TODO: check PD can be deallocated before removing all associated QPs
+module mkMetaDataSrv#(
+    MetaDataPDs pdMetaData, MetaDataQPs qpMetaData
+)(MetaDataSrv) provisos(
+    Add#(MAX_PD, anysizeJ, MAX_QP), // MAX_QP >= MAX_PD
+    NumAlias#(TDiv#(MAX_QP, MAX_PD), qpPerPD),
+    Add#(1, anysizeK, qpPerPD), // qpPerPD > 1
+    Add#(TMul#(MAX_PD, qpPerPD), 0, MAX_QP) // MAX_QP == MAX_PD * qpPerPD
+);
+    FIFOF#(MetaDataReq)   metaDataReqQ <- mkFIFOF;
+    FIFOF#(MetaDataResp) metaDataRespQ <- mkFIFOF;
+
+    Reg#(Bool) busyReg <- mkReg(False);
+
+    rule issueMetaDataReq if (!busyReg);
+        let metaDataReq = metaDataReqQ.first;
+
+        case (metaDataReq) matches
+            tagged Req4MR .mrReq: begin
+                let pdIndex = getIndexPD(mrReq.mr.pdHandler);
+                let maybeMRs = pdMetaData.getMRs4PD(mrReq.mr.pdHandler);
+                if (maybeMRs matches tagged Valid .mrMetaData) begin
+                    mrMetaData.srvPort.request.put(mrReq);
+                end
+            end
+            tagged Req4PD .pdReq: begin
+                pdMetaData.srvPort.request.put(pdReq);
+            end
+            tagged Req4QP .qpReq: begin
+                let isValidPD = pdMetaData.isValidPD(qpReq.pdHandler);
+                if (isValidPD) begin
+                    qpMetaData.srvPort.request.put(qpReq);
+                end
+            end
+        endcase
+
+        busyReg <= True;
+    endrule
+
+    rule recvMetaDataResp if (busyReg);
+        let metaDataReq = metaDataReqQ.first;
+        metaDataReqQ.deq;
+
+        case (metaDataReq) matches
+            tagged Req4MR .mrReq: begin
+                let mrResp = RespMR {
+                    successOrNot: False,
+                    mr          : mrReq.mr,
+                    lkey        : mrReq.lkey,
+                    rkey        : mrReq.rkey
+                };
+
+                let pdIndex = getIndexPD(mrReq.mr.pdHandler);
+                let maybeMRs = pdMetaData.getMRs4PD(mrReq.mr.pdHandler);
+                if (maybeMRs matches tagged Valid .mrMetaData) begin
+                    mrResp <- mrMetaData.srvPort.response.get;
+                end
+
+                metaDataRespQ.enq(tagged Resp4MR mrResp);
+            end
+            tagged Req4PD .pdReq: begin
+                let pdResp <- pdMetaData.srvPort.response.get;
+                metaDataRespQ.enq(tagged Resp4PD pdResp);
+            end
+            tagged Req4QP .qpReq: begin
+                let qpResp = RespQP {
+                    successOrNot: False,
+                    qpn         : qpReq.qpn,
+                    pdHandler   : qpReq.pdHandler,
+                    qpAttr      : qpReq.qpAttr,
+                    qpInitAttr  : qpReq.qpInitAttr
+                };
+
+                let isValidPD = pdMetaData.isValidPD(qpReq.pdHandler);
+                if (isValidPD) begin
+                    qpResp <- qpMetaData.srvPort.response.get;
+                end
+                metaDataRespQ.enq(tagged Resp4QP qpResp);
+            end
+        endcase
+
+        busyReg <= False;
+    endrule
+
+    return toGPServer(metaDataReqQ, metaDataRespQ);
 endmodule
 
 // TLB related
@@ -1240,8 +1639,7 @@ interface CascadeCache#(numeric type addrWidth, numeric type payloadWidth);
     method Action write(Bit#(addrWidth) cacheAddr, Bit#(payloadWidth) writeData);
 endinterface
 
-module mkCascadeCache(CascadeCache#(addrWidth, payloadWidth))
-provisos(
+module mkCascadeCache(CascadeCache#(addrWidth, payloadWidth)) provisos(
     NumAlias#(TLog#(BRAM_CACHE_SIZE), bramCacheIndexWidth),
     Add#(bramCacheIndexWidth, TAdd#(anysize, 1), addrWidth), // addrWidth > bramCacheIndexWidth
     NumAlias#(TDiv#(payloadWidth, BRAM_CACHE_DATA_WIDTH), colNum),
@@ -1460,8 +1858,7 @@ interface CascadeCache#(numeric type addrWidth, numeric type payloadWidth);
     method Action write(Bit#(addrWidth) cacheAddr, Bit#(payloadWidth) writeData);
 endinterface
 
-module mkCascadeCache(CascadeCache#(addrWidth, payloadWidth))
-provisos(
+module mkCascadeCache(CascadeCache#(addrWidth, payloadWidth)) provisos(
     NumAlias#(TLog#(BRAM_CACHE_SIZE), bramCacheIndexWidth),
     Add#(bramCacheIndexWidth, TAdd#(anysize, 1), addrWidth), // addrWidth > bramCacheIndexWidth
     NumAlias#(TDiv#(payloadWidth, BRAM_CACHE_DATA_WIDTH), colNum),

@@ -7,6 +7,7 @@ import Controller :: *;
 import DataTypes :: *;
 import ExtractAndPrependPipeOut :: *;
 import InputPktHandle :: *;
+import MetaData :: *;
 import PayloadConAndGen :: *;
 import PrimUtils :: *;
 import ReqGenSQ :: *;
@@ -26,7 +27,9 @@ module mkSimGenRdmaReqAndSendWritePayloadPipeOut#(
     QpType qpType,
     PMTU pmtu
 )(RdmaReqAndSendWritePayloadAndPendingWorkReq);
-    let cntrl <- mkSimController(qpType, pmtu);
+    let setExpectedPsnAsNextPSN = False;
+    let cntrl <- mkSimController(qpType, pmtu, setExpectedPsnAsNextPSN);
+
     let simDmaReadSrv <- mkSimDmaReadSrvAndDataStreamPipeOut;
     // Assume no pending WR
     let pendingWorkReqBufNotEmpty = False;
@@ -222,8 +225,7 @@ function Maybe#(RdmaHeader) genMiddleOrLastRespHeader(
     end
 endfunction
 
-function DataStream buildCNP(Controller cntrl)
-provisos(
+function DataStream buildCNP(Controller cntrl) provisos(
     NumAlias#(TAdd#(BTH_BYTE_WIDTH, CNP_PAYLOAD_BYTE_WIDTH), cnpPktByteSz),
     Add#(cnpPktByteSz, anysize, DATA_BUS_BYTE_WIDTH) // cnpPktByteSz <= DATA_BUS_BYTE_WIDTH
 );
@@ -567,7 +569,9 @@ module mkTestSimGenRdmaResp(Empty);
     let qpType = IBV_QPT_XRC_SEND;
     let pmtu = IBV_MTU_256;
 
-    let cntrl <- mkSimController(qpType, pmtu);
+    let qpMetaData <- mkSimMetaData4SinigleQP(qpType, pmtu);
+    let qpIndex = getDefaultIndexQP;
+    let cntrl = qpMetaData.getCntrlByIdxQP(qpIndex);
 
     // WorkReq generation
     Vector#(1, PipeOut#(WorkReq)) workReqPipeOutVec <-

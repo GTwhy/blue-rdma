@@ -133,12 +133,23 @@ module mkRetryHandleSQ#(
         origMaxRnrCntReg   <= cntrl.getMaxRnrCnt;
         origMinRnrTimerReg <= cntrl.getMinRnrTimer;
         origMaxTimeOutReg  <= cntrl.getMaxTimeOut;
+
+        // resetRetryCntInternal()
+        retryCntReg         <= cntrl.getMaxRetryCnt; // origMaxRetryCntReg; //
+        rnrCntReg           <= cntrl.getMaxRnrCnt;   // origMaxRnrCntReg;   //
+        disableRetryCntReg  <= cntrl.getMaxRetryCnt == fromInteger(valueOf(INFINITE_RETRY));
+        resetRetryCntReg[0] <= False;
+
+        // resetTimeOutInternal()
+        timeOutCntReg      <= fromInteger(getTimeOutValue(cntrl.getMaxTimeOut));
+        disableTimeOutReg  <= isZero(cntrl.getMaxTimeOut); // isZero(origMaxTimeOutReg); //
+        resetTimeOutReg[0] <= False;
     endrule
 
-    rule resetRetryCntAndTimeOutTimer if (cntrl.isRTR);
-        resetRetryCntInternal;
-        resetTimeOutInternal;
-    endrule
+    // rule resetRetryCntAndTimeOutTimer if (cntrl.isRTR);
+    //     resetRetryCntInternal;
+    //     resetTimeOutInternal;
+    // endrule
 
     (* no_implicit_conditions, fire_when_enabled *)
     rule canonicalize if (
@@ -192,11 +203,11 @@ module mkRetryHandleSQ#(
             retryReasonReg[1]      <= retryReason;
             retryHandleStateReg[1] <= RETRY_ST_START_PRE_RETRY;
 
-            $display(
-                "time=%0t: retry start in canonicalize", $time,
-                ", hasNotifiedRetryReg[1]=", fshow(hasNotifiedRetryReg[1]),
-                ", hasTimeOutRetry=", fshow(hasTimeOutRetry)
-            );
+            // $display(
+            //     "time=%0t: retry start in canonicalize", $time,
+            //     ", hasNotifiedRetryReg[1]=", fshow(hasNotifiedRetryReg[1]),
+            //     ", hasTimeOutRetry=", fshow(hasTimeOutRetry)
+            // );
         end
 
         hasNotifiedRetryReg[1] <= False;
@@ -236,12 +247,12 @@ module mkRetryHandleSQ#(
                 // );
             end
         end
-        $display(
-            "time=%0t: startPreRetry", $time,
-            ", retryHandleStateReg=", fshow(retryHandleStateReg[0]),
-            ", retryErr=", fshow(retryErr),
-            ", retryReason=", fshow(retryReason)
-        );
+        // $display(
+        //     "time=%0t: startPreRetry", $time,
+        //     ", retryHandleStateReg=", fshow(retryHandleStateReg[0]),
+        //     ", retryErr=", fshow(retryErr),
+        //     ", retryReason=", fshow(retryReason)
+        // );
     endrule
 
     rule rnrCheck if (cntrl.isRTS && retryHandleStateReg[0] == RETRY_ST_RNR_CHECK);
@@ -302,11 +313,11 @@ module mkRetryHandleSQ#(
 
             // $display("time=%0t: retry next state is partial retry WR", $time);
         end
-        $display(
-            "time=%0t: rnrCheck", $time,
-            ", retryReasonReg=", fshow(retryReasonReg[0]),
-            ", hasNotifiedRetryReg[0]=", fshow(hasNotifiedRetryReg[0])
-        );
+        // $display(
+        //     "time=%0t: rnrCheck", $time,
+        //     ", retryReasonReg=", fshow(retryReasonReg[0]),
+        //     ", hasNotifiedRetryReg[0]=", fshow(hasNotifiedRetryReg[0])
+        // );
     endrule
 
     rule rnrWait if (cntrl.isRTS && retryHandleStateReg[0] == RETRY_ST_RNR_WAIT);
@@ -342,7 +353,7 @@ module mkRetryHandleSQ#(
 
         pendingWorkReqScanCntrl.modifyHead(firstRetryWR);
         retryHandleStateReg[0] <= RETRY_ST_START_RETRY;
-        $display("time=%0t:", $time, " partial retry WR ID=%h", firstRetryWR.wr.id);
+        // $display("time=%0t:", $time, " partial retry WR ID=%h", firstRetryWR.wr.id);
     endrule
 
     rule startRetry if (cntrl.isRTS && retryHandleStateReg[0] == RETRY_ST_START_RETRY);
@@ -354,10 +365,10 @@ module mkRetryHandleSQ#(
         if (pendingWorkReqScanCntrl.isScanDone) begin
             retryHandleStateReg[0] <= RETRY_ST_NOT_RETRY;
 
-            $display(
-                "time=%0t: retry done", $time,
-                ", cntrl.isRTS=", fshow(cntrl.isRTS)
-            );
+            // $display(
+            //     "time=%0t: retry done", $time,
+            //     ", cntrl.isRTS=", fshow(cntrl.isRTS)
+            // );
         end
     endrule
 
