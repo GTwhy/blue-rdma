@@ -645,3 +645,27 @@ typedef enum {
     IBV_EVENT_GID_CHANGE,
     IBV_EVENT_WQ_FATAL
 } AsyncEventType deriving(Bits, Eq);
+
+typedef enum {
+    REQ_QP_CREATE,
+    REQ_QP_DESTROY,
+    REQ_QP_MODIFY,
+    REQ_QP_QUERY
+} QpReqType deriving(Bits, Eq, FShow);
+
+typedef struct {
+    QpReqType  qpReqType;
+    HandlerPD  pdHandler;
+    QPN        qpn;
+    QpAttrMask qpAttrMast;
+    QpAttr     qpAttr;
+    QpInitAttr qpInitAttr;
+} ReqQP deriving(Bits, FShow);
+
+typedef struct {
+    Bool       successOrNot;
+    QPN        qpn;
+    HandlerPD  pdHandler;
+    QpAttr     qpAttr;
+    QpInitAttr qpInitAttr;
+} RespQP deriving(Bits, FShow);
