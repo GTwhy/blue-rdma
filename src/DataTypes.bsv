@@ -367,29 +367,29 @@ typedef struct {
 } QpCapacity deriving(Bits, FShow);
 
 typedef struct {
-    QpState                 qpState;
+    QpState                 qpState;    // init 
     QpState                 curQpState;
-    PMTU                    pmtu;
+    PMTU                    pmtu;   // rtr
     QKEY                    qkey;
-    PSN                     rqPSN;
-    PSN                     sqPSN;
-    QPN                     dqpn;
-    MemAccessTypeFlags      qpAcessFlags;
+    PSN                     rqPSN;  // rtr
+    PSN                     sqPSN;  // rts
+    QPN                     dqpn;   // rtr
+    MemAccessTypeFlags      qpAcessFlags;   // init
     QpCapacity              cap;
-    PKEY                    pkeyIndex;
+    PKEY                    pkeyIndex;  // init
     Bool                    sqDraining;
-    PendingReadAtomicReqCnt maxReadAtomic;
-    PendingReadAtomicReqCnt maxDestReadAtomic;
-    RnrTimer                minRnrTimer;
-    TimeOutTimer            timeout;
-    RetryCnt                retryCnt;
-    RetryCnt                rnrRetry;
+    PendingReadAtomicReqCnt maxReadAtomic; // rts
+    PendingReadAtomicReqCnt maxDestReadAtomic;  // rtr
+    RnrTimer                minRnrTimer;    // rtr
+    TimeOutTimer            timeout;    // rts
+    RetryCnt                retryCnt;   // rts
+    RetryCnt                rnrRetry;   // rts
     // PKEY                    alt_pkey_index;
     // enum ibv_mig_state      path_mig_state;
-    // struct ibv_ah_attr      ah_attr;
+    // struct ibv_ah_attr      ah_attr;     // TODO: rtr
     // struct ibv_ah_attr      alt_ah_attr;
     // uint8_t                 en_sqd_async_notify;
-    // uint8_t                 port_num;
+    // uint8_t                 port_num;    // TODO: init
     // uint8_t                 alt_port_num;
     // uint8_t                 alt_timeout;
     // uint32_t                rate_limit;
@@ -663,6 +663,7 @@ typedef struct {
 } ReqQP deriving(Bits, FShow);
 
 typedef struct {
+    // TODO: replace with errno?
     Bool       successOrNot;
     QPN        qpn;
     HandlerPD  pdHandler;

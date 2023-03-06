@@ -2,14 +2,13 @@ CONNECTALDIR ?= $(abspath ../../../connectal)
 BSVBASEDIR = $(abspath ../../src)
 BASEDIR = $(abspath .)
 
-S2H_INTERFACES = \
-	CntrlRequest:Controller.cntrlRequest
-H2S_INTERFACES = \
-	Controller:CntrlIndication
+S2H_INTERFACES = CntrlRequest:ControllerWrapper.cntrlRequest
+H2S_INTERFACES = ControllerWrapper:CntrlIndication
 
 # FILES
 CPPFILES = test_cntrl.cpp
-BSVFILES = $(BSVBASEDIR)/Controller.bsv
+BSVFILES = ControllerWrapper.bsv WrapperDataTypes.bsv
+
 BSVDIR = $(BSVBASEDIR)
 
 export SOFTWARE_SOCKET_NAME=/tmp/connectal$(USER)

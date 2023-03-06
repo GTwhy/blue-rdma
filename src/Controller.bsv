@@ -9,41 +9,8 @@ import Utils :: *;
 
 typedef Bit#(1) Epoch;
 
-// typedef enum {
-//     REQ_QP_CREATE,
-//     REQ_QP_DESTROY,
-//     REQ_QP_MODIFY,
-//     REQ_QP_QUERY
-// } QpReqType deriving(Bits, Eq, FShow);
-
-// typedef struct {
-//     QpReqType  qpReqType;
-//     HandlerPD  pdHandler;
-//     QPN        qpn;
-//     QpAttrMask qpAttrMast;
-//     QpAttr     qpAttr;
-//     QpInitAttr qpInitAttr;
-// } ReqQP deriving(Bits, FShow);
-
-// typedef struct {
-//     Bool       successOrNot;
-//     QPN        qpn;
-//     HandlerPD  pdHandler;
-//     QpAttr     qpAttr;
-//     QpInitAttr qpInitAttr;
-// } RespQP deriving(Bits, FShow);
 
 typedef Server#(ReqQP, RespQP) SrvPortQP;
-
-interface CntrlIndication;
-    method Action modify_qp_resp(Bit#(32) num);
-    method Action query_qp_resp(Bit#(32) num);
-endinterface
-
-interface CntrlRequest;
-    method Action modify_qp(Bit#(32) num);
-    method Action query_qp(Bit#(32) num);
-endinterface
 
 interface ContextRQ;
     method PermCheckInfo getPermCheckInfo();
@@ -75,7 +42,6 @@ endinterface
 interface Controller;
     interface SrvPortQP srvPort;
     interface ContextRQ contextRQ;
-    interface CntrlRequest cntrlRequest;
 
     method Action initialize(
         QpType                  qpType,
@@ -146,8 +112,7 @@ interface Controller;
     method Action setNPSN(PSN psn);
 endinterface
 
-module mkController#(CntrlIndication indication)(Controller);
-// module mkController(Controller);
+module mkController(Controller);
     FIFOF#(ReqQP)   reqQ <- mkFIFOF;
     FIFOF#(RespQP) respQ <- mkFIFOF;
 
@@ -546,17 +511,4 @@ module mkController#(CntrlIndication indication)(Controller);
             epsnReg[1] <= psn;
         endmethod
     endinterface;
-    
-    interface CntrlRequest cntrlRequest;
-        method Action modify_qp(Bit#(32) num);
-            $display("hw modify_qp %d", num);
-            indication.modify_qp_resp(num);
-        endmethod
-
-        method Action query_qp(Bit#(32) num);
-            $display("hw query_qp %d", num);
-            indication.query_qp_resp(num);
-        endmethod
-    endinterface
-
 endmodule
