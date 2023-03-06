@@ -14,6 +14,8 @@ public:
         sem_post(&sem_resp);
         printf("modify_qp_resp: %d\n", resp.successOrNot);
     }
+
+    CntrlIndication(unsigned int id) : CntrlIndicationWrapper(id) {}
 };
 
 static void modify_qp(ReqQP req)
@@ -28,7 +30,7 @@ int main(int argc, const char **argv)
     CntrlIndication cntrlIndication(IfcNames_CntrlIndicationH2S);
     cntrlRequestProxy = new CntrlRequestProxy(IfcNames_CntrlRequestS2H);
 
-    ReqQP req;
+    ReqQP req{};
     req.qpn = 1;
     modify_qp(req);
     return 0;

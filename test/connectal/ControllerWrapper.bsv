@@ -1,9 +1,11 @@
 import ClientServer :: *;
 import Controller :: *;
-import WrapperDataTypes :: *:
+import DataTypes :: *;
+import GetPut::*;
+import Utils4Test::*;
 
 interface CntrlIndication;
-    method Action modifyQpResp(RespQP respQP);
+    method Action modify_qp_resp(RespQP respQP);
 endinterface
 
 interface CntrlRequest;
@@ -19,15 +21,29 @@ module mkControllerWrapper#(CntrlIndication cntrlIndication)(ControllerWrapper);
     let qpSrv = cntrl.srvPort;
 
     rule getResp;
-        let resp = qpSrv.get;
-        cntrlIndication.modifyQpResp(resp);
+        let resp <- qpSrv.response.get;
+        cntrlIndication.modify_qp_resp(resp);
+        $display("hw modify_qp resp: ", fshow(resp));
     endrule
 
 
     interface CntrlRequest cntrlRequest;
 
         method Action modify_qp(ReqQP req);
-            qpSrv.put(req);
+            let qpInitAttr = QpInitAttr {
+                qpType  : IBV_QPT_RC,
+                sqSigAll: False
+            };
+
+            let qpCreateReq = ReqQP {
+                qpReqType : REQ_QP_CREATE,
+                pdHandler : ?,
+                qpn       : getDefaultQPN,
+                qpAttrMast: ?,
+                qpAttr    : ?,
+                qpInitAttr: qpInitAttr
+            };
+            qpSrv.request.put(qpCreateReq);
             $display("hw modify_qp req: ", fshow(req));
         endmethod
 

@@ -9,7 +9,7 @@ H2S_INTERFACES = ControllerWrapper:CntrlIndication
 CPPFILES = test_cntrl.cpp
 BSVFILES = ControllerWrapper.bsv WrapperDataTypes.bsv
 
-BSVDIR = $(BSVBASEDIR)
+BSVDIR = $(BSVBASEDIR):$(abspath ../)
 
 export SOFTWARE_SOCKET_NAME=/tmp/connectal$(USER)
 

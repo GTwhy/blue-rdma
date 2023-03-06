@@ -27,7 +27,6 @@ typedef 256  MIN_PMTU;
 typedef 4096 MAX_PMTU;
 
 typedef Bit#(PD_HANDLE_WIDTH) HandlerPD;
-typedef Bit#(QPN_WIDTH) QPN;
 typedef Bit#(ADDR_WIDTH) ADDR;
 typedef Bit#(RDMA_MAX_LEN_WIDTH) Length; // Byte length
 typedef Bit#(LONG_WIDTH) Long;
