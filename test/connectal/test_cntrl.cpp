@@ -29,7 +29,7 @@ int main(int argc, const char **argv)
 {
     CntrlIndication cntrlIndication(IfcNames_CntrlIndicationH2S);
     cntrlRequestProxy = new CntrlRequestProxy(IfcNames_CntrlRequestS2H);
-
+    cntrlRequestProxy->softReset();
     ReqQP req{};
     req.qpn = 1;
     modify_qp(req);
