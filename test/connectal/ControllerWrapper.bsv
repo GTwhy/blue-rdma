@@ -10,11 +10,11 @@ import Clocks::*;
 import Connectable::*;
 
 interface CntrlIndication;
-    method Action modify_qp_resp(RespQP respQP);
+    method Action modify_qp_resp(Bit#(32) respQP);
 endinterface
 
 interface CntrlRequest;
-    method Action modify_qp(ReqQP reqQp);
+    method Action modify_qp(Bit#(32) reqQp);
     method Action softReset();
 endinterface
 
@@ -41,32 +41,29 @@ module mkControllerWrapper#(CntrlIndication cntrlIndication)(ControllerWrapper);
 
     rule getResp;
         let resp <- qpSrv.response.get;
-        cntrlIndication.modify_qp_resp(resp);
+        cntrlIndication.modify_qp_resp(1);
         $display("hw modify_qp resp: ", fshow(resp));
-        // $display("hw modify_qp resp:" );
     endrule
 
 
     interface CntrlRequest cntrlRequest;
 
-        method Action modify_qp(ReqQP req) if ( !isResetting && ready );
-            // let qpInitAttr = QpInitAttr {
-            //     qpType  : IBV_QPT_RC,
-            //     sqSigAll: False
-            // };
+        method Action modify_qp(Bit#(32) req) if ( !isResetting && ready );
+            let qpInitAttr = QpInitAttr {
+                qpType  : IBV_QPT_RC,
+                sqSigAll: False
+            };
 
-            // let qpCreateReq = ReqQP {
-            //     qpReqType : REQ_QP_CREATE,
-            //     pdHandler : ?,
-            //     qpn       : getDefaultQPN,
-            //     qpAttrMast: ?,
-            //     qpAttr    : ?,
-            //     qpInitAttr: qpInitAttr
-            // };
-            // qpSrv.request.put(qpCreateReq);
-            qpSrv.request.put(req);
+            let qpCreateReq = ReqQP {
+                qpReqType : REQ_QP_CREATE,
+                pdHandler : ?,
+                qpn       : getDefaultQPN,
+                qpAttrMast: ?,
+                qpAttr    : ?,
+                qpInitAttr: qpInitAttr
+            };
+            qpSrv.request.put(qpCreateReq);
             $display("hw modify_qp req: ", fshow(req));
-            // $display("hw modify_qp req: ");
         endmethod
 
         method Action softReset();
