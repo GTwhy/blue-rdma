@@ -10,11 +10,11 @@ import Clocks::*;
 import Connectable::*;
 
 interface CntrlIndication;
-    method Action modify_qp_resp(RespQP respQP);
+    method Action cntrl2Host(RespQP respQP);
 endinterface
 
 interface CntrlRequest;
-    method Action modify_qp(ReqQP reqQp);
+    method Action host2Cntrl(ReqQP reqQp);
     method Action softReset();
 endinterface
 
@@ -39,17 +39,16 @@ module mkControllerWrapper#(CntrlIndication cntrlIndication)(ControllerWrapper);
     let cntrl <- mkController(reset_by my_rst.new_rst);
     let qpSrv = cntrl.srvPort;
 
-    rule getResp;
+    rule cntrl2Host if ( !isResetting && ready );
         let resp <- qpSrv.response.get;
-        cntrlIndication.modify_qp_resp(resp);
-        $display("hw modify_qp resp: ", fshow(resp));
-        // $display("hw modify_qp resp:" );
+        cntrlIndication.cntrl2Host(resp);
+        $display("hw cntrl2Host: ", fshow(resp));
     endrule
 
 
     interface CntrlRequest cntrlRequest;
 
-        method Action modify_qp(ReqQP req) if ( !isResetting && ready );
+        method Action host2Cntrl(ReqQP req) if ( !isResetting && ready );
             // let qpInitAttr = QpInitAttr {
             //     qpType  : IBV_QPT_RC,
             //     sqSigAll: False
@@ -65,8 +64,7 @@ module mkControllerWrapper#(CntrlIndication cntrlIndication)(ControllerWrapper);
             // };
             // qpSrv.request.put(qpCreateReq);
             qpSrv.request.put(req);
-            $display("hw modify_qp req: ", fshow(req));
-            // $display("hw modify_qp req: ");
+            $display("hw host2Cntrl req: ", fshow(req));
         endmethod
 
         method Action softReset();

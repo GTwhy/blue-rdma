@@ -10,18 +10,18 @@ static sem_t sem_resp;
 class CntrlIndication : public CntrlIndicationWrapper
 {
 public:
-    virtual void modify_qp_resp(RespQP resp) {
+    virtual void cntrl2Host(RespQP resp) {
         sem_post(&sem_resp);
-        printf("modify_qp_resp: %d\n", resp.successOrNot);
+        printf("sw cntrl2Host: %d\n", resp.successOrNot);
     }
 
     CntrlIndication(unsigned int id) : CntrlIndicationWrapper(id) {}
 };
 
-static void modify_qp(ReqQP req)
+static void host2Cntrl(ReqQP req)
 {
     printf("[%s:%d] %d\n", __FUNCTION__, __LINE__, req.qpn);
-    cntrlRequestProxy->modify_qp(req);
+    cntrlRequestProxy->host2Cntrl(req);
     sem_wait(&sem_resp);
 }
 
@@ -32,6 +32,6 @@ int main(int argc, const char **argv)
     cntrlRequestProxy->softReset();
     ReqQP req{};
     req.qpn = 1;
-    modify_qp(req);
+    host2Cntrl(req);
     return 0;
 }
