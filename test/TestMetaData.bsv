@@ -421,7 +421,7 @@ module mkTestMetaDataQPs(Empty);
                 qpReqType   : REQ_QP_CREATE,
                 pdHandler   : curPdHandler,
                 qpn         : dontCareValue,
-                qpAttrMast  : dontCareValue,
+                qpAttrMask  : dontCareValue,
                 qpAttr      : dontCareValue,
                 qpInitAttr  : QpInitAttr {
                     qpType  : IBV_QPT_RC,
@@ -543,7 +543,7 @@ module mkTestMetaDataQPs(Empty);
                 qpReqType : REQ_QP_DESTROY,
                 pdHandler : dontCareValue,
                 qpn       : qpn2Destroy,
-                qpAttrMast: dontCareValue,
+                qpAttrMask: dontCareValue,
                 qpAttr    : dontCareValue,
                 qpInitAttr: dontCareValue
             };
@@ -999,7 +999,7 @@ module mkTestMetaDataSrv(Empty);
             qpReqType   : REQ_QP_CREATE,
             pdHandler   : pdHandler,
             qpn         : dontCareValue,
-            qpAttrMast  : dontCareValue,
+            qpAttrMask  : dontCareValue,
             qpAttr      : dontCareValue,
             qpInitAttr  : QpInitAttr {
                 qpType  : IBV_QPT_RC,
@@ -1065,7 +1065,7 @@ module mkTestMetaDataSrv(Empty);
             qpReqType   : REQ_QP_MODIFY,
             pdHandler   : dontCareValue,
             qpn         : qpn,
-            qpAttrMast  : dontCareValue,
+            qpAttrMask  : dontCareValue,
             qpAttr      : qpAttr,
             qpInitAttr  : dontCareValue
         };
@@ -1123,7 +1123,7 @@ module mkTestMetaDataSrv(Empty);
             qpReqType : REQ_QP_DESTROY,
             pdHandler : dontCareValue,
             qpn       : qpn2Destroy,
-            qpAttrMast: dontCareValue,
+            qpAttrMask: dontCareValue,
             qpAttr    : dontCareValue,
             qpInitAttr: dontCareValue
         };

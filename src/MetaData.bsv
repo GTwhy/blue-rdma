@@ -1293,7 +1293,7 @@ module mkInitMetaData#(
             qpReqType   : REQ_QP_CREATE,
             pdHandler   : pdHandler,
             qpn         : dontCareValue,
-            qpAttrMast  : dontCareValue,
+            qpAttrMask  : dontCareValue,
             qpAttr      : dontCareValue,
             qpInitAttr  : qpInitAttr
         };
@@ -1357,7 +1357,7 @@ module mkInitMetaData#(
             qpReqType   : REQ_QP_MODIFY,
             pdHandler   : dontCareValue,
             qpn         : qpn,
-            qpAttrMast  : dontCareValue,
+            qpAttrMask  : dontCareValue,
             qpAttr      : qpAttr,
             qpInitAttr  : dontCareValue
         };
@@ -1424,7 +1424,7 @@ module mkInitMetaData#(
             qpReqType   : REQ_QP_MODIFY,
             pdHandler   : dontCareValue,
             qpn         : qpn,
-            qpAttrMast  : dontCareValue,
+            qpAttrMask  : dontCareValue,
             qpAttr      : qpAttr,
             qpInitAttr  : dontCareValue
         };

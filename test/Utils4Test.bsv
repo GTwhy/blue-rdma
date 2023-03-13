@@ -870,7 +870,7 @@ module mkSimController#(
             qpReqType : REQ_QP_CREATE,
             pdHandler : dontCareValue,
             qpn       : getDefaultQPN,
-            qpAttrMast: dontCareValue,
+            qpAttrMask: dontCareValue,
             qpAttr    : dontCareValue,
             qpInitAttr: qpInitAttr
         };
@@ -897,7 +897,7 @@ module mkSimController#(
             qpReqType : REQ_QP_MODIFY,
             pdHandler : dontCareValue,
             qpn       : getDefaultQPN,
-            qpAttrMast: dontCareValue,
+            qpAttrMask: dontCareValue,
             qpAttr    : qpAttr,
             qpInitAttr: dontCareValue
         };
@@ -952,7 +952,7 @@ module mkSimController#(
             qpReqType : REQ_QP_MODIFY,
             pdHandler : dontCareValue,
             qpn       : getDefaultQPN,
-            qpAttrMast: dontCareValue,
+            qpAttrMask: dontCareValue,
             qpAttr    : qpAttr,
             qpInitAttr: dontCareValue
         };

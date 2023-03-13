@@ -657,7 +657,7 @@ typedef struct {
     QpReqType  qpReqType;
     HandlerPD  pdHandler;
     QPN        qpn;
-    QpAttrMask qpAttrMast;
+    QpAttrMask qpAttrMask;
     QpAttr     qpAttr;
     QpInitAttr qpInitAttr;
 } ReqQP deriving(Bits, FShow);
@@ -670,3 +670,12 @@ typedef struct {
     QpAttr     qpAttr;
     QpInitAttr qpInitAttr;
 } RespQP deriving(Bits, FShow);
+
+
+// TODO: improve s2w interface struct
+typedef struct {
+    QpReqType  qpReqType;
+    HandlerPD  pdHandler;
+    QPN        qpn;
+    QpAttrMask qpAttrMask;
+} S2hReq deriving(Bits, Eq, FShow);
