@@ -3,25 +3,18 @@ import Controller :: *;
 import DataTypes :: *;
 import GetPut::*;
 import Utils4Test::*;
-import PrimUtils :: *;
 
 // Connectal imports
 import HostInterface::*;
 import Clocks::*;
 import Connectable::*;
 
-typedef SizeOf#(QpAttrMask)         QpAttrMask_WIDTH;
-typedef SizeOf#(MemAccessTypeFlags)        MemAccessTypeFlags_WIDTH;
-
 interface CntrlIndication;
     method Action cntrl2Host(RespQP respQP);
 endinterface
 
 interface CntrlRequest;
-    method Action host2Cntrl(S2hReq s2hReq);
-    method Action host2CntrlQpInitAttr(QpInitAttr qpInitAttr);
-    method Action host2CntrlQpAttr(QpAttr qpAttr);
-    method Action host2CntrlReq(S2hReq s2hReq);
+    method Action host2Cntrl(ReqQP reqQp);
     method Action softReset();
 endinterface
 
@@ -31,16 +24,22 @@ endinterface
 
 module mkControllerWrapper#(CntrlIndication cntrlIndication)(ControllerWrapper);
 
-    // for multi-step software to hardware modification
-    Reg#(Bool) inProgressFlag <- mkReg(False);
-    Reg#(Maybe#(QpInitAttr)) qpInitAttrBuf <- mkReg(Invalid);
-    Reg#(Maybe#(QpAttr)) qpAttrBuf <- mkReg(Invalid);
-    Reg#(Maybe#(S2hReq)) s2hReqBuf <- mkReg(Invalid);
+    Reg#(Bool) ready <- mkReg(False);
+    Reg#(Bool) isResetting <- mkReg(False);
+    Reg#(Bit#(2)) resetCnt <- mkReg(0);
+    Clock connectal_clk <- exposeCurrentClock;
+    MakeResetIfc my_rst <- mkReset(1, True, connectal_clk); // inherits parent's reset (hidden) and introduce extra reset method (OR condition)
 
-    let cntrl <- mkController;
+    rule clearResetting if (isResetting);
+        resetCnt <= resetCnt + 1;
+        if (resetCnt == 3) isResetting <= False;
+        $display("hw softReset rule isReady: %d isResetting: %d resetCnt: %d", ready, isResetting, resetCnt);
+    endrule
+
+    let cntrl <- mkController(reset_by my_rst.new_rst);
     let qpSrv = cntrl.srvPort;
 
-    rule cntrl2Host;
+    rule cntrl2Host if ( !isResetting && ready );
         let resp <- qpSrv.response.get;
         cntrlIndication.cntrl2Host(resp);
         $display("hw cntrl2Host: ", fshow(resp));
@@ -49,94 +48,17 @@ module mkControllerWrapper#(CntrlIndication cntrlIndication)(ControllerWrapper);
 
     interface CntrlRequest cntrlRequest;
 
-        method Action host2CntrlQpInitAttr(QpInitAttr qpInitAttr);
-            qpInitAttrBuf <= Valid(qpInitAttr);
-            $display("hw host2CntrlQpInitAttr: ", fshow(qpInitAttr));
-            $display("hw tttttttt %d", valueOf(QpAttrMask_WIDTH));
-        endmethod
-
-
-        method Action host2CntrlQpAttr(QpAttr qpAttr);
-            qpAttrBuf <= Valid(qpAttr);
-            $display("hw host2CntrlQpAttr: ", fshow(qpAttr));
-        endmethod
-
-
-        method Action host2CntrlReq(S2hReq s2hReq);
-            s2hReqBuf <= Valid(s2hReq);
-            $display("hw host2Cntrl req: ", fshow(s2hReq));
-        endmethod
-
-
-        method Action host2Cntrl(S2hReq s2hReq);
-
-            // let req = ReqQP {
-            //     qpReqType : s2hReq.qpReqType,
-            //     pdHandler : s2hReq.pdHandler,
-            //     qpn       : s2hReq.qpn,
-            //     qpAttrMask: ?,
-            //     qpAttr    : ?,
-            //     qpInitAttr: ?
-            // };
-
-            ReqQP req = ?;
-            
-            // case (s2hReq.qpReqType)
-            //     // need `QpInitAttr`
-            //     REQ_QP_CREATE: begin
-            //         case (qpInitAttrBuf) matches
-            //             tagged Invalid: immFail(
-            //                 "unreachible case @ mkControllerWrapper",
-            //                 $format(
-            //                     "qpInitAttrBuf=", fshow(qpInitAttrBuf)
-            //                 )
-            //             );
-
-            //             tagged Valid .qpInitAttr: req.qpInitAttr = qpInitAttr;
-            //         endcase
-            //     end
-            //     // need `QpAttr`
-            //     REQ_QP_MODIFY: begin
-            //         case (qpAttrBuf) matches
-            //             tagged Invalid: immFail(
-            //                 "unreachible case @ mkControllerWrapper",
-            //                 $format(
-            //                     "qpAttrBuf", fshow(qpAttrBuf)
-            //                 )
-            //             );
-
-            //             tagged Valid .qpAttr: req.qpAttr = qpAttr;
-            //         endcase
-            //     end
-                // // need no attr
-                // (REQ_QP_DESTROY || REQ_QP_QUERY): begin
-                //     // do nothing
-                // end
-                // default: begin
-                //     immFail(
-                //         "unreachible case @ mkControllerWrapper",
-                //         $format(
-                //             "request QPN=%h", req.qpn,
-                //             "qpReqType=", fshow(req.qpReqType)
-                //         )
-                //     );
-                // end
-            // endcase
-
-            // qpAttrBuf <= Invalid;
-            // qpInitAttrBuf <= Invalid;
-            s2hReqBuf <= Valid(s2hReq);
-
+        method Action host2Cntrl(ReqQP req) if ( !isResetting && ready );
             qpSrv.request.put(req);
-            $display("hw host2Cntrl req: ", fshow(s2hReq));
+            $display("hw host2Cntrl req: ", fshow(req));
         endmethod
 
-        // method Action softReset();
-        //     my_rst.assertReset; // assert my_rst.new_rst signal
-        //     isResetting <= True;
-        //     ready<=True;
-        //     $display("hw softReset action");
-        // endmethod
+        method Action softReset();
+            my_rst.assertReset; // assert my_rst.new_rst signal
+            isResetting <= True;
+            ready<=True;
+            $display("hw softReset");
+        endmethod
 
     endinterface
 endmodule

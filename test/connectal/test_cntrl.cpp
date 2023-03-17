@@ -12,31 +12,17 @@ class CntrlIndication : public CntrlIndicationWrapper
 public:
     virtual void cntrl2Host(RespQP resp) {
         sem_post(&sem_resp);
-        printf("sw cntrl2Host: %d\n", resp.successOrNot);
+        printf("[%s:%d] sw cntrl2Host: %d\n", __FUNCTION__, __LINE__, resp.successOrNot);
     }
 
     CntrlIndication(unsigned int id) : CntrlIndicationWrapper(id) {}
 };
 
-static void host2Cntrl(S2hReq req)
+static void host2Cntrl(ReqQP req)
 {
-    // printf("[%s:%d] %d\n", __FUNCTION__, __LINE__, req.qpn);
+    printf("[%s:%d] sw host2Cntrl: %d\n", __FUNCTION__, __LINE__, req.qpn);
     cntrlRequestProxy->host2Cntrl(req);
     sem_wait(&sem_resp);
-}
-
-
-static void host2CntrlQpInitAttr(QpInitAttr qpInitAttr)
-{
-    // printf("[%s:%d] %d\n", __FUNCTION__, __LINE__, qpInitAttr.qpType);
-    cntrlRequestProxy->host2CntrlQpInitAttr(qpInitAttr);
-}
-
-
-static void host2CntrlQpAttr(QpAttr qpAttr)
-{
-    // printf("[%s:%d] %d\n", __FUNCTION__, __LINE__, qpInitAttr.qpType);
-    cntrlRequestProxy->host2CntrlQpAttr(qpAttr);
 }
 
 int main(int argc, const char **argv)
@@ -44,15 +30,9 @@ int main(int argc, const char **argv)
     CntrlIndication cntrlIndication(IfcNames_CntrlIndicationH2S);
     cntrlRequestProxy = new CntrlRequestProxy(IfcNames_CntrlRequestS2H);
     cntrlRequestProxy->softReset();
-
-    
-    QpInitAttr initAttr{};
-    host2CntrlQpInitAttr(initAttr);
-
-    QpAttr qpAttr{};
-    host2CntrlQpAttr(qpAttr);
-
-    S2hReq s2hReq{};
-    host2Cntrl(s2hReq);
+    ReqQP req{};
+    req.qpReqType = QpReqType::REQ_QP_CREATE;
+    req.qpn = 1;
+    host2Cntrl(req);
     return 0;
 }

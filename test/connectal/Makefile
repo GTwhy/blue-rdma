@@ -14,8 +14,9 @@ BSVDIR = $(BSVBASEDIR):$(abspath ../)
 export SOFTWARE_SOCKET_NAME=/tmp/connectal$(USER)
 
 # Connectal Flags
-CONNECTALFLAGS += -D TRACE_PORTAL --bsvpath $(BSVDIR)
+CONNECTALFLAGS += -D TRACE_PORTAL --bsvpath $(BSVDIR) --nonstrict
 CONNECTALFLAGS += --bscflags " -u -keep-fires -aggressive-conditions -show-schedule "
+CONNECTALFLAGS += --cxxflags=-fpermissive
 
 
 include $(CONNECTALDIR)/Makefile.connectal
