@@ -70,7 +70,7 @@ typedef enum {
     // _IBV_QP_VID                = 1 << 23,
     // _IBV_QP_ALT_VID            = 1 << 24,
     IBV_QP_RATE_LIMIT          = 33554432 // 1 << 25
-} QpAttrMask deriving(Bits, Eq, FShow);
+} QpAttrMask deriving(Bits, Eq, FShow, Arith);
 
 // QP related types
 

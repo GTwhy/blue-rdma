@@ -9,6 +9,7 @@ import Utils :: *;
 
 typedef Bit#(1) Epoch;
 
+`define QP_ATTR_MASK_OR_NOT(attrName) (pack(qpReq.qpAttrMask) & pack(attrName)) != 0
 
 typedef Server#(ReqQP, RespQP) SrvPortQP;
 
@@ -250,26 +251,75 @@ module mkController(Controller);
                 qpResp.qpAttr.sqDraining        = stateReg == IBV_QPS_SQD;
             end
             REQ_QP_MODIFY: begin
-                // TODO: modify QP by QpAttrMask
-                stateReg                       <= qpReq.qpAttr.qpState;
-                // qpTypeReg                      <= qpType;
-                maxRnrCntReg                   <= qpReq.qpAttr.rnrRetry;
-                maxRetryCntReg                 <= qpReq.qpAttr.retryCnt;
-                maxTimeOutReg                  <= qpReq.qpAttr.timeout;
-                minRnrTimerReg                 <= qpReq.qpAttr.minRnrTimer;
-                // errFlushDoneReg                <= True;
-                qpAcessFlagsReg                <= qpReq.qpAttr.qpAcessFlags;
-                pendingWorkReqNumReg           <= qpReq.qpAttr.cap.maxSendWR;
-                pendingRecvReqNumReg           <= qpReq.qpAttr.cap.maxRecvWR;
-                pendingReadAtomicReqNumReg     <= qpReq.qpAttr.maxReadAtomic;
-                pendingDestReadAtomicReqNumReg <= qpReq.qpAttr.maxDestReadAtomic;
-                // sqSigAllReg                    <= sqSigAll;
-                dqpnReg                        <= qpReq.qpAttr.dqpn;
-                pkeyReg                        <= qpReq.qpAttr.pkeyIndex;
-                qkeyReg                        <= qpReq.qpAttr.qkey;
-                pmtuReg                        <= qpReq.qpAttr.pmtu;
-                npsnReg                        <= qpReq.qpAttr.sqPSN;
-                epsnReg[0]                     <= qpReq.qpAttr.rqPSN;
+                // TODO: modify QP by qpReq.qpAttrMask
+                // stateReg                       <= qpReq.qpAttr.qpState;
+                // // qpTypeReg                      <= qpType;
+                // maxRnrCntReg                   <= qpReq.qpAttr.rnrRetry;
+                // maxRetryCntReg                 <= qpReq.qpAttr.retryCnt;
+                // maxTimeOutReg                  <= qpReq.qpAttr.timeout;
+                // minRnrTimerReg                 <= qpReq.qpAttr.minRnrTimer;
+                // // errFlushDoneReg                <= True;
+                // qpAcessFlagsReg                <= qpReq.qpAttr.qpAcessFlags;
+                // pendingWorkReqNumReg           <= qpReq.qpAttr.cap.maxSendWR;
+                // pendingRecvReqNumReg           <= qpReq.qpAttr.cap.maxRecvWR;
+                // pendingReadAtomicReqNumReg     <= qpReq.qpAttr.maxReadAtomic;
+                // pendingDestReadAtomicReqNumReg <= qpReq.qpAttr.maxDestReadAtomic;
+                // // sqSigAllReg                    <= sqSigAll;
+                // dqpnReg                        <= qpReq.qpAttr.dqpn;
+                // pkeyReg                        <= qpReq.qpAttr.pkeyIndex;
+                // qkeyReg                        <= qpReq.qpAttr.qkey;
+                // pmtuReg                        <= qpReq.qpAttr.pmtu;
+                // npsnReg                        <= qpReq.qpAttr.sqPSN;
+                // epsnReg[0]                     <= qpReq.qpAttr.rqPSN;
+
+                // TODO: mask check? Can be done in the software layer
+                if (`QP_ATTR_MASK_OR_NOT(IBV_QP_STATE)) begin
+                    stateReg <= qpReq.qpAttr.qpState;
+                end
+                if (`QP_ATTR_MASK_OR_NOT(IBV_QP_ACCESS_FLAGS)) begin
+                    qpAcessFlagsReg <= qpReq.qpAttr.qpAcessFlags;
+                end
+                if (`QP_ATTR_MASK_OR_NOT(IBV_QP_PKEY_INDEX)) begin
+                    pkeyReg <= qpReq.qpAttr.pkeyIndex;
+                end
+                if (`QP_ATTR_MASK_OR_NOT(IBV_QP_QKEY)) begin
+                    qkeyReg <= qpReq.qpAttr.qkey;
+                end
+                if (`QP_ATTR_MASK_OR_NOT(IBV_QP_PATH_MTU)) begin
+                    pmtuReg <= qpReq.qpAttr.pmtu;
+                end
+                if (`QP_ATTR_MASK_OR_NOT(IBV_QP_TIMEOUT)) begin
+                    maxTimeOutReg <= qpReq.qpAttr.timeout;
+                end
+                if (`QP_ATTR_MASK_OR_NOT(IBV_QP_RETRY_CNT)) begin
+                    maxRetryCntReg <= qpReq.qpAttr.retryCnt;
+                end
+                if (`QP_ATTR_MASK_OR_NOT(IBV_QP_RNR_RETRY)) begin
+                    maxRnrCntReg <= qpReq.qpAttr.rnrRetry;
+                end
+                if (`QP_ATTR_MASK_OR_NOT(IBV_QP_RQ_PSN)) begin
+                    epsnReg[0] <= qpReq.qpAttr.rqPSN;
+                end
+                if (`QP_ATTR_MASK_OR_NOT(IBV_QP_MAX_QP_RD_ATOMIC)) begin
+                    pendingReadAtomicReqNumReg <= qpReq.qpAttr.maxReadAtomic;
+                end
+                if (`QP_ATTR_MASK_OR_NOT(IBV_QP_MIN_RNR_TIMER)) begin
+                    minRnrTimerReg <= qpReq.qpAttr.minRnrTimer;
+                end
+                if (`QP_ATTR_MASK_OR_NOT(IBV_QP_SQ_PSN)) begin
+                    npsnReg <= qpReq.qpAttr.sqPSN;
+                end
+                if (`QP_ATTR_MASK_OR_NOT(IBV_QP_MAX_DEST_RD_ATOMIC)) begin
+                    pendingDestReadAtomicReqNumReg <= qpReq.qpAttr.maxDestReadAtomic;
+                end
+                if (`QP_ATTR_MASK_OR_NOT(IBV_QP_CAP)) begin
+                    pendingWorkReqNumReg <= qpReq.qpAttr.cap.maxSendWR;
+                    pendingRecvReqNumReg <= qpReq.qpAttr.cap.maxRecvWR;
+                end
+                if (`QP_ATTR_MASK_OR_NOT(IBV_QP_DEST_QPN)) begin
+                    dqpnReg <= qpReq.qpAttr.dqpn;
+                end
+            
 
                 qpResp.successOrNot             = True;
                 qpResp.qpAttr.curQpState        = stateReg;
