@@ -1,5 +1,4 @@
 typedef 5 TIMER_WIDTH;
-
 typedef 64 ATOMIC_ADDR_BIT_ALIGNMENT;
 typedef 32 PD_HANDLE_WIDTH;
 typedef 8 QP_CAP_CNT_WIDTH;
@@ -7,7 +6,6 @@ typedef 8 QP_CAP_CNT_WIDTH;
 typedef 8 PENDING_READ_ATOMIC_REQ_CNT_WIDTH;
 typedef 8         ATOMIC_WORK_REQ_LEN;
 typedef 3         RETRY_CNT_WIDTH;
-
 typedef 7 INFINITE_RETRY;
 typedef 0 INFINITE_TIMEOUT;
 // Fixed settings
@@ -40,7 +38,13 @@ typedef Bit#(KEY_WIDTH) RKEY;
 typedef Bit#(KEY_WIDTH) LKEY;
 typedef Bit#(KEY_WIDTH) QKEY;
 typedef Bit#(IMM_WIDTH) IMM;
-
+typedef Bit#(PENDING_READ_ATOMIC_REQ_CNT_WIDTH) PendingReadAtomicReqCnt;
+typedef Bit#(QP_CAP_CNT_WIDTH) PendingReqCnt;
+typedef Bit#(QP_CAP_CNT_WIDTH) InlineDataSize;
+typedef Bit#(QP_CAP_CNT_WIDTH) ScatterGatherElemCnt;
+typedef Bit#(RETRY_CNT_WIDTH) RetryCnt;
+typedef Bit#(TIMER_WIDTH)     TimeOutTimer;
+typedef Bit#(TIMER_WIDTH)     RnrTimer;
 
 typedef enum {
     IBV_QP_STATE               = 1,       // 1 << 0
@@ -73,7 +77,6 @@ typedef enum {
 } QpAttrMask deriving(Bits, Eq, FShow, Arith);
 
 // QP related types
-
 typedef enum {
     IBV_QPS_RESET,
     IBV_QPS_INIT,
@@ -105,11 +108,6 @@ typedef enum {
     // IBV_ACCESS_RELAXED_ORDERING    = IBV_ACCESS_OPTIONAL_FIRST,
 } MemAccessTypeFlags deriving(Bits, Eq, FShow);
 
-typedef Bit#(PENDING_READ_ATOMIC_REQ_CNT_WIDTH) PendingReadAtomicReqCnt;
-typedef Bit#(QP_CAP_CNT_WIDTH) PendingReqCnt;
-typedef Bit#(QP_CAP_CNT_WIDTH) InlineDataSize;
-typedef Bit#(QP_CAP_CNT_WIDTH) ScatterGatherElemCnt;
-
 typedef struct {
     PendingReqCnt        maxSendWR;
     PendingReqCnt        maxRecvWR;
@@ -118,9 +116,6 @@ typedef struct {
     InlineDataSize       maxInlineData;
 } QpCapacity deriving(Bits, FShow);
 
-typedef Bit#(RETRY_CNT_WIDTH) RetryCnt;
-typedef Bit#(TIMER_WIDTH)     TimeOutTimer;
-typedef Bit#(TIMER_WIDTH)     RnrTimer;
 
 typedef struct {
     QpState                 qpState;    // init 

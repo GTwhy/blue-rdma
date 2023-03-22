@@ -24,6 +24,7 @@ endinterface
 
 module mkControllerWrapper#(CntrlIndication cntrlIndication)(ControllerWrapper);
 
+    // TODO: Reset may cause atomicity issues
     Reg#(Bool) ready <- mkReg(False);
     Reg#(Bool) isResetting <- mkReg(False);
     Reg#(Bit#(2)) resetCnt <- mkReg(0);
