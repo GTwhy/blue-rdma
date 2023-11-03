@@ -1,83 +1,129 @@
-import Cntrs :: *;
-import List :: *;
-import Vector :: *;
+import ClientServer::*;
+import DataTypes::*;
+import FIFOF::*;
+import Headers::*;
+import Settings::*;
+import PrimUtils::*;
+import Utils::*;
+import GetPut::*;
 
-import Controller :: *;
-import DataTypes :: *;
-import Settings :: *;
-import PrimUtils :: *;
-import Utils4Test :: *;
+import Controller::*;
 
-(* synthesize *)
-module mkTestCntrlInVec(Empty);
-    let qpType = IBV_QPT_XRC_RECV;
-    let pmtu = IBV_MTU_1024;
+module mkTestbench();
+    // Instantiate mkController
+    Controller controller <- mkController;
 
-    let setExpectedPsnAsNextPSN = False;
-    Vector#(MAX_QP, Controller) cntrlVec <- replicateM(mkSimController(
-        qpType, pmtu, setExpectedPsnAsNextPSN
-    ));
-    Array#(Controller) cntrlArray = vectorToArray(cntrlVec);
-    List#(Controller) cntrlList = toList(cntrlVec);
+    // Default QP attributes
+    QpAttr defaultQpAttr = QpAttr {
+        qpState      : INIT,
+        qpAccessFlags: 0,
+        pkeyIndex    : 0,
+        portNum      : 0,
+        qpDestQpn    : 0,
+        qpPathMtu    : 0,
+        qpTimeout    : 0,
+        qpRetryCnt   : 0,
+        qpRnrNakCnt  : 0,
+        qpSvcType    : 0,
+        qpMaxRdAtom  : 0,
+        qpMaxDestRdAtom: 0,
+        qpMinRnrNak : 0
+    };
 
-    Count#(Bit#(TLog#(MAX_QP))) qpCnt <- mkCount(0);
-    Reg#(Bool) stateReg <- mkReg(True);
+    QpInitAttr defaultQpInitAttr = QpInitAttr {
+        qpSendCq     : 0,
+        qpRecvCq     : 0,
+        qpSrQ        : 0,
+        qpMaxSendWr  : 0,
+        qpMaxRecvWr  : 0,
+        qpMaxSendSge : 0,
+        qpMaxRecvSge : 0,
+        qpXrcDomain  : 0
+    };
 
-    let countDown <- mkCountDown(valueOf(MAX_CMP_CNT));
+    // Test stimuli for mkController
+    ReqQP reqCreate = ReqQP {
+        qpReqType : REQ_QP_CREATE,
+        qpn       : 0,
+        pdHandler : 0,
+        qpAttr    : defaultQpAttr,
+        qpInitAttr: defaultQpInitAttr
+    };
 
-    rule genCntrl if (stateReg);
-        if (isAllOnes(qpCnt)) begin
-            stateReg <= False;
-            qpCnt <= 0;
+    ReqQP reqModify = ReqQP {
+        qpReqType : REQ_QP_MODIFY,
+        qpn       : 0,
+        pdHandler : 0,
+        qpAttr    : defaultQpAttr,
+        qpInitAttr: defaultQpInitAttr
+    };
+
+    ReqQP reqQuery = ReqQP {
+        qpReqType : REQ_QP_QUERY,
+        qpn       : 0,
+        pdHandler : 0,
+        qpAttr    : defaultQpAttr,
+        qpInitAttr: defaultQpInitAttr
+    };
+
+    ReqQP reqDestroy = ReqQP {
+        qpReqType : REQ_QP_DESTROY,
+        qpn       : 0,
+        pdHandler : 0,
+        qpAttr    : defaultQpAttr,
+        qpInitAttr: defaultQpInitAttr
+    };
+
+    // Testbench rules
+    rule initController;
+        // Initialize the controller by sending a create request
+        if (controller.srvPort.request.canPut) begin
+            controller.srvPort.request.put(reqCreate);
+            $display("Sent create request");
+        end else begin
+            $display("Failed to send create request");
+            $finish;
         end
-        else begin
-            qpCnt.incr(1);
-        end
-
-        let cntrl = cntrlArray[qpCnt];
-        // if (cntrl.isRTS) begin
-        //     cntrl.setEPSN();
-        // end
-        cntrl.contextRQ.setCurRespPsn(cntrl.contextRQ.getEPSN);
-        // $display(
-        //     "time=%0t: cntrlVec[%0d].contextRQ.getEPSN=%h",
-        //     $time, qpCnt, cntrl.contextRQ.getEPSN
-        // );
     endrule
 
-    rule cmpCntrl if (!stateReg);
-        countDown.decr;
-
-        if (isAllOnes(qpCnt)) begin
-            stateReg <= True;
-            qpCnt <= 0;
+    rule modifyController;
+        // Modify the controller by sending a modify request
+        if (controller.srvPort.request.canPut) begin
+            controller.srvPort.request.put(reqModify);
+            $display("Sent modify request");
+        end else begin
+            $display("Failed to send modify request");
+            $finish;
         end
-        else begin
-            qpCnt.incr(1);
+    endrule
+
+    rule queryController;
+        // Query the controller by sending a query request
+        if (controller.srvPort.request.canPut) begin
+            controller.srvPort.request.put(reqQuery);
+            $display("Sent modify request");
+        end else begin
+            $display("Failed to send modify request");
+            $finish;
         end
-
-        let cntrl1 = cntrlVec[qpCnt];
-        let cntrl2 = cntrlArray[qpCnt];
-
-        immAssert(
-            cntrl1.getQKEY == cntrl2.getQKEY,
-            "qkey assertion @ mkTestCntrlInVec",
-            $format(
-                "cntrl1.getQKEY=%h == cntrl2.getQKEY=%h",
-                cntrl1.getQKEY, cntrl2.getQKEY
-            )
-        );
-        immAssert(
-            cntrl1.contextRQ.getCurRespPSN == cntrl2.contextRQ.getEPSN,
-            "curRespPsn assertion @ mkTestCntrlInVec",
-            $format(
-                "curRespPsn=%h == cntrl2.contextRQ.getEPSN=%h",
-                cntrl1.contextRQ.getCurRespPSN, cntrl2.contextRQ.getEPSN
-            )
-        );
-        // $display(
-        //     "time=%0t: cntrl1.getQKEY=%h == cntrl2.getQKEY=%h",
-        //     $time, cntrl1.getQKEY, cntrl2.getQKEY
-        // );
+    endrule
+    rule destroyController;
+        // Destroy the controller by sending a destroy request
+        if (controller.srvPort.request.canPut) begin
+            controller.srvPort.request.put(reqDestroy);
+            $display("Sent destroy request");
+        end else begin
+            $display("Failed to send destroy request");
+            $finish;
+        end
+    endrule
+    
+    rule displayResponse;
+        // Display response from controller
+        if (controller.srvPort.response.canGet) begin
+            RespQP resp = controller.srvPort.response.get;
+            $display("Received response: ", fshow(resp));
+            controller.srvPort.response.get;
+        end
     endrule
 endmodule

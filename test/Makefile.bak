@@ -1,7 +1,8 @@
 include ../Makefile.base
 
-TESTFILE ?= TestController.bsv
-TOPMODULE ?= mkTestbench
+TESTFILE ?= TestExtractAndPrependPipeOut.bsv
+TOPMODULE ?= mkTestHeaderAndDataStreamConversion
+
 SIMEXE = $(BUILDDIR)/$(TOPMODULE).exe
 
 compile:

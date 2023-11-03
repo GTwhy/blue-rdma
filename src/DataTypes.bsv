@@ -657,7 +657,7 @@ typedef struct {
     QpReqType  qpReqType;
     HandlerPD  pdHandler;
     QPN        qpn;
-    QpAttrMask qpAttrMask;
+    // QpAttrMask qpAttrMask;
     QpAttr     qpAttr;
     QpInitAttr qpInitAttr;
 } ReqQP deriving(Bits, FShow);
